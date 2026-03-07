@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
@@ -87,6 +87,12 @@ const SCRIPT_CODE = `function doPost(e) {
       sheet.appendRow(data.row);
     }
 
+    if (data.action === "saveState") {
+      var sheet = ss.getSheetByName("AppState") || ss.insertSheet("AppState");
+      sheet.clearContents();
+      sheet.getRange(1,1).setValue(data.state);
+    }
+
     if (data.action === "savePdf" && data.folderId && data.htmlBase64) {
       var folder = DriveApp.getFolderById(data.folderId);
       var htmlContent = Utilities.newBlob(
@@ -102,6 +108,19 @@ const SCRIPT_CODE = `function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({status:"error",msg:err.message}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("AppState");
+    var state = sheet && sheet.getLastRow() > 0 ? sheet.getRange(1,1).getValue() : "{}";
+    return ContentService.createTextOutput(state)
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput("{}")
       .setMimeType(ContentService.MimeType.JSON);
   }
 }`;
@@ -1794,20 +1813,83 @@ export default function App() {
   const [clients,setClients]=useState([]);
   const [recipients,setRecipients]=useState([]);
   const [expenses,setExpenses]=useState([]);
-  const [scriptUrl,setScriptUrl]=useState("");
+  const [scriptUrl,setScriptUrl]=useState(()=>localStorage.getItem("scriptUrl")||"");
   const [seller,setSeller]=useState(DEFAULT_SELLER);
   const [series,setSeries]=useState(DEFAULT_SERIES);
   const [drive,setDrive]=useState(DEFAULT_DRIVE);
+  const [loading,setLoading]=useState(false);
+  const [syncStatus,setSyncStatus]=useState(""); // "saving"|"saved"|"error"|""
+  const saveTimer = useRef(null);
+
+  // ── Load state from Sheets on mount (if scriptUrl saved) ───────────────
+  useEffect(()=>{
+    const url = localStorage.getItem("scriptUrl");
+    if (!url) return;
+    setLoading(true);
+    fetch(url)
+      .then(r=>r.json())
+      .then(data=>{
+        if (data.orders) setOrders(data.orders);
+        if (data.quotations) setQuotations(data.quotations);
+        if (data.proformas) setProformas(data.proformas);
+        if (data.taxInvoices) setTaxInvoices(data.taxInvoices);
+        if (data.clients) setClients(data.clients);
+        if (data.recipients) setRecipients(data.recipients);
+        if (data.expenses) setExpenses(data.expenses);
+        if (data.seller) setSeller(data.seller);
+        if (data.series) setSeries(data.series);
+        if (data.drive) setDrive(data.drive);
+      })
+      .catch(()=>{})
+      .finally(()=>setLoading(false));
+  },[]);
+
+  // ── Debounced save to Sheets on any state change ────────────────────────
+  const saveToSheets = useCallback((state)=>{
+    const url = state.scriptUrl||scriptUrl;
+    if (!url) return;
+    setSyncStatus("saving");
+    fetch(url,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveState",state:JSON.stringify(state)}),headers:{"Content-Type":"application/json"}})
+      .then(()=>setSyncStatus("saved"))
+      .catch(()=>setSyncStatus("error"))
+      .finally(()=>setTimeout(()=>setSyncStatus(""),3000));
+  },[scriptUrl]);
+
+  const scheduleSync = useCallback((patch)=>{
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(()=>{
+      saveToSheets(patch);
+    },1500);
+  },[saveToSheets]);
+
+  // ── Persist scriptUrl to localStorage so it survives refresh ───────────
+  const handleSetScriptUrl = (url)=>{ setScriptUrl(url); localStorage.setItem("scriptUrl",url); };
+
+  // ── Wrapped setters that trigger sync ───────────────────────────────────
+  const syncSetOrders=(v)=>{ const n=typeof v==="function"?v(orders):v; setOrders(n); scheduleSync({orders:n,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetQuotations=(v)=>{ const n=typeof v==="function"?v(quotations):v; setQuotations(n); scheduleSync({orders,quotations:n,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetProformas=(v)=>{ const n=typeof v==="function"?v(proformas):v; setProformas(n); scheduleSync({orders,quotations,proformas:n,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetTaxInvoices=(v)=>{ const n=typeof v==="function"?v(taxInvoices):v; setTaxInvoices(n); scheduleSync({orders,quotations,proformas,taxInvoices:n,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients:n,recipients,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients:n,expenses,seller,series,drive,scriptUrl}); };
+  const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses:n,seller,series,drive,scriptUrl}); };
+  const syncSetSeller=(v)=>{ setSeller(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller:v,series,drive,scriptUrl}); };
+  const syncSetSeries=(v)=>{ setSeries(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series:v,drive,scriptUrl}); };
+  const syncSetDrive=(v)=>{ setDrive(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive:v,scriptUrl}); };
 
   const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
+      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><p className="text-2xl mb-2">⏳</p><p className="text-sm font-semibold text-indigo-600">Loading data from Google Sheets…</p></div></div>}
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {seller.logo&&<img src={seller.logo} alt="logo" className="h-9 max-w-[100px] object-contain"/>}
+            {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse ml-2">⏳ Saving…</span>}
+            {syncStatus==="saved"&&<span className="text-xs text-emerald-500 ml-2">✓ Saved</span>}
+            {syncStatus==="error"&&<span className="text-xs text-red-400 ml-2">⚠ Sync failed</span>}
             <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">Invoice & Order Management · GST Billing</p></div>
           </div>
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
@@ -1817,12 +1899,12 @@ export default function App() {
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={setOrders} quotations={quotations} setQuotations={setQuotations} proformas={proformas} setProformas={setProformas} taxInvoices={taxInvoices} setTaxInvoices={setTaxInvoices} scriptUrl={scriptUrl} seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={setOrders} quotations={quotations} setQuotations={setQuotations} proformas={proformas} setProformas={setProformas} taxInvoices={taxInvoices} setTaxInvoices={setTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive}/>}
-          {tab==="clients"&&<ClientMaster clients={clients} setClients={setClients}/>}
-          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={setExpenses} recipients={recipients} seller={seller}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} scriptUrl={scriptUrl} seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive}/>}
+          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients}/>}
+          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
-          {tab==="settings"&&<Settings scriptUrl={scriptUrl} setScriptUrl={setScriptUrl} seller={seller} setSeller={setSeller} series={series} setSeries={setSeries} drive={drive} setDrive={setDrive} recipients={recipients} setRecipients={setRecipients}/>}
+          {tab==="settings"&&<Settings scriptUrl={scriptUrl} setScriptUrl={handleSetScriptUrl} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} drive={drive} setDrive={syncSetDrive} recipients={recipients} setRecipients={syncSetRecipients}/>}
         </div>
       </div>
     </div>
