@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input, textarea, select {
+    background-color: #ffffff;
+    color: #1e293b;
+    border-color: #e2e8f0;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  button {
+    background-color: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+}

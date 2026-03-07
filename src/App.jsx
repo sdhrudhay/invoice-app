@@ -1,0 +1,1830 @@
+import { useState, useRef } from "react";
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
+const fmt = (n) => Number(n || 0).toFixed(2);
+const num = (v) => parseFloat(v) || 0;
+const yyyymm = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}`; };
+const yyyy = () => String(new Date().getFullYear());
+const yyyymmdd = () => { const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`; };
+
+// ─── Order Number Generation ──────────────────────────────────────────────────
+function buildOrderNo(series, type, orders) {
+  const { prefix, format, digits } = series;
+  const periodPart = format === "YYYYMM" ? yyyymm() : format === "YYYY" ? yyyy() : format === "YYYYMMDD" ? yyyymmdd() : "";
+  const base = [prefix, periodPart].filter(Boolean).join("/");
+  const existing = orders.filter(o => o.orderNoBase === base && o.type === type);
+  const seq = String(existing.length + 1).padStart(Number(digits) || 6, "0");
+  const typeSuffix = type === "B2B" ? "-B" : "";
+  return `${base}/${seq}${typeSuffix}`;
+}
+
+function genInvNo(prefix, period, list, digits) {
+  const base = period ? `${prefix}/${period}` : prefix;
+  const count = list.filter(i => i.invNoBase === base).length + 1;
+  return { invNo: `${base}/${String(count).padStart(digits, "0")}`, invNoBase: base };
+}
+
+function genClientId(clients) {
+  const n = clients.length + 1;
+  return "CLT-" + String(n).padStart(4, "0");
+}
+
+const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"" };
+
+const EMPTY_ITEM = { sl: 1, item: "", hsn: "", unit: "Nos", unitPrice: "", qty: "", discount: "", grossAmt: 0, cgstRate: 9, cgstAmt: 0, sgstRate: 9, sgstAmt: 0, netAmt: 0 };
+
+function calcItem(it, needsGst=true) {
+  const gross = num(it.unitPrice) * num(it.qty) * (1 - num(it.discount) / 100);
+  const cgst = needsGst ? (gross * num(it.cgstRate)) / 100 : 0;
+  const sgst = needsGst ? (gross * num(it.sgstRate)) / 100 : 0;
+  return { ...it, grossAmt: gross, cgstAmt: cgst, sgstAmt: sgst, netAmt: gross + cgst + sgst };
+}
+
+// Merge invoice items into an existing order items list.
+// Existing items (matched by name) are kept as-is; new items are appended.
+function mergeItemsIntoOrder(orderItems, invoiceItems) {
+  const existing = orderItems.map(i=>({...i}));
+  const existingNames = new Set(existing.map(i=>(i.item||"").toLowerCase().trim()));
+  const toAdd = invoiceItems.filter(i => i.item && !existingNames.has((i.item||"").toLowerCase().trim()));
+  const renumbered = [...existing, ...toAdd].map((i,idx)=>({...i, sl:idx+1}));
+  return renumbered;
+}
+
+const PAYMENT_MODES = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
+const GST_RATES = [0, 2.5, 6, 9, 14];
+const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
+
+const DEFAULT_SELLER = {
+  name: "Your Company Name", gstin: "29XXXXX0000X1ZX",
+  address: "123, Business Park, Bengaluru, Karnataka - 560001",
+  state: "Karnataka", stateCode: "29", phone: "+91 98765 43210",
+  email: "billing@yourcompany.com", bank: "HDFC Bank",
+  accountNo: "XXXXXXXXXXXX", ifsc: "HDFC0001234", logo: "",
+  pfTerms: "1. This proforma invoice is valid for 15 days from the date of issue.\n2. 50% advance payment required to confirm the order.\n3. Prices are subject to change without prior notice.\n4. Delivery timelines will be confirmed upon order confirmation.",
+  tiTerms: "1. Payment due within 30 days from invoice date.\n2. Goods once sold will not be taken back or exchanged.\n3. Interest @18% p.a. will be charged on overdue payments.\n4. Subject to local jurisdiction only.",
+};
+
+const DEFAULT_SERIES = {
+  prefix: "ORD", format: "YYYYMMDD", digits: "6",
+  qtPrefix: "QT", qtFormat: "YYYYMMDD", qtDigits: "6",
+  pfPrefix: "EA-PF", pfFormat: "YYYYMMDD",
+  tiPrefix: "EA-TAX", tiFormat: "YYYYMMDD", invDigits: "6",
+};
+
+const DEFAULT_DRIVE = { b2bQuotation: "", b2cQuotation: "", b2bProforma: "", b2bTax: "", b2cTax: "" };
+
+// ─── Apps Script Code ─────────────────────────────────────────────────────────
+const SCRIPT_CODE = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    if (data.action === "append") {
+      var sheet = ss.getSheetByName(data.sheet) || ss.insertSheet(data.sheet);
+      if (sheet.getLastRow() === 0 && data.headers) sheet.appendRow(data.headers);
+      sheet.appendRow(data.row);
+    }
+
+    if (data.action === "savePdf" && data.folderId && data.htmlBase64) {
+      var folder = DriveApp.getFolderById(data.folderId);
+      var htmlContent = Utilities.newBlob(
+        Utilities.base64Decode(data.htmlBase64), 'text/html', data.filename + '.html'
+      );
+      var tempFile = DriveApp.createFile(htmlContent);
+      var pdfBlob = tempFile.getAs('application/pdf').setName(data.filename + '.pdf');
+      folder.createFile(pdfBlob);
+      tempFile.setTrashed(true);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({status:"ok"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({status:"error",msg:err.message}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+// ─── Quotation HTML Builder ──────────────────────────────────────────────────
+function buildQuotationHtml(order, inv, seller) {
+  const items = inv.items || [];
+  const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
+  const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
+  const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
+  const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
+  const ng = order.needsGst;
+  const cols = ng ? 13 : 9;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QUOTATION - ${inv.invNo}</title>
+<style>
+  *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
+  .page{max-width:900px;margin:0 auto}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a2e;padding-bottom:14px;margin-bottom:14px}
+  .co-name{font-size:19px;font-weight:800;color:#1a1a2e;margin:4px 0 2px}.sd{font-size:11px;color:#444;line-height:1.6}
+  .inv-title{font-size:17px;font-weight:800;color:#0369a1;letter-spacing:1px;text-align:right}
+  .inv-meta{font-size:11px;margin-top:6px;line-height:1.9;text-align:right}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+  .box{border:1px solid #ddd;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
+  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
+  th{background:#1a1a2e;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
+  td{padding:5px 8px;border-bottom:1px solid #eee;text-align:center}
+  .sr td{background:#f7f7f7;font-weight:600}.gr td{background:#1a1a2e;color:#fff;font-weight:700;font-size:13px}
+  .foot{margin-top:16px;text-align:right;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
+  .validity{margin-top:12px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;font-size:11px;color:#1e40af}
+  @media print{body{padding:8px}}
+</style></head><body><div class="page">
+<div class="hdr">
+  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}
+    <div class="co-name">${seller.name}</div>
+    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone} | ${seller.email}</div>
+  </div>
+  <div><div class="inv-title">QUOTATION</div>
+    <div class="inv-meta"><b>Quotation #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
+  </div>
+</div>
+<div class="two-col">
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}${order.email?`<br>${order.email}`:""}</div>
+  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
+</div>
+<table><thead><tr>
+  <th>#</th><th>Item / Description</th><th>HSN</th><th>Unit</th>
+  <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
+  ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
+  <th>Net Amount</th>
+</tr></thead><tbody>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td><td>${it.unit}</td>
+  <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
+  ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
+  <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
+</tbody><tfoot>
+  <tr class="sr"><td colspan="${ng?7:7}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
+  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
+</tfoot></table>
+${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
+<div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
+<div class="foot">Computer-generated — no signature required.</div>
+</div></body></html>`;
+}
+
+// ─── Invoice HTML Builder ─────────────────────────────────────────────────────
+function buildInvoiceHtml(order, inv, type, seller) {
+  const isProforma = type === "proforma";
+  const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
+  const items = inv.items || [];
+  const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
+  const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
+  const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
+  const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
+  const ng = order.needsGst;
+  const cols = ng ? 13 : 9;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} - ${inv.invNo}</title>
+<style>
+  *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
+  .page{max-width:900px;margin:0 auto}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a2e;padding-bottom:14px;margin-bottom:14px}
+  .co-name{font-size:19px;font-weight:800;color:#1a1a2e;margin:4px 0 2px}.sd{font-size:11px;color:#444;line-height:1.6}
+  .inv-title{font-size:17px;font-weight:800;color:#c0392b;letter-spacing:1px;text-align:right}
+  .inv-meta{font-size:11px;margin-top:6px;line-height:1.9;text-align:right}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+  .box{border:1px solid #ddd;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
+  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
+  th{background:#1a1a2e;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
+  td{padding:5px 8px;border-bottom:1px solid #eee;text-align:center}
+  .sr td{background:#f7f7f7;font-weight:600}.gr td{background:#1a1a2e;color:#fff;font-weight:700;font-size:13px}
+  .bank{margin-top:14px;padding:10px 12px;background:#f4f4f4;border-radius:5px;font-size:11px;line-height:1.8}
+  .foot{margin-top:16px;text-align:right;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
+  @media print{body{padding:8px}}
+</style></head><body><div class="page">
+<div class="hdr">
+  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}
+    <div class="co-name">${seller.name}</div>
+    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone} | ${seller.email}</div>
+  </div>
+  <div><div class="inv-title">${title}</div>
+    <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
+  </div>
+</div>
+<div class="two-col">
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}${order.email?`<br>${order.email}`:""}</div>
+  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
+</div>
+<table><thead><tr>
+  <th>#</th><th>Item / Description</th><th>HSN</th><th>Unit</th>
+  <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
+  ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
+  <th>Net Amount</th>
+</tr></thead><tbody>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td><td>${it.unit}</td>
+  <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
+  ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
+  <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
+</tbody><tfoot>
+  <tr class="sr"><td colspan="${ng?7:7}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
+  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
+</tfoot></table>
+
+${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
+${!isProforma?`<div class="bank"><b>Bank Details:</b> ${seller.bank} | A/C No: ${seller.accountNo} | IFSC: ${seller.ifsc}</div>`:""}
+${(isProforma&&seller.pfTerms)||(!isProforma&&seller.tiTerms)?`<div style="margin-top:12px;padding:10px 12px;background:#f9f9f9;border:1px solid #eee;border-radius:5px;font-size:10px;color:#444;line-height:1.8"><b style="font-size:11px">Terms & Conditions</b><br>${isProforma?(seller.pfTerms||"").replace(/\n/g,"<br>"):(seller.tiTerms||"").replace(/\n/g,"<br>")}</div>`:""}
+<div class="foot">Computer-generated — no signature required.${isProforma?" This is a Proforma Invoice and not a Tax Invoice.":""}</div>
+</div></body></html>`;
+}
+
+function printOrOpen(html) {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// ─── Reusable UI ──────────────────────────────────────────────────────────────
+function Badge({ label }) {
+  const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700" };
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c[label]||"bg-gray-100 text-gray-600"}`}>{label}</span>;
+}
+
+function F({ label, value, onChange, type="text", required, className="", placeholder, disabled, rows }) {
+  const b = "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full " + (disabled ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed select-none" : "bg-white border-gray-200");
+  return (
+    <div className={`flex flex-col gap-1 ${className} ${disabled ? "relative" : ""}`}>
+      {label && <label className={"text-xs font-semibold uppercase tracking-wide " + (disabled ? "text-gray-300" : "text-gray-500")}>{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>}
+      <div className="relative">
+        {rows
+          ? <textarea value={value} onChange={e=>onChange(e.target.value)} rows={rows} placeholder={placeholder} disabled={disabled} className={b+" resize-none"}/>
+          : <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled} className={b} {...(type==="number"?{onWheel:e=>e.target.blur(),inputMode:"decimal"}:{})}/>
+        }
+        {disabled && <div className="absolute inset-0 rounded-lg bg-gray-200 opacity-30 pointer-events-none"/>}
+      </div>
+    </div>
+  );
+}
+
+function S({ label, value, onChange, options, className="" }) {
+  return (
+    <div className={`flex flex-col gap-1 ${className}`}>
+      {label && <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>}
+      <select value={value} onChange={e=>onChange(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+        {options.map(o=><option key={o.value??o} value={o.value??o}>{o.label??o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ─── Item Table ───────────────────────────────────────────────────────────────
+function ItemTable({ items, setItems, needsGst }) {
+  const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
+  const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
+  const del = (i) => setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
+  const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
+  const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
+  const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?["CGST%","SGST%"]:[]),"Gross",...(needsGst?["CGST","SGST"]:[]),"Net Amt",""];
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-100">
+      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?"1020px":"680px"}}>
+        <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+        <tbody>
+          {items.map((it,i)=>(
+            <tr key={i} className="border-b border-gray-100 hover:bg-slate-50">
+              <td className="px-2 py-1.5 text-gray-400 w-6">{it.sl}</td>
+              <td className="px-2 py-1.5"><input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/></td>
+              <td className="px-2 py-1.5"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16"}/></td>
+              <td className="px-2 py-1.5"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none">{["Nos","Kg","Ltr","Mtr","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.unitPrice} onChange={e=>upd(i,"unitPrice",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-20 text-right"}/></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={e=>upd(i,"qty",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-14 text-right"}/></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.discount} onChange={e=>upd(i,"discount",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-12 text-right"}/></td>
+              {needsGst&&<>
+                <td className="px-2 py-1.5"><select value={it.cgstRate} onChange={e=>upd(i,"cgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
+                <td className="px-2 py-1.5"><select value={it.sgstRate} onChange={e=>upd(i,"sgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
+              </>}
+              <td className="px-2 py-1.5 text-right text-gray-600">₹{fmt(it.grossAmt)}</td>
+              {needsGst&&<><td className="px-2 py-1.5 text-right text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-right text-gray-500">₹{fmt(it.sgstAmt)}</td></>}
+              <td className="px-2 py-1.5 text-right font-bold text-slate-800">₹{fmt(it.netAmt)}</td>
+              <td className="px-2 py-1.5"><button onClick={()=>del(i)} className="text-red-400 hover:text-red-600 font-bold px-1 text-base leading-none">×</button></td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-slate-50 font-semibold">
+            <td colSpan={needsGst?9:7} className="px-2 py-2 text-right text-gray-400 text-xs">Totals →</td>
+            <td className="px-2 py-2 text-right text-xs">₹{fmt(tG)}</td>
+            {needsGst&&<><td className="px-2 py-2 text-right text-xs">₹{fmt(tC)}</td><td className="px-2 py-2 text-right text-xs">₹{fmt(tS)}</td></>}
+            <td className="px-2 py-2 text-right text-sm font-bold text-slate-800">₹{fmt(tN)}</td>
+            <td/>
+          </tr>
+        </tfoot>
+      </table>
+      <button onClick={add} className="m-3 text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"><span className="text-base font-bold">+</span> Add Item</button>
+    </div>
+  );
+}
+
+// ─── Client Search Dropdown ───────────────────────────────────────────────────
+function ClientSearch({ clients, onSelect, value }) {
+  const [query, setQuery] = useState(value||"");
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(query.toLowerCase()) ||
+    c.id.toLowerCase().includes(query.toLowerCase()) ||
+    (c.gstin||"").toLowerCase().includes(query.toLowerCase())
+  ).slice(0, 8);
+
+  const handleSelect = (c) => { setQuery(c.name + " (" + c.id + ")"); setOpen(false); onSelect(c); };
+  const handleClear = () => { setQuery(""); setOpen(false); onSelect(null); };
+
+  return (
+    <div className="relative flex flex-col gap-1" ref={ref}>
+      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Client <span className="normal-case text-gray-300 font-normal">(type to search)</span></label>
+      <div className="flex gap-2">
+        <input value={query} onChange={e=>{setQuery(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
+          placeholder="Search by name, client ID or GSTIN…"
+          className="border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-50 w-full font-medium"/>
+        {query && <button onClick={handleClear} className="text-gray-400 hover:text-red-500 text-lg px-1 font-bold leading-none">×</button>}
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 overflow-hidden">
+          {filtered.map(c => (
+            <button key={c.id} onMouseDown={()=>handleSelect(c)}
+              className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <span className="font-semibold text-sm text-slate-800">{c.name}</span>
+                  {c.gstin && <span className="text-xs text-gray-400 ml-2">GST: {c.gstin}</span>}
+                </div>
+                <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">{c.id}</span>
+              </div>
+              {c.billingAddress && <div className="text-xs text-gray-400 mt-0.5 truncate">{c.billingAddress}</div>}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && query.length > 0 && filtered.length === 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 px-4 py-3 text-sm text-gray-400">
+          No clients found. <span className="text-indigo-500 font-medium">Add them in the Clients tab.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Order Form ───────────────────────────────────────────────────────────────
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, scriptUrl, seller, series, drive={}, clients, recipients=[] }) {
+  const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
+  const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
+  const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
+  const [shippingName,setShippingName]=useState(""); const [shippingContact,setShippingContact]=useState(""); const [shippingAddress,setShippingAddress]=useState(""); const [shippingGstin,setShippingGstin]=useState(""); const [shippingStateCode,setShippingStateCode]=useState("");
+  const [sameAsBilling,setSameAsBilling]=useState(false);
+  const [placeOfSupply,setPlaceOfSupply]=useState(""); const [orderDate,setOrderDate]=useState(today()); const [dueDate,setDueDate]=useState(addDays(today(),30)); const [paymentMode,setPaymentMode]=useState("UPI"); const [advance,setAdvance]=useState(""); const [status,setStatus]=useState("Pending"); const [comments,setComments]=useState("");
+  const [items,setItems]=useState([{...EMPTY_ITEM}]);
+  const [advanceRecipient,setAdvanceRecipient]=useState("");
+  const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
+  const [selectedClient,setSelectedClient]=useState(null);
+
+  const applyClient = (c) => {
+    if (!c) { setSelectedClient(null); setSameAsBilling(false); return; }
+    setSameAsBilling(false);
+    setSelectedClient(c);
+    setCustomerName(c.name||"");
+    setPhone(c.contact||"");
+    setEmail(c.email||"");
+    setGstin(c.gstin||"");
+    setBillingName(c.billingName||c.name||"");
+    setBillingAddress(c.billingAddress||"");
+    setBillingStateCode(c.billingStateCode||"");
+    setPlaceOfSupply(c.placeOfSupply||"");
+    setShippingName(c.shippingName||"");
+    setShippingContact(c.shippingContact||"");
+    setShippingGstin(c.shippingGstin||"");
+    setShippingAddress(c.shippingAddress||"");
+    setShippingStateCode(c.shippingStateCode||"");
+  };
+
+  const notify = (t,err=false) => { setMsg(t); setMsgErr(err); setTimeout(()=>setMsg(""),4000); };
+  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",mode:"no-cors",body:JSON.stringify(p),headers:{"Content-Type":"application/json"}}); } catch(_){} };
+  const getFolderIdOF = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
+  const saveToDriveOF = async (order, inv, invType) => {
+    let folderUrl = invType==="quotation" ? (order.type==="B2B"?(drive.b2bQuotation||""):(drive.b2cQuotation||"")) : "";
+    const folderId = getFolderIdOF(folderUrl);
+    if (!folderId) return;
+    const html = buildQuotationHtml(order, inv, seller);
+    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+    await post({ action:"savePdf", folderId, htmlBase64, filename: inv.invNo });
+  };
+
+  const handleSave = async () => {
+    if (!customerName) { notify("Customer name is required",true); return; }
+    if (type==="B2B" && !gstin.trim()) { notify("GSTIN is required for B2B orders",true); return; }
+    if (num(advance)>0 && !advanceRecipient) { notify("Please select who received the advance",true); return; }
+    setSaving(true);
+    const orderNoBase = [series.prefix, series.format==="YYYYMM"?yyyymm():series.format==="YYYY"?yyyy():series.format==="YYYYMMDD"?yyyymmdd():""].filter(Boolean).join("/");
+    const orderNo = buildOrderNo(series, type, orders);
+    // Generate quotation number
+    const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
+    const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[] };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0) };
+    setOrders(p=>[...p,order]);
+    setQuotations(p=>[...p,qt]);
+    await post({action:"append",sheet:"Orders",headers:["Order No","Type","Customer","Contact","GSTIN","Billing Addr","Date","Payment","Advance","Status","GST","Quotation No","Comments"],row:[orderNo,type,customerName,phone,gstin,billingAddress,orderDate,paymentMode,advance,status,needsGst?"Yes":"No",qtNo,comments]});
+    await saveToDriveOF(order, qt, "quotation");
+    notify(`Order ${orderNo} & Quotation ${qtNo} saved!`);
+    setSaving(false);
+  };
+
+  const reset = () => {
+    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setItems([{...EMPTY_ITEM}]); setMsg("");
+  };
+
+  const previewNo = buildOrderNo(series, type, orders);
+
+  return (
+    <div className="space-y-6">
+      {msg&&<div className={`px-4 py-2 rounded-lg text-sm font-medium ${msgErr?"bg-red-50 border border-red-200 text-red-700":"bg-emerald-50 border border-emerald-200 text-emerald-700"}`}>{msg}</div>}
+      <div className="space-y-5">
+          <div className="flex gap-3 items-center flex-wrap">
+            <span className="text-sm font-semibold text-gray-600">Customer Type:</span>
+            {["B2B","B2C"].map(t=>(
+              <button key={t} onClick={()=>{const ng=t==="B2B";setType(t);setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));} }
+                className={`px-5 py-2 rounded-full text-sm font-semibold border-2 transition-all ${type===t?"bg-indigo-600 border-indigo-600 text-white":"border-gray-300 text-gray-500 hover:border-indigo-400"}`}>{t}</button>
+            ))}
+            {type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-1"><input type="checkbox" checked={needsGst} onChange={e=>{const ng=e.target.checked;setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));} } className="rounded"/> Wants GST Invoice</label>}
+            <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
+          </div>
+          {type==="B2B" && clients.length > 0 && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+              <ClientSearch clients={clients} onSelect={applyClient} value={selectedClient?selectedClient.name+" ("+selectedClient.id+")":""}/>
+              {selectedClient && <p className="text-xs text-indigo-500 mt-2 font-medium">✓ Client details auto-filled — edit below if needed for this order</p>}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <F label="Customer / Company Name" value={customerName} onChange={setCustomerName} required className="col-span-2 md:col-span-1"/>
+            <F label="Phone" value={phone} onChange={setPhone} placeholder="+91 XXXXX XXXXX"/>
+            <F label="Email" value={email} onChange={setEmail} placeholder="customer@email.com"/>
+            {type==="B2B"&&<F label="GSTIN" value={gstin} onChange={setGstin} placeholder="29XXXXX0000X1ZX" required/>}
+            <F label="Order Date" type="date" value={orderDate} onChange={v=>{setOrderDate(v);setDueDate(addDays(v,30));}}/>
+            <F label="Due Date" type="date" value={dueDate||addDays(orderDate,30)} onChange={setDueDate}/>
+            <S label="Payment Mode" value={paymentMode} onChange={setPaymentMode} options={PAYMENT_MODES}/>
+            <F label="Advance Paid (₹)" type="number" value={advance} onChange={setAdvance}/>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By <span className="text-red-400">*</span></label>
+              <select value={advanceRecipient} onChange={e=>setAdvanceRecipient(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                <option value="">— Select recipient —</option>
+                <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <S label="Order Status" value={status} onChange={setStatus} options={STATUS_OPTIONS}/>
+          </div>
+          <div className="border-t pt-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
+              <F label="State/UT Code" value={billingStateCode} onChange={setBillingStateCode} placeholder="e.g. 29"/>
+              <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="col-span-2"/>
+            </div>
+          </div>
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-700">Shipping Address</p>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={sameAsBilling} onChange={e=>{
+                  const checked=e.target.checked;
+                  setSameAsBilling(checked);
+                  if(checked){
+                    setShippingName(billingName||customerName);
+                    setShippingContact(phone);
+                    setShippingAddress(billingAddress);
+                    setShippingGstin(gstin);
+                    setShippingStateCode(billingStateCode);
+                  } else {
+                    setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode("");
+                  }
+                }} className="rounded accent-indigo-600 w-4 h-4"/>
+                <span className="font-medium text-indigo-600">Same as billing</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
+              <F label="Contact Number" value={sameAsBilling ? contact : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
+              {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
+              <F label="State/UT Code" value={sameAsBilling ? billingStateCode : shippingStateCode} onChange={v=>{if(!sameAsBilling)setShippingStateCode(v);}} disabled={sameAsBilling}/>
+              <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
+            </div>
+          </div>
+          {needsGst&&<F label="Place of Supply" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="e.g. Karnataka (29)" className="w-64"/>}
+          <div className="border-t pt-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
+            <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
+          </div>
+          <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
+          <div className="flex gap-3 items-center pt-2 border-t">
+            <button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 transition-all">{saving?"Saving…":"Save Order & Generate Quotation"}</button>
+            <button onClick={reset} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Clear</button>
+            <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
+          </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, recipients=[] }) {
+  const [tab, setTab] = useState("details");
+  const [o, setO] = useState({...order});
+  const [editInv, setEditInv] = useState(null);
+  const [creating, setCreating] = useState(null); // "proforma" | "tax"
+  const [saved, setSaved] = useState(false);
+  const [payments, setPayments] = useState(order.payments||[]);
+  const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
+  const [paySaved, setPaySaved] = useState(false);
+
+  const upd = (k,v) => setO(p=>({...p,[k]:v}));
+  const qt = quotations.find(q=>q.orderId===order.orderNo);
+  // Local editable items (initialised fresh whenever order prop changes)
+  const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
+  const pfs = proformas.filter(p=>p.orderId===order.orderNo);
+  const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
+
+  const handleSaveOrder = () => {
+    onSaveOrder({...o, items: orderItems});
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
+  };
+  const handleSaveInv = (updatedInv, type) => {
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)};
+    const merged = mergeItemsIntoOrder(orderItems, updatedInv.items);
+    setOrderItems(merged);
+    onSaveInvoice(saved, type, merged);
+    setEditInv(null);
+  };
+  const handleCreate = (type) => setCreating(type);
+
+  const totalPaid = payments.reduce((s,p)=>s+num(p.amount),0) + num(o.advance);
+  const handleAddPayment = () => {
+    if (!newPay.amount || isNaN(num(newPay.amount))) return;
+    if (!newPay.receivedBy) { alert("Please select who received this payment."); return; }
+    const entry = {...newPay, id: Date.now()};
+    const updated = [...payments, entry];
+    setPayments(updated);
+    onSaveOrder({...o, items: orderItems, payments: updated});
+    setNewPay({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
+    setPaySaved(true); setTimeout(()=>setPaySaved(false), 2000);
+  };
+  const handleDeletePayment = (id) => {
+    const updated = payments.filter(p=>p.id!==id);
+    setPayments(updated);
+    onSaveOrder({...o, items: orderItems, payments: updated});
+  };
+  const handleSaveNew = (inv, type) => {
+    const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)};
+    const merged = mergeItemsIntoOrder(orderItems, inv.items);
+    setOrderItems(merged);
+    onCreateInvoice(newInv, type, merged, needsGstNow);
+    if (needsGstNow) setO(p=>({...p, needsGst:true}));
+    setCreating(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/40" onClick={onClose}/>
+      {/* Drawer */}
+      <div className="w-full max-w-2xl bg-white shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-slate-800 text-white shrink-0">
+          <div>
+            <p className="font-mono text-sm text-slate-300">{order.orderNo}</p>
+            <p className="font-bold text-lg leading-tight">{order.customerName}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-300 hover:text-white text-2xl font-bold leading-none px-1">×</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b shrink-0 bg-gray-50">
+          {[["details","📋 Order"],["quotation","📄 Quotation"],["invoices","🧾 Invoices"],["payments","💰 Payments"]].map(([id,label])=>(
+            <button key={id} onClick={()=>{setTab(id);setEditInv(null);setCreating(null);}}
+              className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {tab==="details" && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} className="col-span-2 md:col-span-1"/>
+                <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} placeholder="+91 XXXXX XXXXX"/>
+                <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} placeholder="customer@email.com"/>
+                {o.type==="B2B"&&<F label="GSTIN" value={o.gstin||""} onChange={v=>upd("gstin",v)} required/>}
+                <F label="Order Date" type="date" value={o.orderDate} onChange={v=>upd("orderDate",v)}/>
+                <F label="Due Date" type="date" value={o.dueDate||""} onChange={v=>upd("dueDate",v)}/>
+                <S label="Payment Mode" value={o.paymentMode} onChange={v=>upd("paymentMode",v)} options={PAYMENT_MODES}/>
+                <F label="Advance Paid (₹)" type="number" value={o.advance||""} onChange={v=>upd("advance",v)}/>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Advance Received By <span className="text-red-400">*</span></label>
+                  <select value={o.advanceRecipient||""} onChange={e=>upd("advanceRecipient",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">— Select recipient —</option>
+                    <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
+              </div>
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)}/>
+                  <F label="State/UT Code" value={o.billingStateCode||""} onChange={v=>upd("billingStateCode",v)}/>
+                  <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} rows={2} className="col-span-2"/>
+                </div>
+              </div>
+              <div className="border-t pt-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Shipping Address</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)}/>
+                  <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)}/>
+                  {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)}/>}
+                  <F label="State/UT Code" value={o.shippingStateCode||""} onChange={v=>upd("shippingStateCode",v)}/>
+                  <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} rows={2} className="col-span-2"/>
+                </div>
+              </div>
+              {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
+              <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-gray-700">Order Items</p>
+                  <span className="text-xs text-gray-400">Edit items here to update quotation</span>
+                </div>
+                <ItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst}/>
+              </div>
+              <div className="flex gap-3 pt-2 border-t">
+                <button onClick={handleSaveOrder} className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${saved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>
+                  {saved?"✓ Saved! Quotation updated":"Save Changes & Update Quotation"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {tab==="quotation" && (
+            <div className="space-y-4">
+              {qt
+                ? <>
+                    <div className="flex items-center justify-between">
+                      <div><span className="font-mono font-bold text-sky-700">{qt.invNo}</span><span className="text-xs text-gray-400 ml-2">{qt.invDate}</span><span className="text-xs font-semibold text-sky-700 ml-3">₹{fmt(qt.amount)}</span></div>
+                      <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">🖨 Print Quotation</button>
+                    </div>
+                    <div className="border-t pt-4">
+                      <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
+                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={qt.items.map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst}/></div>
+                    </div>
+                  </>
+                : <p className="text-gray-400 text-sm text-center py-8">No quotation found for this order.</p>
+              }
+            </div>
+          )}
+
+          {tab==="invoices" && !editInv && !creating && (
+            <div className="space-y-4">
+              <div className="flex gap-2 justify-end items-center flex-wrap">
+                {order.type==="B2B"&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
+                {(order.type==="B2B"||order.needsGst)
+                  ? <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice</button>
+                  : <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice (will enable GST)</button>
+                }
+              </div>
+              {pfs.length===0&&tis.length===0&&<p className="text-gray-400 text-sm text-center py-6">No invoices yet. Create one above.</p>}
+              {pfs.length>0&&(
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Proforma Invoices</p>
+                  <div className="space-y-2">
+                    {pfs.map(p=>{
+                      const tN=p.items.reduce((s,i)=>s+num(i.netAmt),0);
+                      return (
+                        <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
+                          <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
+                          <div className="flex gap-2">
+                            <button onClick={()=>setEditInv({inv:{...p,items:p.items.map(i=>({...i}))},type:"proforma"})} className="text-xs border border-blue-300 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">🖨 Print</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {tis.length>0&&(
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Tax Invoices</p>
+                  <div className="space-y-2">
+                    {tis.map(t=>{
+                      const tN=t.items.reduce((s,i)=>s+num(i.netAmt),0);
+                      return (
+                        <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
+                          <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
+                          <div className="flex gap-2">
+                            <button onClick={()=>setEditInv({inv:{...t,items:t.items.map(i=>({...i}))},type:"tax"})} className="text-xs border border-slate-300 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">🖨 Print</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab==="invoices" && creating && (
+            <InvoiceEditor
+              inv={{ invNo:"(auto)", invDate:today(), items: order.items ? order.items.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"" }}
+              type={creating}
+              needsGst={creating==="tax" ? true : order.needsGst}
+              isNew={true}
+              series={series}
+              existingList={creating==="proforma" ? proformas : taxInvoices}
+              onSave={(inv)=>handleSaveNew(inv, creating)}
+              onCancel={()=>setCreating(null)}
+            />
+          )}
+
+          {tab==="invoices" && editInv && !creating && (
+            <InvoiceEditor
+              inv={editInv.inv}
+              type={editInv.type}
+              needsGst={order.needsGst}
+              onSave={(updated)=>handleSaveInv(updated, editInv.type)}
+              onCancel={()=>setEditInv(null)}
+            />
+          )}
+
+          {tab==="payments" && (() => {
+            const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
+            const qt2=quotations.find(q=>q.orderId===order.orderNo);
+            const qtTotal=qt2?num(qt2.amount):(order.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
+            const orderTotal=tiTotal>0?tiTotal:qtTotal;
+            const balance=orderTotal-totalPaid;
+            return (
+              <div className="space-y-5">
+                {/* Summary strip */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[["Order Total","₹"+fmt(orderTotal),"text-slate-700"],["Total Paid","₹"+fmt(totalPaid),"text-emerald-600"],["Balance Due",balance>0?"₹"+fmt(balance):"Nil",balance>0?"text-orange-500":"text-gray-400"]].map(([label,val,cls])=>(
+                    <div key={label} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+                      <p className={`text-sm font-bold ${cls}`}>{val}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add payment form */}
+                <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Payment</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <F label="Date" type="date" value={newPay.date} onChange={v=>setNewPay(p=>({...p,date:v}))}/>
+                    <F label="Amount (₹)" type="number" value={newPay.amount} onChange={v=>setNewPay(p=>({...p,amount:v}))} placeholder="0.00"/>
+                    <S label="Payment Mode" value={newPay.mode} onChange={v=>setNewPay(p=>({...p,mode:v}))} options={PAYMENT_MODES}/>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By <span className="text-red-400">*</span></label>
+                      <select value={newPay.receivedBy} onChange={e=>setNewPay(p=>({...p,receivedBy:e.target.value}))} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                        <option value="">— Select recipient —</option>
+                        <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                    </div>
+                    <F label="Txn / Ref No (optional)" value={newPay.txnRef} onChange={v=>setNewPay(p=>({...p,txnRef:v}))} placeholder="UPI ref, cheque no…"/>
+                    <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment" className="col-span-2"/>
+                  </div>
+                  <button onClick={handleAddPayment} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${paySaved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>
+                    {paySaved?"✓ Payment Saved!":"+ Add Payment"}
+                  </button>
+                </div>
+
+                {/* Payment history */}
+                {num(o.advance)>0&&(()=>{
+                  const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===o.advanceRecipient);
+                  return (
+                    <div className="border border-gray-100 rounded-xl px-4 py-3 bg-white">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-emerald-600">₹{fmt(o.advance)}</span>
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{o.paymentMode||"—"}</span>
+                          <span className="text-xs text-gray-400">{o.orderDate}</span>
+                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Advance</span>
+                        </div>
+                      </div>
+                      {advRcp&&<p className="text-xs text-indigo-500 mt-0.5">👤 {advRcp.name}</p>}
+                    </div>
+                  );
+                })()}
+                {payments.length===0&&num(o.advance)===0&&(
+                  <p className="text-gray-400 text-sm text-center py-6">No payments recorded yet.</p>
+                )}
+                <div className="space-y-2">
+                  {payments.slice().reverse().map(p=>(
+                    <div key={p.id} className="flex items-start justify-between border border-gray-100 rounded-xl px-4 py-3 bg-white gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-emerald-600">₹{fmt(p.amount)}</span>
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{p.mode}</span>
+                          <span className="text-xs text-gray-400">{p.date}</span>
+                        </div>
+                        {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(x=>x.id===p.receivedBy);return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
+                        {p.txnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {p.txnRef}</p>}
+                        {p.comments&&<p className="text-xs text-gray-500 mt-0.5">{p.comments}</p>}
+                      </div>
+                      <button onClick={()=>handleDeletePayment(p.id)} className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Invoice Editor ────────────────────────────────────────────────────────────
+function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList }) {
+  const prefix = isNew ? (type==="proforma"?(series?.pfPrefix||"PF"):(series?.tiPrefix||"TAX")) : null;
+  const period = isNew ? (type==="proforma"?(series?.pfFormat==="YYYYMM"?yyyymm():series?.pfFormat==="YYYY"?yyyy():series?.pfFormat==="YYYYMMDD"?yyyymmdd():""):(series?.tiFormat==="YYYYMM"?yyyymm():series?.tiFormat==="YYYY"?yyyy():series?.tiFormat==="YYYYMMDD"?yyyymmdd():"")) : null;
+  const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
+  const [d, setD] = useState({...inv, items: inv.items.map(i=>({...i})), invNo: isNew ? autoNo : inv.invNo, invNoBase: isNew ? autoBase : inv.invNoBase });
+  const upd = (k,v) => setD(p=>({...p,[k]:v}));
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 text-sm flex items-center gap-1">← Back</button>
+        <span className="font-mono font-bold text-slate-700">{d.invNo}</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${type==="proforma"?"bg-blue-100 text-blue-700":"bg-slate-100 text-slate-700"}`}>{type==="proforma"?"Proforma":"Tax Invoice"}</span>
+        {isNew&&<span className="text-xs text-emerald-600 font-medium">Items pre-filled from order — edit as needed</span>}
+      </div>
+      <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
+      <ItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst}/>
+      <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
+      <div className="flex gap-3 pt-2 border-t">
+        <button onClick={()=>onSave(d)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save Invoice</button>
+        <button onClick={onCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Orders List ──────────────────────────────────────────────────────────────
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], scriptUrl="", drive={} }) {
+  const [search,setSearch]=useState("");
+  const [filter,setFilter]=useState("All");
+  const [typeFilter,setTypeFilter]=useState("All");
+  const [balFilter,setBalFilter]=useState(false);
+  const [openOrder,setOpenOrder]=useState(null);
+
+  const getTotal = (o) => {
+    const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+num(t.amount),0);
+    const qt=quotations.find(q=>q.orderId===o.orderNo);
+    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
+    return tiTotal>0?tiTotal:qtTotal;
+  };
+  const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+num(p.amount),0);
+
+  const searched=orders.filter(o=>o.orderNo.toLowerCase().includes(search.toLowerCase())||o.customerName.toLowerCase().includes(search.toLowerCase()));
+  const filtered=searched
+    .filter(o=>filter==="All"||o.status===filter)
+    .filter(o=>typeFilter==="All"||o.type===typeFilter)
+    .filter(o=>!balFilter||(getTotal(o)-getTotalPaid(o))>0);
+
+  // Sync order items + quotation whenever items change
+  const syncItemsAndQuotation = (orderNo, mergedItems) => {
+    if (!mergedItems) return;
+    setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, items:mergedItems} : o));
+    setQuotations(prev => prev.map(q => q.orderId===orderNo
+      ? {...q, items:mergedItems, amount:mergedItems.reduce((s,i)=>s+num(i.netAmt),0)}
+      : q));
+  };
+
+  const handleSaveOrder = (updated) => {
+    const orderNo = updated.orderNo;
+    const newItems = updated.items;
+    setOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
+    // Sync quotation
+    if (newItems) {
+      setQuotations(prev => prev.map(q => q.orderId===orderNo
+        ? {...q, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)}
+        : q));
+      // Merge new items into existing tax invoices (not proforma)
+      setTaxInvoices(prev => prev.map(t => {
+        if (t.orderId !== orderNo) return t;
+        const merged = mergeItemsIntoOrder(t.items, newItems);
+        return {...t, items: merged, amount: merged.reduce((s,i)=>s+num(i.netAmt),0)};
+      }));
+    }
+    setOpenOrder(updated);
+    // Re-save quotation to Drive whenever order is updated
+    const qt = quotations.find(q=>q.orderId===updated.orderNo);
+    if (qt) saveToDrive(updated, qt, "quotation");
+  };
+
+  const pushItemsToTaxInvoices = (orderNo, mergedItems) => {
+    if (!mergedItems) return;
+    setTaxInvoices(prev => prev.map(t => {
+      if (t.orderId !== orderNo) return t;
+      const merged = mergeItemsIntoOrder(t.items, mergedItems);
+      return {...t, items: merged, amount: merged.reduce((s,i)=>s+num(i.netAmt),0)};
+    }));
+  };
+
+  const handleSaveInvoice = (updatedInv, type, mergedItems) => {
+    const orderNo = openOrder?.orderNo;
+    const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
+    if(type==="proforma"){
+      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+      if (orderNo && mergedItems) {
+        syncItemsAndQuotation(orderNo, mergedItems);
+        pushItemsToTaxInvoices(orderNo, mergedItems);
+      }
+      if (orderObj) saveToDrive(orderObj, updatedInv, "proforma");
+    } else {
+      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+      if (orderNo) syncItemsAndQuotation(orderNo, mergedItems);
+      if (orderObj) saveToDrive(orderObj, updatedInv, "tax");
+    }
+  };
+
+  const handleCreateInvoice = (inv, type, mergedItems, needsGstFlip) => {
+    const orderNo = openOrder.orderNo;
+    const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
+    if(type==="proforma"){
+      setProformas(p=>[...p, inv]);
+      setOrders(prev=>prev.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
+      if (mergedItems) {
+        syncItemsAndQuotation(orderNo, mergedItems);
+        pushItemsToTaxInvoices(orderNo, mergedItems);
+      }
+      saveToDrive(orderObj, inv, "proforma");
+    } else {
+      setTaxInvoices(p=>[...p, inv]);
+      setOrders(prev=>prev.map(o=>{
+        if (o.orderNo!==orderNo) return o;
+        return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(needsGstFlip?{needsGst:true}:{})};
+      }));
+      if (mergedItems) syncItemsAndQuotation(orderNo, mergedItems);
+      saveToDrive({...orderObj, ...(needsGstFlip?{needsGst:true}:{})}, inv, "tax");
+    }
+  };
+
+  const todayStr = today();
+
+  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",mode:"no-cors",body:JSON.stringify(p),headers:{"Content-Type":"application/json"}}); } catch(_){} };
+  const getFolderId = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
+  const saveToDrive = async (order, inv, type) => {
+    let folderUrl = "";
+    if (type==="quotation") folderUrl = order.type==="B2B"?(drive.b2bQuotation||""):(drive.b2cQuotation||"");
+    else if (type==="proforma") folderUrl = drive.b2bProforma||"";
+    else if (type==="tax") folderUrl = order.type==="B2B"?(drive.b2bTax||""):(drive.b2cTax||"");
+    const folderId = getFolderId(folderUrl);
+    if (!folderId) return;
+    const html = type==="quotation" ? buildQuotationHtml(order, inv, seller) : buildInvoiceHtml(order, inv, type, seller);
+    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
+    await post({ action:"savePdf", folderId, htmlBase64, filename: inv.invNo });
+  };
+  const renderCard = (o) => {
+    const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
+    const qt=quotations.find(q=>q.orderId===o.orderNo);
+    // Total: use tax invoice total if exists, else quotation/order items total
+    const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
+    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
+    const tN=tiTotal>0?tiTotal:qtTotal;
+    const bal=tN-getTotalPaid(o);
+    const due=o.dueDate||"";
+    const isOverdue=o.status==="Pending"&&due&&due<todayStr;
+    const isDueSoon=o.status==="Pending"&&due&&due>=todayStr&&due<=addDays(todayStr,3);
+    return (
+      <div key={o.orderNo} onClick={()=>setOpenOrder(o)} className={`border rounded-xl px-4 py-3 hover:shadow-md transition-all bg-white cursor-pointer ${isOverdue?"border-red-200 bg-red-50/30":isDueSoon?"border-amber-200 bg-amber-50/30":"border-gray-100 hover:border-indigo-200"}`}>
+        {/* Row 1: order no + badges + arrow */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-bold text-slate-700 font-mono text-xs">{o.orderNo}</span>
+            <Badge label={o.type}/>{!o.needsGst&&<Badge label="No GST"/>}<Badge label={o.status}/>
+            {isOverdue&&<span className="text-xs font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">⚠ Overdue</span>}
+            {isDueSoon&&!isOverdue&&<span className="text-xs font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">⏰ Due soon</span>}
+          </div>
+          <span className="text-gray-300 shrink-0">›</span>
+        </div>
+        {/* Row 2: customer + GSTIN */}
+        <p className="text-sm font-bold text-gray-800 mt-1 leading-tight">{o.customerName}</p>
+        {o.type==="B2B"&&o.gstin&&<p className="text-xs text-gray-400 font-mono">{o.gstin}</p>}
+        {/* Row 3: data pills */}
+        <div className="flex gap-4 mt-2 flex-wrap">
+          <div>
+            <p className="text-xs text-gray-400 leading-none mb-0.5">Order Date</p>
+            <p className="text-xs font-semibold text-gray-600">{o.orderDate||"—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 leading-none mb-0.5">Due Date</p>
+            <p className={`text-xs font-semibold ${isOverdue?"text-red-600":isDueSoon?"text-amber-600":"text-gray-600"}`}>{due||"—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 leading-none mb-0.5">Total</p>
+            <p className="text-xs font-semibold text-gray-800">{tN>0?`₹${fmt(tN)}`:"—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 leading-none mb-0.5">Advance</p>
+            <p className="text-xs font-semibold text-emerald-600">{num(o.advance)>0?`₹${fmt(o.advance)}`:"—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 leading-none mb-0.5">Balance Due</p>
+            <p className={`text-xs font-semibold ${bal>0?"text-orange-500":"text-gray-400"}`}>{tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—"}</p>
+          </div>
+        </div>
+        {/* Row 4: print buttons */}
+        <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100" onClick={e=>e.stopPropagation()}>
+          {qt&&<button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-2.5 py-1 rounded-full font-mono">🖨 {qt.invNo}</button>}
+          {pfs.map(p=><button key={p.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-full font-mono">🖨 {p.invNo}</button>)}
+          {tis.map(t=><button key={t.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-700 hover:bg-slate-50 px-2.5 py-1 rounded-full font-mono">🖨 {t.invNo}</button>)}
+        </div>
+      </div>
+    );
+  };
+
+  const pendingOrders = filtered.filter(o=>o.status==="Pending").sort((a,b)=>{
+    const da = a.dueDate||addDays(a.orderDate,30), db = b.dueDate||addDays(b.orderDate,30);
+    return da < db ? -1 : da > db ? 1 : 0;
+  });
+  const completedOrders = filtered.filter(o=>o.status==="Completed").slice().reverse();
+  const cancelledOrders = filtered.filter(o=>o.status==="Cancelled").slice().reverse();
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by order # or customer…" className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Order Status</span>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              {["All","Pending","Completed","Cancelled"].map(f=>(
+                <button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${filter===f?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{f}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Customer Type</span>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              {["All","B2B","B2C"].map(t=>(
+                <button key={t} onClick={()=>setTypeFilter(t)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${typeFilter===t?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <button onClick={()=>setBalFilter(v=>!v)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${balFilter?"bg-orange-500 border-orange-500 text-white":"border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500"}`}>
+            💰 Balance Due
+          </button>
+        </div>
+      </div>
+      {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-12">{filter==="All"&&typeFilter==="All"?"No orders yet. Create your first order!":`No ${[typeFilter!=="All"?typeFilter:"",filter!=="All"?filter.toLowerCase():""].filter(Boolean).join(" ")} orders found.`}</p>}
+
+      {pendingOrders.length>0&&(filter==="All"||filter==="Pending")&&(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-yellow-700">⏳ Pending</span><span className="text-xs text-gray-400">({pendingOrders.length}) · sorted by due date</span></div>
+          <div className="space-y-3">{pendingOrders.map(renderCard)}</div>
+        </div>
+      )}
+
+      {completedOrders.length>0&&(filter==="All"||filter==="Completed")&&(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-green-700">✅ Completed</span><span className="text-xs text-gray-400">({completedOrders.length})</span></div>
+          <div className="space-y-3">{completedOrders.map(renderCard)}</div>
+        </div>
+      )}
+
+      {cancelledOrders.length>0&&(filter==="All"||filter==="Cancelled")&&(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-red-600">✕ Cancelled</span><span className="text-xs text-gray-400">({cancelledOrders.length})</span></div>
+          <div className="space-y-3">{cancelledOrders.map(renderCard)}</div>
+        </div>
+      )}
+
+      {openOrder && (
+        <OrderEditDrawer
+          order={orders.find(o=>o.orderNo===openOrder.orderNo)||openOrder}
+          quotations={quotations}
+          proformas={proformas}
+          taxInvoices={taxInvoices}
+          seller={seller}
+          series={series}
+          onClose={()=>setOpenOrder(null)}
+          onSaveOrder={handleSaveOrder}
+          onSaveInvoice={handleSaveInvoice}
+          onCreateInvoice={handleCreateInvoice}
+          recipients={recipients}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function Settings({ scriptUrl, setScriptUrl, seller, setSeller, series, setSeries, drive, setDrive, recipients=[], setRecipients }) {
+  const [url,setUrl]=useState(scriptUrl); const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series}); const [dr,setDr]=useState({...drive});
+  const [showScript,setShowScript]=useState(false); const [saved,setSaved]=useState(false);
+  const logoRef=useRef();
+
+  const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
+  const save = () => { setScriptUrl(url); setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const cancel = () => { setUrl(scriptUrl); setS({...seller}); setSr({...series}); setDr({...drive}); };
+
+  const pB2C = buildOrderNo(sr,"B2C",[]); const pB2B = buildOrderNo(sr,"B2B",[]);
+  const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
+  const pfPeriod = sr.pfFormat==="YYYYMM"?yyyymm():sr.pfFormat==="YYYY"?yyyy():sr.pfFormat==="YYYYMMDD"?yyyymmdd():"";
+  const tiPeriod = sr.tiFormat==="YYYYMM"?yyyymm():sr.tiFormat==="YYYY"?yyyy():sr.tiFormat==="YYYYMMDD"?yyyymmdd():"";
+  const qtPrev = [[sr.qtPrefix,qtPeriod2].filter(Boolean).join("/"),String(1).padStart(Number(sr.qtDigits)||6,"0")].join("/");
+  const pfPrev = [[sr.pfPrefix,pfPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
+  const tiPrev = [[sr.tiPrefix,tiPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
+
+  const formatOpts = [{value:"NONE",label:"None (no date)"},{value:"YYYY",label:"YYYY – e.g. 2025"},{value:"YYYYMM",label:"YYYYMM – e.g. 202501"},{value:"YYYYMMDD",label:"YYYYMMDD – e.g. 20250107"}];
+  const digitOpts = ["3","4","5","6"].map(d=>({value:d,label:`${d} digits`}));
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      {/* Business */}
+      <section>
+        <h3 className="font-bold text-gray-800 mb-4">🏢 Business Details</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="col-span-2"/>
+          <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/><F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
+          <F label="State Code" value={s.stateCode} onChange={v=>setS({...s,stateCode:v})}/>
+          <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2} className="col-span-2"/>
+          <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})}/><F label="Email" value={s.email} onChange={v=>setS({...s,email:v})}/>
+          <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})}/><F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})}/>
+          <F label="IFSC Code" value={s.ifsc} onChange={v=>setS({...s,ifsc:v})}/>
+        </div>
+      </section>
+
+      {/* Logo */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-2">🖼 Company Logo</h3>
+        <p className="text-xs text-gray-400 mb-4">Displayed top-left on every printed invoice. PNG/JPG recommended.</p>
+        <div className="flex items-center gap-4">
+          {s.logo
+            ? <div className="relative group"><img src={s.logo} alt="logo" className="h-16 max-w-[160px] object-contain border rounded-xl p-2 bg-white shadow-sm"/>
+                <button onClick={()=>setS({...s,logo:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button></div>
+            : <div onClick={()=>logoRef.current.click()} className="h-16 w-36 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
+                <span className="text-lg">🖼</span><span className="text-xs text-gray-400">Upload logo</span>
+              </div>
+          }
+          <button onClick={()=>logoRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.logo?"Change":"Upload"} logo</button>
+          <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>
+        </div>
+      </section>
+
+      {/* Number Series */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-1">🔢 Number Series</h3>
+        <p className="text-xs text-gray-400 mb-4">Customize order and invoice number formats. B2B orders auto-get <code className="bg-gray-100 px-1 rounded text-xs">-B</code> suffix.</p>
+
+        <div className="space-y-3">
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Order Numbers</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="Prefix" value={sr.prefix} onChange={v=>setSr({...sr,prefix:v})} placeholder="ORD"/>
+              <S label="Date Format" value={sr.format} onChange={v=>setSr({...sr,format:v})} options={formatOpts}/>
+              <S label="Seq Digits" value={sr.digits} onChange={v=>setSr({...sr,digits:v})} options={digitOpts}/>
+            </div>
+            <div className="flex gap-6 text-xs pt-1">
+              <span className="text-gray-500">B2C: <span className="font-mono font-bold text-emerald-600">{pB2C}</span></span>
+              <span className="text-gray-500">B2B: <span className="font-mono font-bold text-blue-600">{pB2B}</span></span>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Quotation Numbers</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="Prefix" value={sr.qtPrefix} onChange={v=>setSr({...sr,qtPrefix:v})} placeholder="QT"/>
+              <S label="Date Format" value={sr.qtFormat} onChange={v=>setSr({...sr,qtFormat:v})} options={formatOpts}/>
+              <S label="Seq Digits" value={sr.qtDigits||"6"} onChange={v=>setSr({...sr,qtDigits:v})} options={digitOpts}/>
+            </div>
+            <p className="text-xs text-gray-500">Preview: <span className="font-mono font-bold text-sky-600">{qtPrev}</span></p>
+          </div>
+
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Proforma Invoice Numbers</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="Prefix" value={sr.pfPrefix} onChange={v=>setSr({...sr,pfPrefix:v})} placeholder="PF"/>
+              <S label="Date Format" value={sr.pfFormat} onChange={v=>setSr({...sr,pfFormat:v})} options={formatOpts}/>
+              <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
+            </div>
+            <p className="text-xs text-gray-500">Preview: <span className="font-mono font-bold text-indigo-600">{pfPrev}</span></p>
+          </div>
+
+          <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Tax Invoice Numbers</p>
+            <div className="grid grid-cols-3 gap-3">
+              <F label="Prefix" value={sr.tiPrefix} onChange={v=>setSr({...sr,tiPrefix:v})} placeholder="TAX"/>
+              <S label="Date Format" value={sr.tiFormat} onChange={v=>setSr({...sr,tiFormat:v})} options={formatOpts}/>
+              <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
+            </div>
+            <p className="text-xs text-gray-500">Preview: <span className="font-mono font-bold text-slate-700">{tiPrev}</span></p>
+          </div>
+        </div>
+      </section>
+
+      {/* Terms & Conditions */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-1">📋 Terms &amp; Conditions</h3>
+        <p className="text-xs text-gray-400 mb-4">Printed at the bottom of each invoice. Leave blank to omit.</p>
+        <div className="space-y-4">
+          <F label="Proforma Invoice — Terms & Conditions" value={s.pfTerms} onChange={v=>setS({...s,pfTerms:v})} rows={4} placeholder="Enter terms for proforma invoices…"/>
+          <F label="Tax Invoice — Terms & Conditions" value={s.tiTerms} onChange={v=>setS({...s,tiTerms:v})} rows={4} placeholder="Enter terms for tax invoices…"/>
+        </div>
+      </section>
+
+      {/* Google Drive */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-1">📁 Google Drive Folders</h3>
+        <p className="text-xs text-gray-400 mb-4">Paste the Google Drive folder URL for each invoice type. Generated invoices will be automatically saved there via Apps Script.</p>
+        <div className="space-y-3">
+          <F label="B2B Quotation Folder" value={dr.b2bQuotation||""} onChange={v=>setDr({...dr,b2bQuotation:v})} placeholder="https://drive.google.com/drive/folders/…"/>
+          <F label="B2C Quotation Folder" value={dr.b2cQuotation||""} onChange={v=>setDr({...dr,b2cQuotation:v})} placeholder="https://drive.google.com/drive/folders/…"/>
+          <F label="B2B Proforma Invoice Folder" value={dr.b2bProforma} onChange={v=>setDr({...dr,b2bProforma:v})} placeholder="https://drive.google.com/drive/folders/…"/>
+          <F label="B2B Tax Invoice Folder" value={dr.b2bTax} onChange={v=>setDr({...dr,b2bTax:v})} placeholder="https://drive.google.com/drive/folders/…"/>
+          <F label="B2C Tax Invoice Folder" value={dr.b2cTax} onChange={v=>setDr({...dr,b2cTax:v})} placeholder="https://drive.google.com/drive/folders/…"/>
+        </div>
+      </section>
+
+      {/* Apps Script */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-1">⚙️ Apps Script Integration</h3>
+        <p className="text-xs text-gray-400 mb-3">Syncs orders to Google Sheets and saves invoice PDFs to Drive. One-time free setup.</p>
+        <F label="Web App URL" value={url} onChange={setUrl} placeholder="https://script.google.com/macros/s/…/exec" className="mb-3"/>
+        <button onClick={()=>setShowScript(!showScript)} className="text-xs text-indigo-600 hover:underline mb-3 flex items-center gap-1">{showScript?"▼ Hide":"▶ Show"} Setup Instructions & Script</button>
+        {showScript&&(
+          <div className="space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1.5">
+              <p className="font-bold text-sm">Setup (one-time, ~5 minutes)</p>
+              <p>1. Open Google Sheets → <b>Extensions → Apps Script</b></p>
+              <p>2. Paste the code below, replacing any existing code, and save</p>
+              <p>3. Click <b>Deploy → New Deployment → Web App</b></p>
+              <p>4. Set <b>Execute as: Me</b> and <b>Who has access: Anyone</b></p>
+              <p>5. Authorize and copy the <b>Web App URL</b> — paste it above</p>
+              <p>6. For Drive saving: open each folder → Share → add the Apps Script service account email (shown during auth) with Editor access</p>
+            </div>
+            <pre className="bg-slate-900 text-emerald-300 text-xs p-4 rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed">{SCRIPT_CODE}</pre>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-bold text-gray-800 border-b pb-2">👤 Recipients</h2>
+        <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
+        <RecipientMaster recipients={recipients} setRecipients={setRecipients}/>
+      </section>
+
+      <div className="flex gap-3 pt-2 border-t">
+        <button onClick={save} className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${saved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>{saved?"✓ Saved!":"Save All Settings"}</button>
+        <button onClick={cancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-5 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Recipient Master ─────────────────────────────────────────────────────────
+const EMPTY_RECIPIENT = { id:"", name:"" };
+
+function RecipientMaster({ recipients, setRecipients }) {
+  const [form, setForm] = useState({...EMPTY_RECIPIENT});
+  const [editId, setEditId] = useState(null);
+  const [search, setSearch] = useState("");
+  const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const handleSave = () => {
+    if (!form.name.trim()) return;
+    if (editId) {
+      setRecipients(recipients.map(r=>r.id===editId?{...form,id:editId}:r));
+      setEditId(null);
+    } else {
+      const id = "RCP-"+String(recipients.length+1).padStart(4,"0");
+      setRecipients([...recipients,{...form,id}]);
+    }
+    setForm({...EMPTY_RECIPIENT});
+  };
+  const handleEdit = (r) => { setForm({...r}); setEditId(r.id); };
+  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) setRecipients(recipients.filter(r=>r.id!==id)); };
+  const handleCancel = () => { setForm({...EMPTY_RECIPIENT}); setEditId(null); };
+
+  const filtered = recipients.filter(r=>r.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div>
+        <h3 className="font-bold text-gray-800 mb-1">{editId?"✏️ Edit Recipient":"➕ Add Recipient"}</h3>
+        <p className="text-xs text-gray-400 mb-4">Add people or companies who can receive payments — they'll appear as a dropdown when recording advance or payments.</p>
+        <div className="bg-gray-50 rounded-xl p-4 space-y-3 border border-gray-100">
+          <F label="Name" value={form.name} onChange={v=>upd("name",v)} required placeholder="e.g. Rahul, Acme Pvt Ltd"/>
+          <div className="flex gap-2 pt-1">
+            <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">{editId?"Save Changes":"Add Recipient"}</button>
+            {editId&&<button onClick={handleCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t pt-4">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search recipients…" className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-3"/>
+        {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-8">No recipients yet. Add one above.</p>}
+        <div className="space-y-2">
+          {filtered.map(r=>(
+            <div key={r.id} className="border border-gray-100 rounded-xl px-4 py-3 bg-white flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-slate-800">{r.name}</span>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={()=>handleEdit(r)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg">✏️ Edit</button>
+                <button onClick={()=>handleDelete(r.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-3 py-1.5 rounded-lg">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Client Master ────────────────────────────────────────────────────────────
+function ClientMaster({ clients, setClients }) {
+  const [form, setForm] = useState({...EMPTY_CLIENT});
+  const [editId, setEditId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [sameAsBilling, setSameAsBilling] = useState(false);
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.id.toLowerCase().includes(search.toLowerCase()) ||
+    (c.gstin||"").includes(search)
+  );
+
+  const handleSave = () => {
+    if (!form.name) return;
+    if (editId) {
+      setClients(clients.map(c => c.id === editId ? { ...form, id: editId } : c));
+      setEditId(null);
+    } else {
+      const id = genClientId(clients);
+      setClients([...clients, { ...form, id }]);
+    }
+    setForm({...EMPTY_CLIENT}); setShowForm(false); setSameAsBilling(false);
+  };
+
+  const handleEdit = (c) => { setForm({...c}); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
+  const handleDelete = (id) => { if (window.confirm("Delete this client?")) setClients(clients.filter(c=>c.id!==id)); };
+  const handleNew = () => { setForm({...EMPTY_CLIENT}); setEditId(null); setShowForm(true); setSameAsBilling(false); };
+
+  const upd = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-bold text-lg text-slate-800">B2B Client Master</h2>
+          <p className="text-xs text-gray-400">Save client details once, auto-fill on every new order.</p>
+        </div>
+        <button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>
+      </div>
+
+      {showForm && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-700">{editId ? "Edit Client — "+editId : "New Client"}</h3>
+            <button onClick={()=>setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Company Name" value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
+              <F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} placeholder="29XXXXX0000X1ZX"/>
+              <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
+              <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} placeholder="client@email.com"/>
+              <F label="Email" value={form.email} onChange={v=>upd("email",v)} placeholder="accounts@company.com"/>
+              <F label="Place of Supply" value={form.placeOfSupply} onChange={v=>upd("placeOfSupply",v)} placeholder="e.g. Karnataka (29)"/>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} placeholder="Company name or individual"/>
+              <F label="State/UT Code" value={form.billingStateCode} onChange={v=>upd("billingStateCode",v)} placeholder="e.g. 29"/>
+              <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} rows={2} className="col-span-2"/>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Default Shipping Address</p>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={sameAsBilling} onChange={e=>{
+                  const checked=e.target.checked;
+                  setSameAsBilling(checked);
+                  if(checked){
+                    upd("shippingName", form.billingName||form.name);
+                    upd("shippingContact", form.contact);
+                    upd("shippingAddress", form.billingAddress);
+                    upd("shippingGstin", form.gstin);
+                    upd("shippingStateCode", form.billingStateCode);
+                  } else {
+                    ["shippingName","shippingContact","shippingAddress","shippingGstin","shippingStateCode"].forEach(k=>upd(k,""));
+                  }
+                }} className="rounded accent-indigo-600 w-4 h-4"/>
+                <span className="font-medium text-indigo-600">Same as billing</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <F label="Name" value={sameAsBilling ? (form.billingName||form.name) : form.shippingName} onChange={v=>{if(!sameAsBilling)upd("shippingName",v);}} disabled={sameAsBilling}/>
+              <F label="Contact Number" value={sameAsBilling ? form.contact : form.shippingContact} onChange={v=>{if(!sameAsBilling)upd("shippingContact",v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
+              <F label="GSTIN (if different)" value={sameAsBilling ? form.gstin : form.shippingGstin} onChange={v=>{if(!sameAsBilling)upd("shippingGstin",v);}} disabled={sameAsBilling}/>
+              <F label="State/UT Code" value={sameAsBilling ? form.billingStateCode : form.shippingStateCode} onChange={v=>{if(!sameAsBilling)upd("shippingStateCode",v);}} disabled={sameAsBilling}/>
+              <F label="Shipping Address" value={sameAsBilling ? form.billingAddress : form.shippingAddress} onChange={v=>{if(!sameAsBilling)upd("shippingAddress",v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">
+              {editId ? "Update Client" : "Save Client"}
+            </button>
+            <button onClick={()=>setShowForm(false)} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients by name, ID or GSTIN…"
+        className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+
+      {filtered.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          <p className="text-3xl mb-2">🏢</p>
+          <p className="font-medium">{clients.length === 0 ? "No clients yet. Add your first B2B client!" : "No clients match your search."}</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {filtered.map(c => (
+          <div key={c.id} className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800">{c.name}</span>
+                  <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{c.id}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                  {c.gstin && <div>GSTIN: <span className="font-mono">{c.gstin}</span></div>}
+                  {c.contact && <div>📞 {c.contact}</div>}
+                  {c.email && <div>✉ {c.email}</div>}
+                  {c.billingAddress && <div className="text-gray-400 truncate max-w-md">{c.billingAddress}</div>}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
+                <button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Expense Tracker ──────────────────────────────────────────────────────────
+const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Miscellaneous"];
+const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
+
+function ExpenseTracker({ expenses, setExpenses, recipients, seller }) {
+  const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
+  const [editId, setEditId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("All");
+  const [msg, setMsg] = useState("");
+  const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const notify = (m) => { setMsg(m); setTimeout(()=>setMsg(""),2500); };
+
+  const handleSave = () => {
+    if (!form.date) { notify("Date is required"); return; }
+    if (!form.paidBy) { notify("Recipient is required"); return; }
+    if (!form.amount || isNaN(num(form.amount))) { notify("Valid amount is required"); return; }
+    if (editId) {
+      setExpenses(prev=>prev.map(e=>e.id===editId?{...form,id:editId}:e));
+      setEditId(null);
+    } else {
+      setExpenses(prev=>[...prev,{...form,id:Date.now()}]);
+    }
+    setForm({...EMPTY_EXPENSE, date:today()});
+    notify(editId?"Expense updated!":"Expense recorded!");
+  };
+  const handleEdit = (e) => { setForm({...e}); setEditId(e.id); window.scrollTo({top:0,behavior:"smooth"}); };
+  const handleDelete = (id) => { if(window.confirm("Delete this expense?")) setExpenses(prev=>prev.filter(e=>e.id!==id)); };
+  const handleCancel = () => { setForm({...EMPTY_EXPENSE, date:today()}); setEditId(null); };
+
+  const filtered = expenses
+    .filter(e=>catFilter==="All"||e.category===catFilter)
+    .filter(e=>{
+      const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===e.paidBy);
+      return search===""||
+        (rcp&&rcp.name.toLowerCase().includes(search.toLowerCase()))||
+        e.category.toLowerCase().includes(search.toLowerCase())||
+        (e.comment&&e.comment.toLowerCase().includes(search.toLowerCase()));
+    })
+    .slice().sort((a,b)=>b.date.localeCompare(a.date));
+
+  const total = filtered.reduce((s,e)=>s+num(e.amount),0);
+  const grandTotal = expenses.reduce((s,e)=>s+num(e.amount),0);
+
+  return (
+    <div className="space-y-6">
+      {/* Form */}
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+        <h3 className="font-bold text-gray-800 text-sm">{editId?"✏️ Edit Expense":"➕ Record Expense"}</h3>
+        {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <F label="Date" type="date" value={form.date} onChange={v=>upd("date",v)} required/>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Paid By <span className="text-red-400">*</span></label>
+            <select value={form.paidBy} onChange={e=>upd("paidBy",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+              <option value="">— Select recipient —</option>
+              <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+          <F label="Amount (₹)" type="number" value={form.amount} onChange={v=>upd("amount",v)} placeholder="0.00" required/>
+          <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={EXPENSE_CATEGORIES}/>
+          <F label="Comment (optional)" value={form.comment} onChange={v=>upd("comment",v)} placeholder="Any notes…" className="col-span-2"/>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">{editId?"Save Changes":"Add Expense"}</button>
+          {editId&&<button onClick={handleCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
+        </div>
+      </div>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-gray-400 mb-0.5">Total Expenses (All Time)</p>
+          <p className="text-sm font-bold text-red-600">₹{fmt(grandTotal)}</p>
+        </div>
+        <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-gray-400 mb-0.5">Filtered Total</p>
+          <p className="text-sm font-bold text-orange-600">₹{fmt(total)}</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="space-y-2">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by recipient, category or comment…" className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Category</span>
+          <div className="flex gap-1 flex-wrap">
+            {["All",...EXPENSE_CATEGORIES].map(c=>(
+              <button key={c} onClick={()=>setCatFilter(c)} className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${catFilter===c?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"}`}>{c}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-10">No expenses found.</p>}
+      <div className="space-y-2">
+        {filtered.map(e=>{
+          const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===e.paidBy);
+          return (
+            <div key={e.id} className="border border-gray-100 rounded-xl px-4 py-3 bg-white flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-red-600">₹{fmt(e.amount)}</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{e.category}</span>
+                  <span className="text-xs text-gray-400">{e.date}</span>
+                </div>
+                {rcp&&<p className="text-xs text-indigo-500 mt-0.5">👤 {rcp.name}</p>}
+                {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={()=>handleEdit(e)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg">✏️</button>
+                <button onClick={()=>handleDelete(e.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ orders, expenses, recipients, seller }) {
+  // Build per-recipient ledger
+  // Each recipient either:
+  //   collected money (advance/payments) → recipient owes company (positive = recipient owes)
+  //   paid expenses                      → company owes recipient (positive = company owes)
+  // net = totalExpenses - totalCollected
+  //   positive → company owes recipient
+  //   negative → recipient owes company
+
+  const resolveRecipientName = (id) => {
+    if (!id) return null;
+    if (id === "__company__") return seller?.name || "Company";
+    const r = recipients.find(r => r.id === id);
+    return r ? r.name : null;
+  };
+
+  // Gather all recipient IDs (excluding company)
+  const allIds = new Set();
+  orders.forEach(o => {
+    if (o.advanceRecipient && o.advanceRecipient !== "__company__") allIds.add(o.advanceRecipient);
+    (o.payments || []).forEach(p => { if (p.receivedBy && p.receivedBy !== "__company__") allIds.add(p.receivedBy); });
+  });
+  expenses.forEach(e => { if (e.paidBy && e.paidBy !== "__company__") allIds.add(e.paidBy); });
+
+  // Build ledger per recipient
+  const ledger = {};
+  const addEntry = (id, amount, type, label, date, ref) => {
+    if (!ledger[id]) ledger[id] = { collected: [], expenses: [], settlements: [] };
+    ledger[id][type].push({ amount: num(amount), label, date, ref });
+  };
+
+  orders.forEach(o => {
+    if (o.advanceRecipient && o.advanceRecipient !== "__company__" && num(o.advance) > 0) {
+      addEntry(o.advanceRecipient, o.advance, "collected", `Advance — ${o.customerName} (${o.orderNo})`, o.orderDate, o.orderNo);
+    }
+    (o.payments || []).forEach(p => {
+      if (p.receivedBy && p.receivedBy !== "__company__" && num(p.amount) > 0) {
+        addEntry(p.receivedBy, p.amount, "collected", `Payment — ${o.customerName} (${o.orderNo})`, p.date, p.txnRef || "");
+      }
+    });
+  });
+
+  expenses.forEach(e => {
+    if (e.paidBy && e.paidBy !== "__company__" && num(e.amount) > 0) {
+      addEntry(e.paidBy, e.amount, "expenses", `${e.category}${e.comment ? " — " + e.comment : ""}`, e.date, "");
+    }
+  });
+
+  const summaries = [...allIds].map(id => {
+    const l = ledger[id] || { collected: [], expenses: [], settlements: [] };
+    const totalCollected = l.collected.reduce((s, x) => s + x.amount, 0);
+    const totalExpenses = l.expenses.reduce((s, x) => s + x.amount, 0);
+    const net = totalCollected - totalExpenses; // +ve = recipient owes company, -ve = company owes recipient
+    return { id, name: resolveRecipientName(id) || id, totalCollected, totalExpenses, net, entries: l };
+  }).sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+
+  const [expanded, setExpanded] = useState(null);
+
+  const companyOwes = summaries.filter(s=>s.net<0).reduce((s,x)=>s+Math.abs(x.net),0);
+  const recipientsOwe = summaries.filter(s=>s.net>0).reduce((s,x)=>s+x.net,0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header summary */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-orange-50 border border-orange-100 rounded-xl px-5 py-4">
+          <p className="text-xs text-orange-400 uppercase tracking-wide font-semibold mb-1">Company Owes Recipients</p>
+          <p className="text-2xl font-black text-orange-600">₹{fmt(companyOwes)}</p>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-5 py-4">
+          <p className="text-xs text-emerald-500 uppercase tracking-wide font-semibold mb-1">Recipients Owe Company</p>
+          <p className="text-2xl font-black text-emerald-600">₹{fmt(recipientsOwe)}</p>
+        </div>
+      </div>
+
+      {summaries.length === 0 && (
+        <p className="text-gray-400 text-sm text-center py-12">No data yet. Record payments or expenses with non-company recipients to see the dashboard.</p>
+      )}
+
+      {/* Per-recipient cards */}
+      <div className="space-y-3">
+        {summaries.map(s => {
+          const isOpen = expanded === s.id;
+          const allEntries = [
+            ...s.entries.collected.map(e => ({...e, type:"collected"})),
+            ...s.entries.expenses.map(e => ({...e, type:"expense"})),
+          ].sort((a,b) => b.date?.localeCompare(a.date || "") || 0);
+
+          return (
+            <div key={s.id} className="border border-gray-100 rounded-xl bg-white overflow-hidden">
+              {/* Summary row */}
+              <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-all" onClick={() => setExpanded(isOpen ? null : s.id)}>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold shrink-0">
+                    {s.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{s.name}</p>
+                    <p className="text-xs text-gray-400">{s.entries.collected.length} collection{s.entries.collected.length!==1?"s":""} · {s.entries.expenses.length} expense{s.entries.expenses.length!==1?"s":""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">{s.net>0?"Recipient owes company":s.net<0?"Company owes":"Settled"}</p>
+                    <p className={`text-sm font-bold ${s.net>0?"text-emerald-600":s.net<0?"text-orange-500":"text-gray-400"}`}>₹{fmt(Math.abs(s.net))}</p>
+                  </div>
+                  <span className="text-gray-300">{isOpen ? "▲" : "▼"}</span>
+                </div>
+              </div>
+
+              {/* Expanded breakdown */}
+              {isOpen && (
+                <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                  {/* Mini summary */}
+                  <div className="grid grid-cols-2 gap-2 mb-1">
+                    <div className="bg-emerald-50 rounded-lg px-3 py-2">
+                      <p className="text-xs text-emerald-500 mb-0.5">Collected (owes company)</p>
+                      <p className="text-sm font-bold text-emerald-700">₹{fmt(s.totalCollected)}</p>
+                    </div>
+                    <div className="bg-orange-50 rounded-lg px-3 py-2">
+                      <p className="text-xs text-orange-400 mb-0.5">Expenses paid (company owes)</p>
+                      <p className="text-sm font-bold text-orange-600">₹{fmt(s.totalExpenses)}</p>
+                    </div>
+                  </div>
+
+                  {/* Entry list */}
+                  <div className="space-y-1.5">
+                    {allEntries.map((e, i) => (
+                      <div key={i} className="flex items-start justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className={`mt-0.5 text-xs px-1.5 py-0.5 rounded font-semibold shrink-0 ${e.type==="collected"?"bg-blue-100 text-blue-700":"bg-red-100 text-red-600"}`}>
+                            {e.type==="collected"?"💰":"💸"}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-700 font-medium leading-tight">{e.label}</p>
+                            <p className="text-xs text-gray-400">{e.date}{e.ref ? ` · ${e.ref}` : ""}</p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 shrink-0">₹{fmt(e.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                      {s.net>0?`${s.name} owes company`:s.net<0?`Company owes ${s.name}`:"Settled"}
+                    </span>
+                    <span className={`text-sm font-black ${s.net>0?"text-emerald-600":s.net<0?"text-orange-500":"text-gray-400"}`}>
+                      {s.net===0?"✓ Settled":`₹${fmt(Math.abs(s.net))}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── App Root ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [tab,setTab]=useState("new");
+  const [orders,setOrders]=useState([]);
+  const [quotations,setQuotations]=useState([]);
+  const [proformas,setProformas]=useState([]);
+  const [taxInvoices,setTaxInvoices]=useState([]);
+  const [clients,setClients]=useState([]);
+  const [recipients,setRecipients]=useState([]);
+  const [expenses,setExpenses]=useState([]);
+  const [scriptUrl,setScriptUrl]=useState("");
+  const [seller,setSeller]=useState(DEFAULT_SELLER);
+  const [series,setSeries]=useState(DEFAULT_SERIES);
+  const [drive,setDrive]=useState(DEFAULT_DRIVE);
+
+  const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
+      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
+      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {seller.logo&&<img src={seller.logo} alt="logo" className="h-9 max-w-[100px] object-contain"/>}
+            <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">Invoice & Order Management · GST Billing</p></div>
+          </div>
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
+          </div>
+        </div>
+      </div>
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
+          {tab==="new"&&<OrderForm orders={orders} setOrders={setOrders} quotations={quotations} setQuotations={setQuotations} proformas={proformas} setProformas={setProformas} taxInvoices={taxInvoices} setTaxInvoices={setTaxInvoices} scriptUrl={scriptUrl} seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={setOrders} quotations={quotations} setQuotations={setQuotations} proformas={proformas} setProformas={setProformas} taxInvoices={taxInvoices} setTaxInvoices={setTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive}/>}
+          {tab==="clients"&&<ClientMaster clients={clients} setClients={setClients}/>}
+          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={setExpenses} recipients={recipients} seller={seller}/>}
+          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
+          {tab==="settings"&&<Settings scriptUrl={scriptUrl} setScriptUrl={setScriptUrl} seller={seller} setSeller={setSeller} series={series} setSeries={setSeries} drive={drive} setDrive={setDrive} recipients={recipients} setRecipients={setRecipients}/>}
+        </div>
+      </div>
+    </div>
+  );
+}
