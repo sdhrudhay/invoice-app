@@ -140,6 +140,7 @@ var HEADERS = {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    // Note: sent as text/plain to avoid CORS preflight
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     if (data.action === "upsert") {
@@ -534,7 +535,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const notify = (t,err=false) => { setMsg(t); setMsgErr(err); setTimeout(()=>setMsg(""),4000); };
-  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",mode:"no-cors",body:JSON.stringify(p),headers:{"Content-Type":"application/json"}}); } catch(_){} };
+  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",body:JSON.stringify(p),headers:{"Content-Type":"text/plain"}}); } catch(_){} };
   const getFolderIdOF = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
   const saveToDriveOF = async (order, inv, invType) => {
     let folderUrl = invType==="quotation" ? (order.type==="B2B"?(drive.b2bQuotation||""):(drive.b2cQuotation||"")) : "";
@@ -1109,7 +1110,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const todayStr = today();
 
-  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",mode:"no-cors",body:JSON.stringify(p),headers:{"Content-Type":"application/json"}}); } catch(_){} };
+  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",body:JSON.stringify(p),headers:{"Content-Type":"text/plain"}}); } catch(_){} };
   const getFolderId = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
   const saveToDrive = async (order, inv, type) => {
     let folderUrl = "";
@@ -1934,7 +1935,7 @@ export default function App() {
   const postToSheets = useCallback(async (payload)=>{
     const url = localStorage.getItem("scriptUrl")||scriptUrl;
     if (!url) return;
-    await fetch(url,{method:"POST",mode:"no-cors",body:JSON.stringify(payload),headers:{"Content-Type":"application/json"}});
+    await fetch(url,{method:"POST",body:JSON.stringify(payload),headers:{"Content-Type":"text/plain"}});
   },[scriptUrl]);
 
   // ── Queue-based sync so rapid changes don't flood the API ───────────────
