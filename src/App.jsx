@@ -403,6 +403,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const [placeOfSupply,setPlaceOfSupply]=useState(""); const [orderDate,setOrderDate]=useState(today()); const [dueDate,setDueDate]=useState(addDays(today(),30)); const [paymentMode,setPaymentMode]=useState("UPI"); const [advance,setAdvance]=useState(""); const [status,setStatus]=useState("Pending"); const [comments,setComments]=useState("");
   const [items,setItems]=useState([{...EMPTY_ITEM}]);
   const [advanceRecipient,setAdvanceRecipient]=useState("");
+  const [advanceTxnRef,setAdvanceTxnRef]=useState("");
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
   const [selectedClient,setSelectedClient]=useState(null);
 
@@ -439,7 +440,6 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 
   const handleSave = async () => {
     if (!customerName) { notify("Customer name is required",true); return; }
-    if (type==="B2B" && !gstin.trim()) { notify("GSTIN is required for B2B orders",true); return; }
     if (num(advance)>0 && !advanceRecipient) { notify("Please select who received the advance",true); return; }
     setSaving(true);
     const orderNoBase = [series.prefix, series.format==="YYYYMM"?yyyymm():series.format==="YYYY"?yyyy():series.format==="YYYYMMDD"?yyyymmdd():""].filter(Boolean).join("/");
@@ -447,7 +447,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[] };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[] };
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0) };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
@@ -458,7 +458,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const reset = () => {
-    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setItems([{...EMPTY_ITEM}]); setMsg("");
+    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setItems([{...EMPTY_ITEM}]); setMsg("");
   };
 
   const previewNo = buildOrderNo(series, type, orders);
@@ -486,18 +486,19 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <F label="Customer / Company Name" value={customerName} onChange={setCustomerName} required className="col-span-2 md:col-span-1"/>
             <F label="Phone" value={phone} onChange={setPhone} placeholder="+91 XXXXX XXXXX"/>
             <F label="Email" value={email} onChange={setEmail} placeholder="customer@email.com"/>
-            {type==="B2B"&&<F label="GSTIN" value={gstin} onChange={setGstin} placeholder="29XXXXX0000X1ZX" required/>}
+            {type==="B2B"&&<F label="GSTIN" value={gstin} onChange={setGstin} placeholder="29XXXXX0000X1ZX"/>}
             <F label="Order Date" type="date" value={orderDate} onChange={v=>{setOrderDate(v);setDueDate(addDays(v,30));}}/>
             <F label="Due Date" type="date" value={dueDate||addDays(orderDate,30)} onChange={setDueDate}/>
             <S label="Payment Mode" value={paymentMode} onChange={setPaymentMode} options={PAYMENT_MODES}/>
             <F label="Advance Paid (₹)" type="number" value={advance} onChange={setAdvance}/>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By <span className="text-red-400">*</span></label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By{num(advance)>0&&<span className="text-red-400"> *</span>}</label>
               <select value={advanceRecipient} onChange={e=>setAdvanceRecipient(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                 <option value="">— Select recipient —</option>
                 <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
+            <F label="Txn / Ref No (optional)" value={advanceTxnRef} onChange={setAdvanceTxnRef} placeholder="UPI ref, cheque no…"/>
             <S label="Order Status" value={status} onChange={setStatus} options={STATUS_OPTIONS}/>
           </div>
           <div className="border-t pt-4">
@@ -644,7 +645,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} className="col-span-2 md:col-span-1"/>
                 <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} placeholder="+91 XXXXX XXXXX"/>
                 <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} placeholder="customer@email.com"/>
-                {o.type==="B2B"&&<F label="GSTIN" value={o.gstin||""} onChange={v=>upd("gstin",v)} required/>}
+                {o.type==="B2B"&&<F label="GSTIN" value={o.gstin||""} onChange={v=>upd("gstin",v)}/>}
                 <F label="Order Date" type="date" value={o.orderDate} onChange={v=>upd("orderDate",v)}/>
                 <F label="Due Date" type="date" value={o.dueDate||""} onChange={v=>upd("dueDate",v)}/>
                 <S label="Payment Mode" value={o.paymentMode} onChange={v=>upd("paymentMode",v)} options={PAYMENT_MODES}/>
@@ -811,7 +812,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Amount (₹)" type="number" value={newPay.amount} onChange={v=>setNewPay(p=>({...p,amount:v}))} placeholder="0.00"/>
                     <S label="Payment Mode" value={newPay.mode} onChange={v=>setNewPay(p=>({...p,mode:v}))} options={PAYMENT_MODES}/>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By <span className="text-red-400">*</span></label>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By{num(advance)>0&&<span className="text-red-400"> *</span>}</label>
                       <select value={newPay.receivedBy} onChange={e=>setNewPay(p=>({...p,receivedBy:e.target.value}))} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                         <option value="">— Select recipient —</option>
                         <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
@@ -839,6 +840,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         </div>
                       </div>
                       {advRcp&&<p className="text-xs text-indigo-500 mt-0.5">👤 {advRcp.name}</p>}
+                      {o.advanceTxnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {o.advanceTxnRef}</p>}
                     </div>
                   );
                 })()}
@@ -1428,7 +1430,6 @@ function ClientMaster({ clients, setClients }) {
               <F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} placeholder="29XXXXX0000X1ZX"/>
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
               <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} placeholder="client@email.com"/>
-              <F label="Email" value={form.email} onChange={v=>upd("email",v)} placeholder="accounts@company.com"/>
               <F label="Place of Supply" value={form.placeOfSupply} onChange={v=>upd("placeOfSupply",v)} placeholder="e.g. Karnataka (29)"/>
             </div>
           </div>
