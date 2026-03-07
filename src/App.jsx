@@ -76,30 +76,104 @@ const DEFAULT_SERIES = {
 const DEFAULT_DRIVE = { b2bQuotation: "", b2cQuotation: "", b2bProforma: "", b2bTax: "", b2cTax: "" };
 
 // ─── Apps Script Code ─────────────────────────────────────────────────────────
-const SCRIPT_CODE = `function doPost(e) {
+const SCRIPT_CODE = `// ── Helpers ──────────────────────────────────────────────────────────────────
+function getOrCreateSheet(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (headers) sheet.appendRow(headers);
+  } else if (headers && sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function sheetToObjects(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  return data.slice(1).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h, i) { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function upsertRow(sheet, keyCol, keyVal, row) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var keyIdx = headers.indexOf(keyCol);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][keyIdx]) === String(keyVal)) {
+      sheet.getRange(i+1, 1, 1, row.length).setValues([row]);
+      return;
+    }
+  }
+  sheet.appendRow(row);
+}
+
+function deleteRow(sheet, keyCol, keyVal) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var keyIdx = headers.indexOf(keyCol);
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][keyIdx]) === String(keyVal)) {
+      sheet.deleteRow(i+1);
+    }
+  }
+}
+
+// ── Headers ───────────────────────────────────────────────────────────────────
+var HEADERS = {
+  Orders: ["orderNo","orderNoBase","type","customerName","phone","email","gstin","billingName","billingAddress","billingStateCode","shippingName","shippingAddress","shippingContact","shippingGstin","shippingStateCode","placeOfSupply","orderDate","dueDate","paymentMode","advance","advanceRecipient","advanceTxnRef","status","comments","needsGst","quotationNo","proformaIds","taxInvoiceIds"],
+  Quotations: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
+  Proformas: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
+  TaxInvoices: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
+  Clients: ["id","name","gstin","contact","email","billingName","billingAddress","billingStateCode","placeOfSupply","shippingName","shippingContact","shippingGstin","shippingAddress","shippingStateCode"],
+  Recipients: ["id","name"],
+  Expenses: ["id","date","paidBy","amount","category","comment"],
+  Payments: ["id","orderId","date","amount","mode","receivedBy","txnRef","comments"],
+  Settings: ["key","value"]
+};
+
+// ── doPost ────────────────────────────────────────────────────────────────────
+function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    if (data.action === "append") {
-      var sheet = ss.getSheetByName(data.sheet) || ss.insertSheet(data.sheet);
-      if (sheet.getLastRow() === 0 && data.headers) sheet.appendRow(data.headers);
-      sheet.appendRow(data.row);
+    if (data.action === "upsert") {
+      var headers = HEADERS[data.sheet];
+      var sheet = getOrCreateSheet(ss, data.sheet, headers);
+      var row = headers.map(function(h) {
+        var v = data.row[h];
+        if (Array.isArray(v) || typeof v === "object") return JSON.stringify(v);
+        return v !== undefined && v !== null ? v : "";
+      });
+      upsertRow(sheet, data.key, data.row[data.key], row);
     }
 
-    if (data.action === "saveState") {
-      var sheet = ss.getSheetByName("AppState") || ss.insertSheet("AppState");
-      sheet.clearContents();
-      sheet.getRange(1,1).setValue(data.state);
+    if (data.action === "delete") {
+      var sheet = ss.getSheetByName(data.sheet);
+      if (sheet) deleteRow(sheet, data.key, data.keyVal);
+    }
+
+    if (data.action === "saveSettings") {
+      var sheet = getOrCreateSheet(ss, "Settings", ["key","value"]);
+      var settings = data.settings;
+      Object.keys(settings).forEach(function(k) {
+        var v = typeof settings[k] === "object" ? JSON.stringify(settings[k]) : settings[k];
+        upsertRow(sheet, "key", k, [k, v]);
+      });
     }
 
     if (data.action === "savePdf" && data.folderId && data.htmlBase64) {
       var folder = DriveApp.getFolderById(data.folderId);
       var htmlContent = Utilities.newBlob(
-        Utilities.base64Decode(data.htmlBase64), 'text/html', data.filename + '.html'
+        Utilities.base64Decode(data.htmlBase64), "text/html", data.filename + ".html"
       );
       var tempFile = DriveApp.createFile(htmlContent);
-      var pdfBlob = tempFile.getAs('application/pdf').setName(data.filename + '.pdf');
+      var pdfBlob = tempFile.getAs("application/pdf").setName(data.filename + ".pdf");
       folder.createFile(pdfBlob);
       tempFile.setTrashed(true);
     }
@@ -112,15 +186,48 @@ const SCRIPT_CODE = `function doPost(e) {
   }
 }
 
+// ── doGet: load all data ──────────────────────────────────────────────────────
 function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("AppState");
-    var state = sheet && sheet.getLastRow() > 0 ? sheet.getRange(1,1).getValue() : "{}";
-    return ContentService.createTextOutput(state)
-      .setMimeType(ContentService.MimeType.JSON);
+
+    function loadSheet(name) {
+      var sheet = ss.getSheetByName(name);
+      return sheetToObjects(sheet);
+    }
+
+    function parseField(v) {
+      if (typeof v === "string" && (v.startsWith("{") || v.startsWith("["))) {
+        try { return JSON.parse(v); } catch(e) { return v; }
+      }
+      return v;
+    }
+
+    function parseRow(row) {
+      var out = {};
+      Object.keys(row).forEach(function(k) { out[k] = parseField(row[k]); });
+      return out;
+    }
+
+    var settingsRows = loadSheet("Settings");
+    var settings = {};
+    settingsRows.forEach(function(r) {
+      settings[r.key] = parseField(r.value);
+    });
+
+    return ContentService.createTextOutput(JSON.stringify({
+      orders: loadSheet("Orders").map(parseRow),
+      quotations: loadSheet("Quotations").map(parseRow),
+      proformas: loadSheet("Proformas").map(parseRow),
+      taxInvoices: loadSheet("TaxInvoices").map(parseRow),
+      clients: loadSheet("Clients").map(parseRow),
+      recipients: loadSheet("Recipients").map(parseRow),
+      expenses: loadSheet("Expenses").map(parseRow),
+      payments: loadSheet("Payments").map(parseRow),
+      settings: settings
+    })).setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
-    return ContentService.createTextOutput("{}")
+    return ContentService.createTextOutput(JSON.stringify({error:err.message}))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }`;
@@ -900,7 +1007,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], scriptUrl="", drive={} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], scriptUrl="", drive={}, upsertPayment=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -933,21 +1040,21 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const handleSaveOrder = (updated) => {
     const orderNo = updated.orderNo;
     const newItems = updated.items;
-    setOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
+    syncSetOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
+    // Sync payments separately
+    if (updated.payments?.length) updated.payments.forEach(p=>upsertPayment({...p,orderId:orderNo}));
     // Sync quotation
     if (newItems) {
-      setQuotations(prev => prev.map(q => q.orderId===orderNo
+      syncSetQuotations(prev => prev.map(q => q.orderId===orderNo
         ? {...q, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)}
         : q));
-      // Merge new items into existing tax invoices (not proforma)
-      setTaxInvoices(prev => prev.map(t => {
+      syncSetTaxInvoices(prev => prev.map(t => {
         if (t.orderId !== orderNo) return t;
         const merged = mergeItemsIntoOrder(t.items, newItems);
         return {...t, items: merged, amount: merged.reduce((s,i)=>s+num(i.netAmt),0)};
       }));
     }
     setOpenOrder(updated);
-    // Re-save quotation to Drive whenever order is updated
     const qt = quotations.find(q=>q.orderId===updated.orderNo);
     if (qt) saveToDrive(updated, qt, "quotation");
   };
@@ -1819,10 +1926,42 @@ export default function App() {
   const [series,setSeries]=useState(DEFAULT_SERIES);
   const [drive,setDrive]=useState(DEFAULT_DRIVE);
   const [loading,setLoading]=useState(false);
-  const [syncStatus,setSyncStatus]=useState(""); // "saving"|"saved"|"error"|""
-  const saveTimer = useRef(null);
+  const [syncStatus,setSyncStatus]=useState("");
+  const syncQueue = useRef([]);
+  const syncing = useRef(false);
 
-  // ── Load state from Sheets on mount (if scriptUrl saved) ───────────────
+  // ── Core post helper ────────────────────────────────────────────────────
+  const postToSheets = useCallback(async (payload)=>{
+    const url = localStorage.getItem("scriptUrl")||scriptUrl;
+    if (!url) return;
+    await fetch(url,{method:"POST",mode:"no-cors",body:JSON.stringify(payload),headers:{"Content-Type":"application/json"}});
+  },[scriptUrl]);
+
+  // ── Queue-based sync so rapid changes don't flood the API ───────────────
+  const flushQueue = useCallback(async ()=>{
+    if (syncing.current || syncQueue.current.length===0) return;
+    syncing.current = true;
+    setSyncStatus("saving");
+    const batch = [...syncQueue.current];
+    syncQueue.current = [];
+    try {
+      for (const job of batch) await postToSheets(job);
+      setSyncStatus("saved");
+    } catch(e) {
+      setSyncStatus("error");
+    } finally {
+      syncing.current = false;
+      setTimeout(()=>setSyncStatus(""),3000);
+      if (syncQueue.current.length>0) flushQueue();
+    }
+  },[postToSheets]);
+
+  const enqueue = useCallback((jobs)=>{
+    syncQueue.current.push(...(Array.isArray(jobs)?jobs:[jobs]));
+    setTimeout(flushQueue, 800);
+  },[flushQueue]);
+
+  // ── Load all data from structured Sheets on mount ───────────────────────
   useEffect(()=>{
     const url = localStorage.getItem("scriptUrl");
     if (!url) return;
@@ -1830,53 +1969,59 @@ export default function App() {
     fetch(url)
       .then(r=>r.json())
       .then(data=>{
-        if (data.orders) setOrders(data.orders);
-        if (data.quotations) setQuotations(data.quotations);
-        if (data.proformas) setProformas(data.proformas);
-        if (data.taxInvoices) setTaxInvoices(data.taxInvoices);
-        if (data.clients) setClients(data.clients);
-        if (data.recipients) setRecipients(data.recipients);
-        if (data.expenses) setExpenses(data.expenses);
-        if (data.seller) setSeller(data.seller);
-        if (data.series) setSeries(data.series);
-        if (data.drive) setDrive(data.drive);
+        if (data.orders?.length) setOrders(data.orders);
+        if (data.quotations?.length) setQuotations(data.quotations);
+        if (data.proformas?.length) setProformas(data.proformas);
+        if (data.taxInvoices?.length) setTaxInvoices(data.taxInvoices);
+        if (data.clients?.length) setClients(data.clients);
+        if (data.recipients?.length) setRecipients(data.recipients);
+        if (data.expenses?.length) setExpenses(data.expenses);
+        // payments are embedded in orders
+        if (data.payments?.length) {
+          setOrders(prev => prev.map(o => ({
+            ...o,
+            payments: data.payments.filter(p=>p.orderId===o.orderNo)
+          })));
+        }
+        if (data.settings) {
+          const s = data.settings;
+          if (s.seller) setSeller(typeof s.seller==="object"?s.seller:JSON.parse(s.seller));
+          if (s.series) setSeries(typeof s.series==="object"?s.series:JSON.parse(s.series));
+          if (s.drive) setDrive(typeof s.drive==="object"?s.drive:JSON.parse(s.drive));
+        }
       })
       .catch(()=>{})
       .finally(()=>setLoading(false));
   },[]);
 
-  // ── Debounced save to Sheets on any state change ────────────────────────
-  const saveToSheets = useCallback((state)=>{
-    const url = state.scriptUrl||scriptUrl;
-    if (!url) return;
-    setSyncStatus("saving");
-    fetch(url,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveState",state:JSON.stringify(state)}),headers:{"Content-Type":"application/json"}})
-      .then(()=>setSyncStatus("saved"))
-      .catch(()=>setSyncStatus("error"))
-      .finally(()=>setTimeout(()=>setSyncStatus(""),3000));
-  },[scriptUrl]);
-
-  const scheduleSync = useCallback((patch)=>{
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(()=>{
-      saveToSheets(patch);
-    },1500);
-  },[saveToSheets]);
-
-  // ── Persist scriptUrl to localStorage so it survives refresh ───────────
+  // ── Persist scriptUrl to localStorage ──────────────────────────────────
   const handleSetScriptUrl = (url)=>{ setScriptUrl(url); localStorage.setItem("scriptUrl",url); };
 
-  // ── Wrapped setters that trigger sync ───────────────────────────────────
-  const syncSetOrders=(v)=>{ const n=typeof v==="function"?v(orders):v; setOrders(n); scheduleSync({orders:n,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetQuotations=(v)=>{ const n=typeof v==="function"?v(quotations):v; setQuotations(n); scheduleSync({orders,quotations:n,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetProformas=(v)=>{ const n=typeof v==="function"?v(proformas):v; setProformas(n); scheduleSync({orders,quotations,proformas:n,taxInvoices,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetTaxInvoices=(v)=>{ const n=typeof v==="function"?v(taxInvoices):v; setTaxInvoices(n); scheduleSync({orders,quotations,proformas,taxInvoices:n,clients,recipients,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients:n,recipients,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients:n,expenses,seller,series,drive,scriptUrl}); };
-  const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses:n,seller,series,drive,scriptUrl}); };
-  const syncSetSeller=(v)=>{ setSeller(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller:v,series,drive,scriptUrl}); };
-  const syncSetSeries=(v)=>{ setSeries(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series:v,drive,scriptUrl}); };
-  const syncSetDrive=(v)=>{ setDrive(v); scheduleSync({orders,quotations,proformas,taxInvoices,clients,recipients,expenses,seller,series,drive:v,scriptUrl}); };
+  // ── Upsert helpers per entity ───────────────────────────────────────────
+  const upsertOrder = (order) => enqueue({action:"upsert",sheet:"Orders",key:"orderNo",row:{...order,items:JSON.stringify(order.items||[]),proformaIds:JSON.stringify(order.proformaIds||[]),taxInvoiceIds:JSON.stringify(order.taxInvoiceIds||[]),payments:undefined}});
+  const upsertQuotation = (qt) => enqueue({action:"upsert",sheet:"Quotations",key:"invNo",row:{...qt,items:JSON.stringify(qt.items||[])}});
+  const upsertProforma = (pf) => enqueue({action:"upsert",sheet:"Proformas",key:"invNo",row:{...pf,items:JSON.stringify(pf.items||[])}});
+  const upsertTaxInvoice = (ti) => enqueue({action:"upsert",sheet:"TaxInvoices",key:"invNo",row:{...ti,items:JSON.stringify(ti.items||[])}});
+  const upsertClient = (c) => enqueue({action:"upsert",sheet:"Clients",key:"id",row:c});
+  const upsertRecipient = (r) => enqueue({action:"upsert",sheet:"Recipients",key:"id",row:r});
+  const upsertExpense = (ex) => enqueue({action:"upsert",sheet:"Expenses",key:"id",row:ex});
+  const upsertPayment = (p) => enqueue({action:"upsert",sheet:"Payments",key:"id",row:p});
+  const deleteExpense = (id) => enqueue({action:"delete",sheet:"Expenses",key:"id",keyVal:id});
+  const deleteClient = (id) => enqueue({action:"delete",sheet:"Clients",key:"id",keyVal:id});
+  const deleteRecipient = (id) => enqueue({action:"delete",sheet:"Recipients",key:"id",keyVal:id});
+  const saveSettings = (patch) => enqueue({action:"saveSettings",settings:patch});
+
+  // ── Sync-aware setters ──────────────────────────────────────────────────
+  const syncSetOrders=(v)=>{ const n=typeof v==="function"?v(orders):v; setOrders(n); n.forEach(o=>{ const prev=orders.find(p=>p.orderNo===o.orderNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(o)) upsertOrder(o); }); };
+  const syncSetQuotations=(v)=>{ const n=typeof v==="function"?v(quotations):v; setQuotations(n); n.forEach(q=>{ const prev=quotations.find(p=>p.invNo===q.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(q)) upsertQuotation(q); }); };
+  const syncSetProformas=(v)=>{ const n=typeof v==="function"?v(proformas):v; setProformas(n); n.forEach(pf=>{ const prev=proformas.find(p=>p.invNo===pf.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(pf)) upsertProforma(pf); }); };
+  const syncSetTaxInvoices=(v)=>{ const n=typeof v==="function"?v(taxInvoices):v; setTaxInvoices(n); n.forEach(ti=>{ const prev=taxInvoices.find(p=>p.invNo===ti.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(ti)) upsertTaxInvoice(ti); }); };
+  const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); n.forEach(c=>{ const prev=clients.find(p=>p.id===c.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(c)) upsertClient(c); }); };
+  const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
+  const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
+  const syncSetSeller=(v)=>{ setSeller(v); saveSettings({seller:v}); };
+  const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
+  const syncSetDrive=(v)=>{ setDrive(v); saveSettings({drive:v}); };
 
   const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
 
@@ -1901,7 +2046,7 @@ export default function App() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} scriptUrl={scriptUrl} seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive} upsertPayment={upsertPayment}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
