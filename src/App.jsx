@@ -2066,7 +2066,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-6">
           <div className="text-center">
             <div className="text-4xl mb-3">🧾</div>
-            <h1 className="text-2xl font-black text-slate-800">Invoice Manager</h1>
+            <h1 className="text-2xl font-black text-slate-800">Elace Business Management</h1>
             <p className="text-sm text-gray-400 mt-1">Sign in to continue</p>
           </div>
           <div className="space-y-4">
@@ -2381,7 +2381,7 @@ export default function App() {
             {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse ml-2">⏳ Saving…</span>}
             {syncStatus==="saved"&&<span className="text-xs text-emerald-500 ml-2">✓ Saved</span>}
             {syncStatus==="error"&&<span className="text-xs text-red-400 ml-2">⚠ Sync failed</span>}
-            <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">Invoice & Order Management · GST Billing</p></div>
+            <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">GST Billing · Order Management</p></div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
