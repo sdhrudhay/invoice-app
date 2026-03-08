@@ -130,17 +130,20 @@ create table if not exists clients (
   billing_name text, billing_address text, billing_state_code text,
   place_of_supply text, shipping_name text, shipping_contact text,
   shipping_gstin text, shipping_address text, shipping_state_code text,
+  is_deleted boolean default false,
   created_at timestamptz default now()
 );
 -- Recipients
 create table if not exists recipients (
   id text primary key, name text,
+  is_deleted boolean default false,
   created_at timestamptz default now()
 );
 -- Expenses
 create table if not exists expenses (
   id text primary key, date text, paid_by text, amount numeric default 0,
   category text, comment text,
+  is_deleted boolean default false,
   created_at timestamptz default now()
 );
 -- Payments
@@ -880,7 +883,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
                 {/* Payment history */}
                 {num(o.advance)>0&&(()=>{
-                  const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===o.advanceRecipient);
+                  const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===o.advanceRecipient)||allRecipientsRef.current.find(r=>r.id===o.advanceRecipient));
                   return (
                     <div className="border border-gray-100 rounded-xl px-4 py-3 bg-white">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -908,7 +911,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{p.mode}</span>
                           <span className="text-xs text-gray-400">{p.date}</span>
                         </div>
-                        {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(x=>x.id===p.receivedBy);return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
+                        {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(x=>x.id===p.receivedBy)||allRecipientsRef.current.find(x=>x.id===p.receivedBy));return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
                         {p.txnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {p.txnRef}</p>}
                         {p.comments&&<p className="text-xs text-gray-500 mt-0.5">{p.comments}</p>}
                       </div>
@@ -1341,7 +1344,7 @@ function RecipientMaster({ recipients, setRecipients, deleteRecipient=()=>{} }) 
     setForm({...EMPTY_RECIPIENT});
   };
   const handleEdit = (r) => { setForm({...r}); setEditId(r.id); };
-  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) { setRecipients(recipients.filter(r=>r.id!==id)); deleteRecipient(id); } };
+  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) { const r = recipients.find(r=>r.id===id); if(r) { const softDeleted={...r,isDeleted:true}; upsertRecipient(softDeleted); allRecipientsRef.current=allRecipientsRef.current.map(x=>x.id===id?softDeleted:x); } setRecipients(recipients.filter(r=>r.id!==id)); } };
   const handleCancel = () => { setForm({...EMPTY_RECIPIENT}); setEditId(null); };
 
   const filtered = recipients.filter(r=>r.name.toLowerCase().includes(search.toLowerCase()));
@@ -1408,7 +1411,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
   };
 
   const handleEdit = (c) => { setForm({...c}); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
-  const handleDelete = (id) => { if (window.confirm("Delete this client?")) { setClients(clients.filter(c=>c.id!==id)); deleteClient(id); } };
+  const handleDelete = (id) => { if (window.confirm("Delete this client?")) { const updated = clients.map(c=>c.id===id?{...c,isDeleted:true}:c); setClients(updated.filter(c=>!c.isDeleted)); deleteClient(updated.find(c=>c.id===id)); } };
   const handleNew = () => { setForm({...EMPTY_CLIENT}); setEditId(null); setShowForm(true); setSameAsBilling(false); };
 
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -1554,7 +1557,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, seller, deleteExpen
     notify(editId?"Expense updated!":"Expense recorded!");
   };
   const handleEdit = (e) => { setForm({...e}); setEditId(e.id); window.scrollTo({top:0,behavior:"smooth"}); };
-  const handleDelete = (id) => { if(window.confirm("Delete this expense?")) { setExpenses(prev=>prev.filter(e=>e.id!==id)); deleteExpense(id); } };
+  const handleDelete = (id) => { if(window.confirm("Delete this expense?")) { const e = expenses.find(e=>e.id===id); if(e) deleteExpense({...e,isDeleted:true}); setExpenses(prev=>prev.filter(e=>e.id!==id)); } };
   const handleCancel = () => { setForm({...EMPTY_EXPENSE, date:today()}); setEditId(null); };
 
   const filtered = expenses
@@ -1662,8 +1665,9 @@ function Dashboard({ orders, expenses, recipients, seller }) {
   const resolveRecipientName = (id) => {
     if (!id) return null;
     if (id === "__company__") return seller?.name || "Company";
-    const r = recipients.find(r => r.id === id);
-    return r ? r.name : null;
+    // Search active recipients first, then fall back to allRecipientsRef (deleted ones)
+    const r = recipients.find(r => r.id === id) || allRecipientsRef.current.find(r => r.id === id);
+    return r ? r.name : id; // last fallback: show id if truly unknown
   };
 
   // Gather all recipient IDs (excluding company)
@@ -1949,6 +1953,7 @@ export default function App() {
   const [taxInvoices,setTaxInvoices]=useState([]);
   const [clients,setClients]=useState([]);
   const [recipients,setRecipients]=useState([]);
+  const allRecipientsRef = useRef([]); // keeps deleted recipients for name resolution
   const [expenses,setExpenses]=useState([]);
   const [seller,setSeller]=useState(DEFAULT_SELLER);
   const [series,setSeries]=useState(DEFAULT_SERIES);
@@ -2044,8 +2049,8 @@ export default function App() {
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no) });
-      const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"" });
-      const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"" });
+      const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false });
+      const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
       const ordMapped = ord?.length ? ord.map(mapOrder) : [];
       const payMapped = pay?.length ? pay.map(mapPayment) : [];
@@ -2053,9 +2058,9 @@ export default function App() {
       if (qt?.length) setQuotations(qt.map(mapInv("quotation")));
       if (pf?.length) setProformas(pf.map(mapInv("proforma")));
       if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
-      if (cl?.length) setClients(cl.map(mapClient));
-      if (rc?.length) setRecipients(rc.map(r=>({id:r.id,name:r.name})));
-      if (ex?.length) setExpenses(ex.map(mapExpense));
+      if (cl?.length) setClients(cl.map(mapClient).filter(c=>!c.isDeleted));
+      if (rc?.length) { const mapped=rc.map(r=>({id:r.id,name:r.name,isDeleted:r.is_deleted||false})); setRecipients(mapped.filter(r=>!r.isDeleted)); allRecipientsRef.current=mapped; }
+      if (ex?.length) setExpenses(ex.map(mapExpense).filter(e=>!e.isDeleted));
       if (sets?.length) {
         const s = {}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} });
         if (s.seller) setSeller(s.seller);
@@ -2150,7 +2155,7 @@ export default function App() {
     }});
     syncItems("tax_invoice", t.invNo, t.items);
   };
-  const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{
+  const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{ is_deleted:c.isDeleted||false,
     id:c.id, name:c.name, gstin:c.gstin||"", contact:c.contact||"", email:c.email||"",
     billing_name:c.billingName||"", billing_address:c.billingAddress||"",
     billing_state_code:c.billingStateCode||"", place_of_supply:c.placeOfSupply||"",
@@ -2158,8 +2163,8 @@ export default function App() {
     shipping_gstin:c.shippingGstin||"", shipping_address:c.shippingAddress||"",
     shipping_state_code:c.shippingStateCode||""
   }});
-  const upsertRecipient = (r) => enqueue({action:"upsert",table:"recipients",row:{id:r.id,name:r.name}});
-  const upsertExpense = (e) => enqueue({action:"upsert",table:"expenses",row:{
+  const upsertRecipient = (r) => enqueue({action:"upsert",table:"recipients",row:{id:r.id,name:r.name,is_deleted:r.isDeleted||false}});
+  const upsertExpense = (e) => enqueue({action:"upsert",table:"expenses",row:{ is_deleted:e.isDeleted||false,
     id:e.id, date:e.date, paid_by:e.paidBy, amount:e.amount||0,
     category:e.category||"", comment:e.comment||""
   }});
@@ -2167,9 +2172,9 @@ export default function App() {
     id:p.id, order_id:p.orderId, date:p.date, amount:p.amount||0,
     mode:p.mode||"", received_by:p.receivedBy||"", txn_ref:p.txnRef||"", comments:p.comments||""
   }});
-  const deleteExpense = (id) => enqueue({action:"delete",table:"expenses",col:"id",val:id});
-  const deleteClient = (id) => enqueue({action:"delete",table:"clients",col:"id",val:id});
-  const deleteRecipient = (id) => enqueue({action:"delete",table:"recipients",col:"id",val:id});
+  const deleteExpense = (e) => upsertExpense(e); // soft delete via is_deleted flag
+  const deleteClient = (c) => upsertClient(c); // soft delete via is_deleted flag
+  // deleteRecipient handled inline via upsertRecipient with isDeleted:true
   const saveSettings = (patch) => enqueue({action:"saveSettings",data:patch});
 
   // ── Sync-aware setters ──────────────────────────────────────────────────
@@ -2178,7 +2183,7 @@ export default function App() {
   const syncSetProformas=(v)=>{ const n=typeof v==="function"?v(proformas):v; setProformas(n); n.forEach(pf=>{ const prev=proformas.find(p=>p.invNo===pf.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(pf)) upsertProforma(pf); }); };
   const syncSetTaxInvoices=(v)=>{ const n=typeof v==="function"?v(taxInvoices):v; setTaxInvoices(n); n.forEach(ti=>{ const prev=taxInvoices.find(p=>p.invNo===ti.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(ti)) upsertTaxInvoice(ti); }); };
   const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); n.forEach(c=>{ const prev=clients.find(p=>p.id===c.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(c)) upsertClient(c); }); };
-  const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
+  const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const syncSetSeller=(v)=>{ setSeller(v); saveSettings({seller:v}); };
   const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
