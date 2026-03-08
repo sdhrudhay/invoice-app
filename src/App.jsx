@@ -726,9 +726,21 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
                 <ItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst}/>
               </div>
-              <div className="flex gap-3 pt-2 border-t">
-                <button onClick={handleSaveOrder} className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${saved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>
-                  {saved?"✓ Saved! Quotation updated":"Save Changes & Update Quotation"}
+              <div className="pt-3 border-t">
+                <button
+                  onClick={handleSaveOrder}
+                  className={`relative w-full py-3 rounded-xl font-bold text-sm tracking-wide transition-all duration-300 overflow-hidden shadow-sm
+                    ${saved
+                      ? "bg-emerald-500 text-white scale-[0.99]"
+                      : "bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white hover:shadow-md hover:scale-[1.01]"
+                    }`}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    {saved
+                      ? <><span className="text-base">✓</span> Changes Saved!</>
+                      : <><span className="text-base">💾</span> Save Changes</>
+                    }
+                  </span>
                 </button>
               </div>
             </>
@@ -978,14 +990,21 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     if (updated.payments?.length) {
       updated.payments.forEach(p=>upsertPayment({...p, orderId:orderNo, id:String(p.id||Date.now())}));
     }
-    // Sync quotation items (NOT proforma or tax invoice — see fix 5)
+    // Sync items to quotation AND tax invoices
     if (newItems) {
       const updatedQt = quotations.find(q=>q.orderId===orderNo);
       if (updatedQt) {
         const newQt = {...updatedQt, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
         setQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
       }
-      // Do NOT push items to proforma or tax invoices when editing order
+      // Also sync to tax invoices — merge new items in, keep existing ones
+      setTaxInvoices(prev => prev.map(t => {
+        if (t.orderId !== orderNo) return t;
+        const existingNames = new Set((t.items||[]).map(i=>(i.item||"").toLowerCase().trim()));
+        const toAdd = newItems.filter(i => i.item && !existingNames.has((i.item||"").toLowerCase().trim()));
+        const merged = [...(t.items||[]), ...toAdd].map((i,idx)=>({...i,sl:idx+1}));
+        return {...t, items:merged, amount:merged.reduce((s,i)=>s+num(i.netAmt),0)};
+      }));
     }
     setOpenOrder(updated);
   };
