@@ -293,13 +293,12 @@ function printOrOpen(html) {
 }
 
 function downloadHtml(html, filename) {
-  const blob = new Blob([html], { type: "text/html" });
+  // Inject auto-print script so browser PDF dialog opens immediately
+  const printHtml = html.replace("</body>", `<script>window.onload=function(){window.print();}<\/script></body>`);
+  const blob = new Blob([printHtml], { type: "text/html" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename + ".html";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  const win = window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 // ─── Reusable UI ──────────────────────────────────────────────────────────────
@@ -559,7 +558,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             </div>
             <div className="grid grid-cols-2 gap-4">
               <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
-              <F label="Contact Number" value={sameAsBilling ? contact : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
+              <F label="Contact Number" value={sameAsBilling ? phone : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
               <F label="State/UT Code" value={sameAsBilling ? billingStateCode : shippingStateCode} onChange={v=>{if(!sameAsBilling)setShippingStateCode(v);}} disabled={sameAsBilling}/>
               <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
@@ -593,6 +592,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
   const [paySaved, setPaySaved] = useState(false);
 
+  // Keep payments in sync with parent order prop (so reopening shows saved payments)
+  useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
+  // Keep order fields in sync when parent updates (e.g. after save)
+  useEffect(() => { setO(prev=>({...order, ...prev, payments: order.payments||[] })); }, [order.orderNo]);
+
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items (initialised fresh whenever order prop changes)
@@ -601,7 +605,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = () => {
-    onSaveOrder({...o, items: orderItems});
+    const updated = {...o, items: orderItems};
+    onSaveOrder(updated);
     setSaved(true); setTimeout(()=>setSaved(false),2000);
   };
   const handleSaveInv = (updatedInv, type) => {
@@ -790,7 +795,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
           {tab==="invoices" && creating && (
             <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: order.items ? order.items.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"" }}
+              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"" }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -917,7 +922,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
       <ItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst}/>
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
-        <button onClick={()=>onSave(d)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save Invoice</button>
+        <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">✓ Save Invoice</button>
         <button onClick={onCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Cancel</button>
       </div>
     </div>
@@ -2220,11 +2225,13 @@ export default function App() {
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {seller.logo&&<img src={seller.logo} alt="logo" className="h-9 max-w-[100px] object-contain"/>}
-            {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse ml-2">⏳ Saving…</span>}
-            {syncStatus==="saved"&&<span className="text-xs text-emerald-500 ml-2">✓ Saved</span>}
-            {syncStatus==="error"&&<span className="text-xs text-red-400 ml-2">⚠ Sync failed</span>}
-            <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">GST Billing · Order Management</p></div>
+            {seller.logo
+              ? <img src={seller.logo} alt="logo" className="h-9 max-w-[120px] object-contain"/>
+              : <span className="text-base font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
+            }
+            {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse">⏳ Saving…</span>}
+            {syncStatus==="saved"&&<span className="text-xs text-emerald-500">✓ Saved</span>}
+            {syncStatus==="error"&&<span className="text-xs text-red-400">⚠ Sync failed</span>}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
