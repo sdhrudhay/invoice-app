@@ -2194,6 +2194,7 @@ export default function App() {
   const handleLogout = useCallback(() => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     if (countdownInterval.current) clearInterval(countdownInterval.current);
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
     setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
     setAccessToken(""); setUser(null);
@@ -2201,6 +2202,8 @@ export default function App() {
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
+
+  const logoutTimer = useRef(null); // separate ref so it can be cleared on activity
 
   const startCountdown = useCallback(() => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
@@ -2211,18 +2214,20 @@ export default function App() {
       setCountdown(remaining);
       if (remaining <= 0) clearInterval(countdownInterval.current);
     }, 1000);
-  }, []);
+    // Store the logout timer in a ref so it can be cancelled
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
+    logoutTimer.current = setTimeout(() => handleLogout(), WARNING_MS);
+  }, [handleLogout]);
 
   const resetInactivityTimer = useCallback(() => {
     lastActivityTime.current = Date.now();
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     if (countdownInterval.current) clearInterval(countdownInterval.current);
+    if (logoutTimer.current) clearTimeout(logoutTimer.current); // cancel pending logout
     setCountdown(null);
     // Set warning timer (fires at 7 mins to start 3 min countdown)
     inactivityTimer.current = setTimeout(() => {
       startCountdown();
-      // Final logout after remaining 3 mins
-      setTimeout(() => handleLogout(), WARNING_MS);
     }, INACTIVITY_MS - WARNING_MS);
   }, [handleLogout, startCountdown]);
 
