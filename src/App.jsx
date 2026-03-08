@@ -29,9 +29,8 @@ function genInvNo(prefix, period, list, digits) {
   return { invNo: `${base}/${String(count).padStart(digits, "0")}`, invNoBase: base };
 }
 
-function genClientId(clients) {
-  const n = clients.length + 1;
-  return "CLT-" + String(n).padStart(4, "0");
+function genClientId() {
+  return "CLT-" + Date.now();
 }
 
 const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"" };
@@ -1338,7 +1337,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
       setRecipients(recipients.map(r=>r.id===editId?{...form,id:editId}:r));
       setEditId(null);
     } else {
-      const id = "RCP-"+String(recipients.length+1).padStart(4,"0");
+      const id = "RCP-"+Date.now();
       setRecipients([...recipients,{...form,id}]);
     }
     setForm({...EMPTY_RECIPIENT});
@@ -1404,7 +1403,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
       setClients(clients.map(c => c.id === editId ? { ...form, id: editId } : c));
       setEditId(null);
     } else {
-      const id = genClientId(clients);
+      const id = genClientId();
       setClients([...clients, { ...form, id }]);
     }
     setForm({...EMPTY_CLIENT}); setShowForm(false); setSameAsBilling(false);
