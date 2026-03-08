@@ -168,7 +168,7 @@ function buildQuotationHtml(order, inv, seller) {
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
   const cols = ng ? 13 : 9;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QUOTATION - ${inv.invNo}</title>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
   .page{max-width:900px;margin:0 auto}
@@ -232,7 +232,7 @@ function buildInvoiceHtml(order, inv, type, seller) {
   const ng = order.needsGst;
   const cols = ng ? 13 : 9;
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title} - ${inv.invNo}</title>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
   .page{max-width:900px;margin:0 auto}
