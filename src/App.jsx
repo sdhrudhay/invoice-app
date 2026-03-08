@@ -76,165 +76,9 @@ const DEFAULT_SERIES = {
   tiPrefix: "EA-TAX", tiFormat: "YYYYMMDD", invDigits: "6",
 };
 
-const DEFAULT_DRIVE = { b2bQuotation: "", b2cQuotation: "", b2bProforma: "", b2bTax: "", b2cTax: "" };
 
 // ─── Apps Script Code ─────────────────────────────────────────────────────────
-const SCRIPT_CODE = `// ── Helpers ──────────────────────────────────────────────────────────────────
-function getOrCreateSheet(ss, name, headers) {
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-    if (headers) sheet.appendRow(headers);
-  } else if (headers && sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-  }
-  return sheet;
-}
 
-function sheetToObjects(sheet) {
-  if (!sheet || sheet.getLastRow() < 2) return [];
-  var data = sheet.getDataRange().getValues();
-  var headers = data[0];
-  return data.slice(1).map(function(row) {
-    var obj = {};
-    headers.forEach(function(h, i) { obj[h] = row[i]; });
-    return obj;
-  });
-}
-
-function upsertRow(sheet, keyCol, keyVal, row) {
-  var data = sheet.getDataRange().getValues();
-  var headers = data[0];
-  var keyIdx = headers.indexOf(keyCol);
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][keyIdx]) === String(keyVal)) {
-      sheet.getRange(i+1, 1, 1, row.length).setValues([row]);
-      return;
-    }
-  }
-  sheet.appendRow(row);
-}
-
-function deleteRow(sheet, keyCol, keyVal) {
-  var data = sheet.getDataRange().getValues();
-  var headers = data[0];
-  var keyIdx = headers.indexOf(keyCol);
-  for (var i = data.length - 1; i >= 1; i--) {
-    if (String(data[i][keyIdx]) === String(keyVal)) {
-      sheet.deleteRow(i+1);
-    }
-  }
-}
-
-// ── Headers ───────────────────────────────────────────────────────────────────
-var HEADERS = {
-  Orders: ["orderNo","orderNoBase","type","customerName","phone","email","gstin","billingName","billingAddress","billingStateCode","shippingName","shippingAddress","shippingContact","shippingGstin","shippingStateCode","placeOfSupply","orderDate","dueDate","paymentMode","advance","advanceRecipient","advanceTxnRef","status","comments","needsGst","quotationNo","proformaIds","taxInvoiceIds"],
-  Quotations: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
-  Proformas: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
-  TaxInvoices: ["invNo","invNoBase","invDate","orderId","amount","notes","items"],
-  Clients: ["id","name","gstin","contact","email","billingName","billingAddress","billingStateCode","placeOfSupply","shippingName","shippingContact","shippingGstin","shippingAddress","shippingStateCode"],
-  Recipients: ["id","name"],
-  Expenses: ["id","date","paidBy","amount","category","comment"],
-  Payments: ["id","orderId","date","amount","mode","receivedBy","txnRef","comments"],
-  Settings: ["key","value"]
-};
-
-// ── doPost ────────────────────────────────────────────────────────────────────
-function doPost(e) {
-  try {
-    var data = JSON.parse(e.postData.contents);
-    // Note: sent as text/plain to avoid CORS preflight
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    if (data.action === "upsert") {
-      var headers = HEADERS[data.sheet];
-      var sheet = getOrCreateSheet(ss, data.sheet, headers);
-      var row = headers.map(function(h) {
-        var v = data.row[h];
-        if (Array.isArray(v) || typeof v === "object") return JSON.stringify(v);
-        return v !== undefined && v !== null ? v : "";
-      });
-      upsertRow(sheet, data.key, data.row[data.key], row);
-    }
-
-    if (data.action === "delete") {
-      var sheet = ss.getSheetByName(data.sheet);
-      if (sheet) deleteRow(sheet, data.key, data.keyVal);
-    }
-
-    if (data.action === "saveSettings") {
-      var sheet = getOrCreateSheet(ss, "Settings", ["key","value"]);
-      var settings = data.settings;
-      Object.keys(settings).forEach(function(k) {
-        var v = typeof settings[k] === "object" ? JSON.stringify(settings[k]) : settings[k];
-        upsertRow(sheet, "key", k, [k, v]);
-      });
-    }
-
-    if (data.action === "savePdf" && data.folderId && data.htmlBase64) {
-      var folder = DriveApp.getFolderById(data.folderId);
-      var htmlContent = Utilities.newBlob(
-        Utilities.base64Decode(data.htmlBase64), "text/html", data.filename + ".html"
-      );
-      var tempFile = DriveApp.createFile(htmlContent);
-      var pdfBlob = tempFile.getAs("application/pdf").setName(data.filename + ".pdf");
-      folder.createFile(pdfBlob);
-      tempFile.setTrashed(true);
-    }
-
-    return ContentService.createTextOutput(JSON.stringify({status:"ok"}))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({status:"error",msg:err.message}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// ── doGet: load all data ──────────────────────────────────────────────────────
-function doGet(e) {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    function loadSheet(name) {
-      var sheet = ss.getSheetByName(name);
-      return sheetToObjects(sheet);
-    }
-
-    function parseField(v) {
-      if (typeof v === "string" && (v.startsWith("{") || v.startsWith("["))) {
-        try { return JSON.parse(v); } catch(e) { return v; }
-      }
-      return v;
-    }
-
-    function parseRow(row) {
-      var out = {};
-      Object.keys(row).forEach(function(k) { out[k] = parseField(row[k]); });
-      return out;
-    }
-
-    var settingsRows = loadSheet("Settings");
-    var settings = {};
-    settingsRows.forEach(function(r) {
-      settings[r.key] = parseField(r.value);
-    });
-
-    return ContentService.createTextOutput(JSON.stringify({
-      orders: loadSheet("Orders").map(parseRow),
-      quotations: loadSheet("Quotations").map(parseRow),
-      proformas: loadSheet("Proformas").map(parseRow),
-      taxInvoices: loadSheet("TaxInvoices").map(parseRow),
-      clients: loadSheet("Clients").map(parseRow),
-      recipients: loadSheet("Recipients").map(parseRow),
-      expenses: loadSheet("Expenses").map(parseRow),
-      payments: loadSheet("Payments").map(parseRow),
-      settings: settings
-    })).setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({error:err.message}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
 
 
 const SUPABASE_SQL = `
@@ -580,7 +424,7 @@ function ClientSearch({ clients, onSelect, value }) {
 }
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, scriptUrl, seller, series, drive={}, clients, recipients=[] }) {
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[] }) {
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
   const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
@@ -613,16 +457,6 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const notify = (t,err=false) => { setMsg(t); setMsgErr(err); setTimeout(()=>setMsg(""),4000); };
-  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",body:JSON.stringify(p),headers:{"Content-Type":"text/plain"}}); } catch(_){} };
-  const getFolderIdOF = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
-  const saveToDriveOF = async (order, inv, invType) => {
-    let folderUrl = invType==="quotation" ? (order.type==="B2B"?(drive.b2bQuotation||""):(drive.b2cQuotation||"")) : "";
-    const folderId = getFolderIdOF(folderUrl);
-    if (!folderId) return;
-    const html = buildQuotationHtml(order, inv, seller);
-    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
-    await post({ action:"savePdf", folderId, htmlBase64, filename: inv.invNo });
-  };
 
   const handleSave = async () => {
     if (!customerName) { notify("Customer name is required",true); return; }
@@ -637,8 +471,6 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0) };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
-    await post({action:"append",sheet:"Orders",headers:["Order No","Type","Customer","Contact","GSTIN","Billing Addr","Date","Payment","Advance","Status","GST","Quotation No","Comments"],row:[orderNo,type,customerName,phone,gstin,billingAddress,orderDate,paymentMode,advance,status,needsGst?"Yes":"No",qtNo,comments]});
-    await saveToDriveOF(order, qt, "quotation");
     notify(`Order ${orderNo} & Quotation ${qtNo} saved!`);
     setSaving(false);
   };
@@ -1086,7 +918,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], scriptUrl="", drive={}, upsertPayment=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], upsertPayment=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -1135,7 +967,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     }
     setOpenOrder(updated);
     const qt = quotations.find(q=>q.orderId===updated.orderNo);
-    if (qt) saveToDrive(updated, qt, "quotation");
   };
 
   const pushItemsToTaxInvoices = (orderNo, mergedItems) => {
@@ -1156,11 +987,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         syncItemsAndQuotation(orderNo, mergedItems);
         pushItemsToTaxInvoices(orderNo, mergedItems);
       }
-      if (orderObj) saveToDrive(orderObj, updatedInv, "proforma");
     } else {
       setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
       if (orderNo) syncItemsAndQuotation(orderNo, mergedItems);
-      if (orderObj) saveToDrive(orderObj, updatedInv, "tax");
     }
   };
 
@@ -1174,33 +1003,18 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         syncItemsAndQuotation(orderNo, mergedItems);
         pushItemsToTaxInvoices(orderNo, mergedItems);
       }
-      saveToDrive(orderObj, inv, "proforma");
-    } else {
+      } else {
       setTaxInvoices(p=>[...p, inv]);
       setOrders(prev=>prev.map(o=>{
         if (o.orderNo!==orderNo) return o;
         return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(needsGstFlip?{needsGst:true}:{})};
       }));
       if (mergedItems) syncItemsAndQuotation(orderNo, mergedItems);
-      saveToDrive({...orderObj, ...(needsGstFlip?{needsGst:true}:{})}, inv, "tax");
-    }
+      }
   };
 
   const todayStr = today();
 
-  const post = async (p) => { if (!scriptUrl) return; try { await fetch(scriptUrl,{method:"POST",body:JSON.stringify(p),headers:{"Content-Type":"text/plain"}}); } catch(_){} };
-  const getFolderId = (url) => { if(!url) return null; const m=url.match(/folders\/([a-zA-Z0-9_-]+)/); return m?m[1]:null; };
-  const saveToDrive = async (order, inv, type) => {
-    let folderUrl = "";
-    if (type==="quotation") folderUrl = order.type==="B2B"?(drive.b2bQuotation||""):(drive.b2cQuotation||"");
-    else if (type==="proforma") folderUrl = drive.b2bProforma||"";
-    else if (type==="tax") folderUrl = order.type==="B2B"?(drive.b2bTax||""):(drive.b2cTax||"");
-    const folderId = getFolderId(folderUrl);
-    if (!folderId) return;
-    const html = type==="quotation" ? buildQuotationHtml(order, inv, seller) : buildInvoiceHtml(order, inv, type, seller);
-    const htmlBase64 = btoa(unescape(encodeURIComponent(html)));
-    await post({ action:"savePdf", folderId, htmlBase64, filename: inv.invNo });
-  };
   const renderCard = (o) => {
     const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt=quotations.find(q=>q.orderId===o.orderNo);
@@ -1336,14 +1150,14 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, drive, setDrive, recipients=[], setRecipients }) {
-  const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series}); const [dr,setDr]=useState({...drive});
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, deleteRecipient=()=>{} }) {
+  const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false); const [saved,setSaved]=useState(false);
   const logoRef=useRef();
 
   const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
-  const save = () => { setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-  const cancel = () => { setS({...seller}); setSr({...series}); setDr({...drive}); };
+  const save = () => { setSeller(s); setSeries(sr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const cancel = () => { setS({...seller}); setSr({...series}); };
 
   const pB2C = buildOrderNo(sr,"B2C",[]); const pB2B = buildOrderNo(sr,"B2B",[]);
   const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
@@ -1450,19 +1264,6 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         </div>
       </section>
 
-      {/* Google Drive */}
-      <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">📁 Google Drive Folders</h3>
-        <p className="text-xs text-gray-400 mb-4">Paste the Google Drive folder URL for each invoice type. Generated invoices will be automatically saved there via Apps Script.</p>
-        <div className="space-y-3">
-          <F label="B2B Quotation Folder" value={dr.b2bQuotation||""} onChange={v=>setDr({...dr,b2bQuotation:v})} placeholder="https://drive.google.com/drive/folders/…"/>
-          <F label="B2C Quotation Folder" value={dr.b2cQuotation||""} onChange={v=>setDr({...dr,b2cQuotation:v})} placeholder="https://drive.google.com/drive/folders/…"/>
-          <F label="B2B Proforma Invoice Folder" value={dr.b2bProforma} onChange={v=>setDr({...dr,b2bProforma:v})} placeholder="https://drive.google.com/drive/folders/…"/>
-          <F label="B2B Tax Invoice Folder" value={dr.b2bTax} onChange={v=>setDr({...dr,b2bTax:v})} placeholder="https://drive.google.com/drive/folders/…"/>
-          <F label="B2C Tax Invoice Folder" value={dr.b2cTax} onChange={v=>setDr({...dr,b2cTax:v})} placeholder="https://drive.google.com/drive/folders/…"/>
-        </div>
-      </section>
-
       {/* Supabase status indicator only */}
       <section className="border-t pt-6">
         <h3 className="font-bold text-gray-800 mb-1">🗄️ Supabase Database</h3>
@@ -1475,7 +1276,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       <section className="space-y-3">
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">👤 Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
-        <RecipientMaster recipients={recipients} setRecipients={setRecipients}/>
+        <RecipientMaster recipients={recipients} setRecipients={setRecipients} deleteRecipient={deleteRecipient}/>
       </section>
 
       <div className="flex gap-3 pt-2 border-t">
@@ -1489,7 +1290,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 // ─── Recipient Master ─────────────────────────────────────────────────────────
 const EMPTY_RECIPIENT = { id:"", name:"" };
 
-function RecipientMaster({ recipients, setRecipients }) {
+function RecipientMaster({ recipients, setRecipients, deleteRecipient=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_RECIPIENT});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1507,7 +1308,7 @@ function RecipientMaster({ recipients, setRecipients }) {
     setForm({...EMPTY_RECIPIENT});
   };
   const handleEdit = (r) => { setForm({...r}); setEditId(r.id); };
-  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) setRecipients(recipients.filter(r=>r.id!==id)); };
+  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) { setRecipients(recipients.filter(r=>r.id!==id)); deleteRecipient(id); } };
   const handleCancel = () => { setForm({...EMPTY_RECIPIENT}); setEditId(null); };
 
   const filtered = recipients.filter(r=>r.name.toLowerCase().includes(search.toLowerCase()));
@@ -1548,7 +1349,7 @@ function RecipientMaster({ recipients, setRecipients }) {
 }
 
 // ─── Client Master ────────────────────────────────────────────────────────────
-function ClientMaster({ clients, setClients }) {
+function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_CLIENT});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1574,7 +1375,7 @@ function ClientMaster({ clients, setClients }) {
   };
 
   const handleEdit = (c) => { setForm({...c}); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
-  const handleDelete = (id) => { if (window.confirm("Delete this client?")) setClients(clients.filter(c=>c.id!==id)); };
+  const handleDelete = (id) => { if (window.confirm("Delete this client?")) { setClients(clients.filter(c=>c.id!==id)); deleteClient(id); } };
   const handleNew = () => { setForm({...EMPTY_CLIENT}); setEditId(null); setShowForm(true); setSameAsBilling(false); };
 
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -1696,7 +1497,7 @@ function ClientMaster({ clients, setClients }) {
 const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
-function ExpenseTracker({ expenses, setExpenses, recipients, seller }) {
+function ExpenseTracker({ expenses, setExpenses, recipients, seller, deleteExpense=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1720,7 +1521,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, seller }) {
     notify(editId?"Expense updated!":"Expense recorded!");
   };
   const handleEdit = (e) => { setForm({...e}); setEditId(e.id); window.scrollTo({top:0,behavior:"smooth"}); };
-  const handleDelete = (id) => { if(window.confirm("Delete this expense?")) setExpenses(prev=>prev.filter(e=>e.id!==id)); };
+  const handleDelete = (id) => { if(window.confirm("Delete this expense?")) { setExpenses(prev=>prev.filter(e=>e.id!==id)); deleteExpense(id); } };
   const handleCancel = () => { setForm({...EMPTY_EXPENSE, date:today()}); setEditId(null); };
 
   const filtered = expenses
@@ -2117,7 +1918,6 @@ export default function App() {
   const [expenses,setExpenses]=useState([]);
   const [seller,setSeller]=useState(DEFAULT_SELLER);
   const [series,setSeries]=useState(DEFAULT_SERIES);
-  const [drive,setDrive]=useState(DEFAULT_DRIVE);
   const [loading,setLoading]=useState(false);
   const [syncStatus,setSyncStatus]=useState("");
   const ENV_URL = getEnv("VITE_SUPABASE_URL");
@@ -2222,7 +2022,6 @@ export default function App() {
         const s = {}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} });
         if (s.seller) setSeller(s.seller);
         if (s.series) setSeries(s.series);
-        if (s.drive) setDrive(s.drive);
       }
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
@@ -2345,14 +2144,19 @@ export default function App() {
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const syncSetSeller=(v)=>{ setSeller(v); saveSettings({seller:v}); };
   const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
-  const syncSetDrive=(v)=>{ setDrive(v); saveSettings({drive:v}); };
 
   // ── Auth handlers ────────────────────────────────────────────────────────
   const INACTIVITY_MS = 10 * 60 * 1000; // 10 minutes
+  const WARNING_MS = 3 * 60 * 1000;     // show countdown in last 3 minutes
   const inactivityTimer = useRef(null);
+  const countdownInterval = useRef(null);
+  const lastActivityTime = useRef(Date.now());
+  const [countdown, setCountdown] = useState(null); // null = hidden, number = seconds left
 
   const handleLogout = useCallback(() => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    if (countdownInterval.current) clearInterval(countdownInterval.current);
+    setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
     setAccessToken(""); setUser(null);
     sessionStorage.removeItem("sb_token");
@@ -2360,10 +2164,29 @@ export default function App() {
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
 
+  const startCountdown = useCallback(() => {
+    if (countdownInterval.current) clearInterval(countdownInterval.current);
+    setCountdown(Math.floor(WARNING_MS / 1000));
+    countdownInterval.current = setInterval(() => {
+      const elapsed = Date.now() - lastActivityTime.current;
+      const remaining = Math.max(0, Math.ceil((INACTIVITY_MS - elapsed) / 1000));
+      setCountdown(remaining);
+      if (remaining <= 0) clearInterval(countdownInterval.current);
+    }, 1000);
+  }, []);
+
   const resetInactivityTimer = useCallback(() => {
+    lastActivityTime.current = Date.now();
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    inactivityTimer.current = setTimeout(() => handleLogout(), INACTIVITY_MS);
-  }, [handleLogout]);
+    if (countdownInterval.current) clearInterval(countdownInterval.current);
+    setCountdown(null);
+    // Set warning timer (fires at 7 mins to start 3 min countdown)
+    inactivityTimer.current = setTimeout(() => {
+      startCountdown();
+      // Final logout after remaining 3 mins
+      setTimeout(() => handleLogout(), WARNING_MS);
+    }, INACTIVITY_MS - WARNING_MS);
+  }, [handleLogout, startCountdown]);
 
   // ── Start/reset inactivity timer on any user activity ──────────────────
   useEffect(() => {
@@ -2374,6 +2197,7 @@ export default function App() {
     return () => {
       events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      if (countdownInterval.current) clearInterval(countdownInterval.current);
     };
   }, [accessToken, resetInactivityTimer]);
 
@@ -2409,18 +2233,26 @@ export default function App() {
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
               {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
             </div>
+            {countdown!==null&&(
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                <span className="text-xs font-semibold text-amber-600">⏱ Session expires in</span>
+                <span className="text-sm font-black text-amber-700 tabular-nums min-w-[2.5rem] text-center">
+                  {`${String(Math.floor(countdown/60)).padStart(2,"0")}:${String(countdown%60).padStart(2,"0")}`}
+                </span>
+              </div>
+            )}
             <button onClick={handleLogout} className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">Sign Out</button>
           </div>
         </div>
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} scriptUrl="" seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl="" drive={drive} upsertPayment={upsertPayment}/>}
-          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients}/>}
-          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} upsertPayment={upsertPayment}/>}
+          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
+          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller} deleteExpense={deleteExpense}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
-          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} drive={drive} setDrive={syncSetDrive} recipients={recipients} setRecipients={syncSetRecipients}/>}
+          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} deleteRecipient={deleteRecipient}/>}
         </div>
       </div>
     </div>
