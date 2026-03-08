@@ -1532,7 +1532,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
 const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
-function ExpenseTracker({ expenses, setExpenses, recipients, seller, deleteExpense=()=>{} }) {
+function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1627,7 +1627,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, seller, deleteExpen
       {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-10">No expenses found.</p>}
       <div className="space-y-2">
         {filtered.map(e=>{
-          const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===e.paidBy);
+          const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===e.paidBy)||allRecipients.find(r=>r.id===e.paidBy));
           return (
             <div key={e.id} className="border border-gray-100 rounded-xl px-4 py-3 bg-white flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -2300,7 +2300,7 @@ export default function App() {
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients}/>}
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
-          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller} deleteExpense={deleteExpense}/>}
+          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current}/>}
         </div>
