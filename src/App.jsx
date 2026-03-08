@@ -2052,27 +2052,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
     try {
       const client = createSupabaseClient(sbUrl, sbKey);
       const data = await client.auth.signIn(email, password);
-      // Send login notification email via EmailJS
-      const ejsService = getEnv("VITE_EMAILJS_SERVICE");
-      const ejsTemplate = getEnv("VITE_EMAILJS_TEMPLATE");
-      const ejsKey = getEnv("VITE_EMAILJS_KEY");
-      if (ejsService && ejsTemplate && ejsKey) {
-        const now = new Date().toLocaleString("en-IN", {timeZone:"Asia/Kolkata"});
-        fetch("https://api.emailjs.com/api/v1.0/email/send", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({
-            service_id: ejsService,
-            template_id: ejsTemplate,
-            user_id: ejsKey,
-            template_params: {
-              user_email: email,
-              login_time: now + " IST",
-              user_agent: navigator.userAgent
-            }
-          })
-        }).catch(()=>{});
-      }
+
       onLogin(data.access_token, data.user);
     } catch(e) {
       setError(e.message);
@@ -2126,7 +2106,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab,setTab]=useState("new");
-  const [accessToken,setAccessToken]=useState(()=>localStorage.getItem("sb_token")||"");
+  const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const [user,setUser]=useState(null);
   const [orders,setOrders]=useState([]);
   const [quotations,setQuotations]=useState([]);
@@ -2194,7 +2174,7 @@ export default function App() {
     const ENV_KEY2 = getEnv("VITE_SUPABASE_KEY");
     const url = localStorage.getItem("sb_url")||ENV_URL2;
     const key = localStorage.getItem("sb_key")||ENV_KEY2;
-    const token = localStorage.getItem("sb_token")||"";
+    const token = sessionStorage.getItem("sb_token")||"";
     if (!url||!key||!token) return;
     const baseClient = createSupabaseClient(url, key);
     const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${token}` };
@@ -2368,19 +2348,40 @@ export default function App() {
   const syncSetDrive=(v)=>{ setDrive(v); saveSettings({drive:v}); };
 
   // ── Auth handlers ────────────────────────────────────────────────────────
+  const INACTIVITY_MS = 10 * 60 * 1000; // 10 minutes
+  const inactivityTimer = useRef(null);
+
+  const handleLogout = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
+    setAccessToken(""); setUser(null);
+    sessionStorage.removeItem("sb_token");
+    setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
+    setClients([]); setRecipients([]); setExpenses([]);
+  }, [accessToken]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    inactivityTimer.current = setTimeout(() => handleLogout(), INACTIVITY_MS);
+  }, [handleLogout]);
+
+  // ── Start/reset inactivity timer on any user activity ──────────────────
+  useEffect(() => {
+    if (!accessToken) return;
+    const events = ["mousedown","mousemove","keydown","scroll","touchstart","click"];
+    events.forEach(e => window.addEventListener(e, resetInactivityTimer));
+    resetInactivityTimer(); // start timer on login
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+  }, [accessToken, resetInactivityTimer]);
+
   const handleLogin = (token, userData) => {
     setAccessToken(token);
     setUser(userData);
-    localStorage.setItem("sb_token", token);
-    // Trigger data load
+    sessionStorage.setItem("sb_token", token);
     window.location.reload();
-  };
-  const handleLogout = () => {
-    if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
-    setAccessToken(""); setUser(null);
-    localStorage.removeItem("sb_token");
-    setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
-    setClients([]); setRecipients([]); setExpenses([]);
   };
 
   // ── Supabase credentials handlers ───────────────────────────────────────
