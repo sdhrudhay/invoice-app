@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// Safe env var access (works in Vite, CRA, and plain browser)
+const getEnv = (key) => { try { return import.meta?.env?.[key] || ""; } catch(e) { return ""; } };
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
@@ -232,6 +235,81 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 }`;
+
+
+const SUPABASE_SQL = `
+-- Orders
+create table if not exists orders (
+  order_no text primary key, order_no_base text, type text, customer_name text,
+  phone text, email text, gstin text, billing_name text, billing_address text,
+  billing_state_code text, shipping_name text, shipping_address text,
+  shipping_contact text, shipping_gstin text, shipping_state_code text,
+  place_of_supply text, order_date text, due_date text, payment_mode text,
+  advance numeric default 0, advance_recipient text, advance_txn_ref text,
+  status text, comments text, needs_gst boolean default true,
+  quotation_no text, proforma_ids text, tax_invoice_ids text,
+  created_at timestamptz default now()
+);
+-- Quotations
+create table if not exists quotations (
+  inv_no text primary key, inv_no_base text, inv_date text,
+  order_id text, amount numeric default 0, notes text,
+  created_at timestamptz default now()
+);
+-- Proformas
+create table if not exists proformas (
+  inv_no text primary key, inv_no_base text, inv_date text,
+  order_id text, amount numeric default 0, notes text,
+  created_at timestamptz default now()
+);
+-- Tax Invoices
+create table if not exists tax_invoices (
+  inv_no text primary key, inv_no_base text, inv_date text,
+  order_id text, amount numeric default 0, notes text,
+  created_at timestamptz default now()
+);
+-- Normalized Items (covers all document types)
+create table if not exists items (
+  id text primary key,
+  document_type text not null, -- "order"|"quotation"|"proforma"|"tax_invoice"
+  document_id text not null,   -- order_no or inv_no
+  sl integer, item text, hsn text, unit text,
+  unit_price numeric default 0, qty numeric default 0, discount numeric default 0,
+  gross_amt numeric default 0, cgst_rate numeric default 0, cgst_amt numeric default 0,
+  sgst_rate numeric default 0, sgst_amt numeric default 0, net_amt numeric default 0,
+  created_at timestamptz default now()
+);
+create index if not exists items_doc_idx on items(document_type, document_id);
+-- Clients
+create table if not exists clients (
+  id text primary key, name text, gstin text, contact text, email text,
+  billing_name text, billing_address text, billing_state_code text,
+  place_of_supply text, shipping_name text, shipping_contact text,
+  shipping_gstin text, shipping_address text, shipping_state_code text,
+  created_at timestamptz default now()
+);
+-- Recipients
+create table if not exists recipients (
+  id text primary key, name text,
+  created_at timestamptz default now()
+);
+-- Expenses
+create table if not exists expenses (
+  id text primary key, date text, paid_by text, amount numeric default 0,
+  category text, comment text,
+  created_at timestamptz default now()
+);
+-- Payments
+create table if not exists payments (
+  id text primary key, order_id text, date text, amount numeric default 0,
+  mode text, received_by text, txn_ref text, comments text,
+  created_at timestamptz default now()
+);
+-- Settings
+create table if not exists settings (
+  key text primary key, value text,
+  created_at timestamptz default now()
+);`;
 
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
 function buildQuotationHtml(order, inv, seller) {
@@ -1258,14 +1336,15 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function Settings({ scriptUrl, setScriptUrl, seller, setSeller, series, setSeries, drive, setDrive, recipients=[], setRecipients }) {
-  const [url,setUrl]=useState(scriptUrl); const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series}); const [dr,setDr]=useState({...drive});
-  const [showScript,setShowScript]=useState(false); const [saved,setSaved]=useState(false);
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, drive, setDrive, recipients=[], setRecipients }) {
+  const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series}); const [dr,setDr]=useState({...drive});
+  const [localSbUrl,setLocalSbUrl]=useState(sbUrl); const [localSbKey,setLocalSbKey]=useState(sbKey);
+  const [showSetup,setShowSetup]=useState(false); const [saved,setSaved]=useState(false);
   const logoRef=useRef();
 
   const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
-  const save = () => { setScriptUrl(url); setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-  const cancel = () => { setUrl(scriptUrl); setS({...seller}); setSr({...series}); setDr({...drive}); };
+  const save = () => { setSbUrl(localSbUrl); setSbKey(localSbKey); setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const cancel = () => { setLocalSbUrl(sbUrl); setLocalSbKey(sbKey); setS({...seller}); setSr({...series}); setDr({...drive}); };
 
   const pB2C = buildOrderNo(sr,"B2C",[]); const pB2B = buildOrderNo(sr,"B2B",[]);
   const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
@@ -1385,24 +1464,25 @@ function Settings({ scriptUrl, setScriptUrl, seller, setSeller, series, setSerie
         </div>
       </section>
 
-      {/* Apps Script */}
+      {/* Supabase */}
       <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">⚙️ Apps Script Integration</h3>
-        <p className="text-xs text-gray-400 mb-3">Syncs orders to Google Sheets and saves invoice PDFs to Drive. One-time free setup.</p>
-        <F label="Web App URL" value={url} onChange={setUrl} placeholder="https://script.google.com/macros/s/…/exec" className="mb-3"/>
-        <button onClick={()=>setShowScript(!showScript)} className="text-xs text-indigo-600 hover:underline mb-3 flex items-center gap-1">{showScript?"▼ Hide":"▶ Show"} Setup Instructions & Script</button>
-        {showScript&&(
-          <div className="space-y-3">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1.5">
-              <p className="font-bold text-sm">Setup (one-time, ~5 minutes)</p>
-              <p>1. Open Google Sheets → <b>Extensions → Apps Script</b></p>
-              <p>2. Paste the code below, replacing any existing code, and save</p>
-              <p>3. Click <b>Deploy → New Deployment → Web App</b></p>
-              <p>4. Set <b>Execute as: Me</b> and <b>Who has access: Anyone</b></p>
-              <p>5. Authorize and copy the <b>Web App URL</b> — paste it above</p>
-              <p>6. For Drive saving: open each folder → Share → add the Apps Script service account email (shown during auth) with Editor access</p>
-            </div>
-            <pre className="bg-slate-900 text-emerald-300 text-xs p-4 rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed">{SCRIPT_CODE}</pre>
+        <h3 className="font-bold text-gray-800 mb-1">🗄️ Supabase Database</h3>
+        <p className="text-xs text-gray-400 mb-4">Connect your Supabase project to sync all data. Free tier is more than enough for this app.</p>
+        <div className="grid grid-cols-1 gap-3 mb-3">
+          <F label="Project URL" value={localSbUrl} onChange={setLocalSbUrl} placeholder="https://xxxxxxxxxxxx.supabase.co"/>
+          <F label="Anon / Public Key" value={localSbKey} onChange={setLocalSbKey} placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"/>
+        </div>
+        {localSbUrl&&localSbKey&&<p className="text-xs text-emerald-600 font-medium mb-3">✓ Credentials set — click Save All Settings to connect</p>}
+        <button onClick={()=>setShowSetup(!showSetup)} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">{showSetup?"▼ Hide":"▶ Show"} Setup Instructions</button>
+        {showSetup&&(
+          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1.5">
+            <p className="font-bold text-sm">One-time Supabase setup (~5 minutes)</p>
+            <p>1. Go to <b>supabase.com</b> → create a free project</p>
+            <p>2. In your project go to <b>SQL Editor</b> and run the SQL below to create all tables</p>
+            <p>3. Go to <b>Project Settings → API</b> → copy the <b>Project URL</b> and <b>anon public key</b></p>
+            <p>4. Paste them in the fields above and click <b>Save All Settings</b></p>
+            <p className="font-bold mt-2">SQL to run in Supabase SQL Editor:</p>
+            <pre className="bg-slate-900 text-emerald-300 text-xs p-3 rounded-lg overflow-x-auto whitespace-pre leading-relaxed mt-1">{SUPABASE_SQL}</pre>
           </div>
         )}
       </section>
@@ -1912,9 +1992,136 @@ function Dashboard({ orders, expenses, recipients, seller }) {
   );
 }
 
+// ─── Supabase Client ──────────────────────────────────────────────────────────
+function createSupabaseClient(url, key) {
+  const headers = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${key}` };
+  const rest = `${url}/rest/v1`;
+
+  const from = (table) => ({
+    select: async (cols="*") => {
+      const r = await fetch(`${rest}/${table}?select=${cols}&order=created_at.asc`, { headers: {...headers, "Prefer":"return=representation"} });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    upsert: async (rowOrRows) => {
+      const r = await fetch(`${rest}/${table}`, {
+        method: "POST",
+        headers: {...headers, "Prefer":"resolution=merge-duplicates,return=minimal"},
+        body: JSON.stringify(rowOrRows)
+      });
+      return r.ok;
+    },
+    delete: async (col, val) => {
+      const r = await fetch(`${rest}/${table}?${col}=eq.${encodeURIComponent(val)}`, {
+        method: "DELETE", headers
+      });
+      return r.ok;
+    },
+    deleteMany: async (col, vals) => {
+      if (!vals?.length) return true;
+      const list = vals.map(v=>encodeURIComponent(v)).join(",");
+      const r = await fetch(`${rest}/${table}?${col}=in.(${list})`, {
+        method: "DELETE", headers
+      });
+      return r.ok;
+    }
+  });
+  const auth = {
+    signIn: async (email, password) => {
+      const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": key },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error_description || data.msg || "Login failed");
+      return data; // { access_token, refresh_token, user }
+    },
+    signOut: async (accessToken) => {
+      await fetch(`${url}/auth/v1/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${accessToken}` }
+      });
+    },
+    getUser: async (accessToken) => {
+      const r = await fetch(`${url}/auth/v1/user`, {
+        headers: { "apikey": key, "Authorization": `Bearer ${accessToken}` }
+      });
+      return r.ok ? r.json() : null;
+    }
+  };
+  return { from, auth };
+}
+
+// ─── Login Screen ─────────────────────────────────────────────────────────────
+function LoginScreen({ onLogin, sbUrl, sbKey }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError("Please enter email and password"); return; }
+    if (!sbUrl || !sbKey) { setError("Supabase credentials not configured. Check your environment variables."); return; }
+    setLoading(true); setError("");
+    try {
+      const client = createSupabaseClient(sbUrl, sbKey);
+      const data = await client.auth.signIn(email, password);
+      onLogin(data.access_token, data.user);
+    } catch(e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-6">
+          <div className="text-center">
+            <div className="text-4xl mb-3">🧾</div>
+            <h1 className="text-2xl font-black text-slate-800">Invoice Manager</h1>
+            <p className="text-sm text-gray-400 mt-1">Sign in to continue</p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 block mb-1">Email</label>
+              <input
+                type="email" value={email} onChange={e=>setEmail(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                placeholder="you@example.com"
+                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-slate-800"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 block mb-1">Password</label>
+              <input
+                type="password" value={password} onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                placeholder="••••••••"
+                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-slate-800"
+              />
+            </div>
+            {error&&<p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+            <button
+              onClick={handleLogin} disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg text-sm transition-all"
+            >
+              {loading ? "Signing in…" : "Sign In"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab,setTab]=useState("new");
+  const [accessToken,setAccessToken]=useState(()=>localStorage.getItem("sb_token")||"");
+  const [user,setUser]=useState(null);
   const [orders,setOrders]=useState([]);
   const [quotations,setQuotations]=useState([]);
   const [proformas,setProformas]=useState([]);
@@ -1922,31 +2129,135 @@ export default function App() {
   const [clients,setClients]=useState([]);
   const [recipients,setRecipients]=useState([]);
   const [expenses,setExpenses]=useState([]);
-  const [scriptUrl,setScriptUrl]=useState(()=>localStorage.getItem("scriptUrl")||"");
   const [seller,setSeller]=useState(DEFAULT_SELLER);
   const [series,setSeries]=useState(DEFAULT_SERIES);
   const [drive,setDrive]=useState(DEFAULT_DRIVE);
   const [loading,setLoading]=useState(false);
   const [syncStatus,setSyncStatus]=useState("");
+  const ENV_URL = getEnv("VITE_SUPABASE_URL");
+  const ENV_KEY = getEnv("VITE_SUPABASE_KEY");
+  const [sbUrl,setSbUrl]=useState(()=>localStorage.getItem("sb_url")||ENV_URL);
+  const [sbKey,setSbKey]=useState(()=>localStorage.getItem("sb_key")||ENV_KEY);
   const syncQueue = useRef([]);
   const syncing = useRef(false);
+  const sbRef = useRef(null);
 
-  // ── Core post helper ────────────────────────────────────────────────────
-  const postToSheets = useCallback(async (payload)=>{
-    const url = localStorage.getItem("scriptUrl")||scriptUrl;
-    if (!url) return;
-    await fetch(url,{method:"POST",body:JSON.stringify(payload),headers:{"Content-Type":"text/plain"}});
-  },[scriptUrl]);
+  // ── Init supabase client whenever credentials change ────────────────────
+  useEffect(()=>{
+    if (sbUrl && sbKey) sbRef.current = createSupabaseClient(sbUrl, sbKey);
+  },[sbUrl, sbKey]);
 
-  // ── Queue-based sync so rapid changes don't flood the API ───────────────
+  const sb = () => {
+    // Override Authorization header with user's access token when logged in
+    if (!sbRef.current) return null;
+    if (!accessToken) return sbRef.current;
+    const client = createSupabaseClient(sbUrl, sbKey);
+    // Patch headers with user token
+    const origFrom = client.from.bind(client);
+    client._token = accessToken;
+    const patchedHeaders = (h) => ({...h, "Authorization": `Bearer ${accessToken}`});
+    const rest = `${sbUrl}/rest/v1`;
+    const headers = { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${accessToken}` };
+    client.from = (table) => ({
+      select: async (cols="*") => {
+        const r = await fetch(`${rest}/${table}?select=${cols}&order=created_at.asc`, { headers: {...headers, "Prefer":"return=representation"} });
+        if (!r.ok) return [];
+        return r.json();
+      },
+      upsert: async (rowOrRows) => {
+        const r = await fetch(`${rest}/${table}`, { method:"POST", headers:{...headers,"Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify(rowOrRows) });
+        return r.ok;
+      },
+      delete: async (col, val) => {
+        const r = await fetch(`${rest}/${table}?${col}=eq.${encodeURIComponent(val)}`, { method:"DELETE", headers });
+        return r.ok;
+      },
+      deleteMany: async (col, vals) => {
+        if (!vals?.length) return true;
+        const list = vals.map(v=>encodeURIComponent(v)).join(",");
+        const r = await fetch(`${rest}/${table}?${col}=in.(${list})`, { method:"DELETE", headers });
+        return r.ok;
+      }
+    });
+    return client;
+  };
+
+  // ── Load all data on mount ───────────────────────────────────────────────
+  useEffect(()=>{
+    const ENV_URL2 = getEnv("VITE_SUPABASE_URL");
+    const ENV_KEY2 = getEnv("VITE_SUPABASE_KEY");
+    const url = localStorage.getItem("sb_url")||ENV_URL2;
+    const key = localStorage.getItem("sb_key")||ENV_KEY2;
+    const token = localStorage.getItem("sb_token")||"";
+    if (!url||!key||!token) return;
+    const baseClient = createSupabaseClient(url, key);
+    const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${token}` };
+    const rest2 = `${url}/rest/v1`;
+    const client = { from: (table) => ({
+      select: async (cols="*") => {
+        const r = await fetch(`${rest2}/${table}?select=${cols}&order=created_at.asc`, { headers: {...authHeaders,"Prefer":"return=representation"} });
+        if (!r.ok) return [];
+        return r.json();
+      }
+    }), auth: baseClient.auth };
+    // brace balance fixed
+    setLoading(true);
+    Promise.all([
+      client.from("orders").select(),
+      client.from("quotations").select(),
+      client.from("proformas").select(),
+      client.from("tax_invoices").select(),
+      client.from("items").select(),
+      client.from("clients").select(),
+      client.from("recipients").select(),
+      client.from("expenses").select(),
+      client.from("payments").select(),
+      client.from("settings").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,sets])=>{
+      const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
+      // Map DB item row to app item object
+      const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
+      const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], items:getItems("order",r.order_no), payments:[] });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no) });
+      const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"" });
+      const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"" });
+      const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
+      const ordMapped = ord?.length ? ord.map(mapOrder) : [];
+      const payMapped = pay?.length ? pay.map(mapPayment) : [];
+      if (ordMapped.length) setOrders(ordMapped.map(o=>({...o, payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
+      if (qt?.length) setQuotations(qt.map(mapInv("quotation")));
+      if (pf?.length) setProformas(pf.map(mapInv("proforma")));
+      if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
+      if (cl?.length) setClients(cl.map(mapClient));
+      if (rc?.length) setRecipients(rc.map(r=>({id:r.id,name:r.name})));
+      if (ex?.length) setExpenses(ex.map(mapExpense));
+      if (sets?.length) {
+        const s = {}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} });
+        if (s.seller) setSeller(s.seller);
+        if (s.series) setSeries(s.series);
+        if (s.drive) setDrive(s.drive);
+      }
+    }).catch(()=>{}).finally(()=>setLoading(false));
+  },[]);
+
+  // ── Queue-based sync ────────────────────────────────────────────────────
   const flushQueue = useCallback(async ()=>{
-    if (syncing.current || syncQueue.current.length===0) return;
+    if (syncing.current || syncQueue.current.length===0 || !sb()) return;
     syncing.current = true;
     setSyncStatus("saving");
     const batch = [...syncQueue.current];
     syncQueue.current = [];
     try {
-      for (const job of batch) await postToSheets(job);
+      for (const job of batch) {
+        if (job.action==="upsert") await sb().from(job.table).upsert(job.row);  // row can be single obj or array
+        else if (job.action==="delete") await sb().from(job.table).delete(job.col, job.val);
+        else if (job.action==="saveSettings") {
+          for (const [k,v] of Object.entries(job.data)) {
+            await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+          }
+        }
+      }
       setSyncStatus("saved");
     } catch(e) {
       setSyncStatus("error");
@@ -1955,62 +2266,88 @@ export default function App() {
       setTimeout(()=>setSyncStatus(""),3000);
       if (syncQueue.current.length>0) flushQueue();
     }
-  },[postToSheets]);
+  },[sbUrl, sbKey]);
 
   const enqueue = useCallback((jobs)=>{
     syncQueue.current.push(...(Array.isArray(jobs)?jobs:[jobs]));
-    setTimeout(flushQueue, 800);
+    setTimeout(flushQueue, 600);
   },[flushQueue]);
 
-  // ── Load all data from structured Sheets on mount ───────────────────────
-  useEffect(()=>{
-    const url = localStorage.getItem("scriptUrl");
-    if (!url) return;
-    setLoading(true);
-    fetch(url)
-      .then(r=>r.json())
-      .then(data=>{
-        if (data.orders?.length) setOrders(data.orders);
-        if (data.quotations?.length) setQuotations(data.quotations);
-        if (data.proformas?.length) setProformas(data.proformas);
-        if (data.taxInvoices?.length) setTaxInvoices(data.taxInvoices);
-        if (data.clients?.length) setClients(data.clients);
-        if (data.recipients?.length) setRecipients(data.recipients);
-        if (data.expenses?.length) setExpenses(data.expenses);
-        // payments are embedded in orders
-        if (data.payments?.length) {
-          setOrders(prev => prev.map(o => ({
-            ...o,
-            payments: data.payments.filter(p=>p.orderId===o.orderNo)
-          })));
-        }
-        if (data.settings) {
-          const s = data.settings;
-          if (s.seller) setSeller(typeof s.seller==="object"?s.seller:JSON.parse(s.seller));
-          if (s.series) setSeries(typeof s.series==="object"?s.series:JSON.parse(s.series));
-          if (s.drive) setDrive(typeof s.drive==="object"?s.drive:JSON.parse(s.drive));
-        }
-      })
-      .catch(()=>{})
-      .finally(()=>setLoading(false));
-  },[]);
+  // ── Items sync helper: delete old + insert new ──────────────────────────
+  const syncItems = (docType, docId, items) => {
+    const itemRows = (items||[]).map((it,i)=>({
+      id: `${docType}_${docId}_${i+1}`,
+      document_type: docType, document_id: docId,
+      sl: it.sl||i+1, item: it.item||"", hsn: it.hsn||"", unit: it.unit||"Nos",
+      unit_price: it.unitPrice||0, qty: it.qty||0, discount: it.discount||0,
+      gross_amt: it.grossAmt||0, cgst_rate: it.cgstRate||0, cgst_amt: it.cgstAmt||0,
+      sgst_rate: it.sgstRate||0, sgst_amt: it.sgstAmt||0, net_amt: it.netAmt||0
+    }));
+    // upsert all item rows (merge-duplicates handles updates)
+    if (itemRows.length) enqueue({action:"upsert",table:"items",row:itemRows});
+    // delete removed items (items beyond current count)
+    // we use a naming convention id = docType_docId_N so stale ones get overwritten on upsert
+  };
 
-  // ── Persist scriptUrl to localStorage ──────────────────────────────────
-  const handleSetScriptUrl = (url)=>{ setScriptUrl(url); localStorage.setItem("scriptUrl",url); };
-
-  // ── Upsert helpers per entity ───────────────────────────────────────────
-  const upsertOrder = (order) => enqueue({action:"upsert",sheet:"Orders",key:"orderNo",row:{...order,items:JSON.stringify(order.items||[]),proformaIds:JSON.stringify(order.proformaIds||[]),taxInvoiceIds:JSON.stringify(order.taxInvoiceIds||[]),payments:undefined}});
-  const upsertQuotation = (qt) => enqueue({action:"upsert",sheet:"Quotations",key:"invNo",row:{...qt,items:JSON.stringify(qt.items||[])}});
-  const upsertProforma = (pf) => enqueue({action:"upsert",sheet:"Proformas",key:"invNo",row:{...pf,items:JSON.stringify(pf.items||[])}});
-  const upsertTaxInvoice = (ti) => enqueue({action:"upsert",sheet:"TaxInvoices",key:"invNo",row:{...ti,items:JSON.stringify(ti.items||[])}});
-  const upsertClient = (c) => enqueue({action:"upsert",sheet:"Clients",key:"id",row:c});
-  const upsertRecipient = (r) => enqueue({action:"upsert",sheet:"Recipients",key:"id",row:r});
-  const upsertExpense = (ex) => enqueue({action:"upsert",sheet:"Expenses",key:"id",row:ex});
-  const upsertPayment = (p) => enqueue({action:"upsert",sheet:"Payments",key:"id",row:p});
-  const deleteExpense = (id) => enqueue({action:"delete",sheet:"Expenses",key:"id",keyVal:id});
-  const deleteClient = (id) => enqueue({action:"delete",sheet:"Clients",key:"id",keyVal:id});
-  const deleteRecipient = (id) => enqueue({action:"delete",sheet:"Recipients",key:"id",keyVal:id});
-  const saveSettings = (patch) => enqueue({action:"saveSettings",settings:patch});
+  // ── Upsert helpers ───────────────────────────────────────────────────────
+  const upsertOrder = (o) => {
+    enqueue({action:"upsert",table:"orders",row:{
+      order_no:o.orderNo, order_no_base:o.orderNoBase, type:o.type, customer_name:o.customerName,
+      phone:o.phone||"", email:o.email||"", gstin:o.gstin||"", billing_name:o.billingName||"",
+      billing_address:o.billingAddress||"", billing_state_code:o.billingStateCode||"",
+      shipping_name:o.shippingName||"", shipping_address:o.shippingAddress||"",
+      shipping_contact:o.shippingContact||"", shipping_gstin:o.shippingGstin||"",
+      shipping_state_code:o.shippingStateCode||"", place_of_supply:o.placeOfSupply||"",
+      order_date:o.orderDate, due_date:o.dueDate, payment_mode:o.paymentMode||"",
+      advance:o.advance||0, advance_recipient:o.advanceRecipient||"", advance_txn_ref:o.advanceTxnRef||"",
+      status:o.status||"Pending", comments:o.comments||"", needs_gst:o.needsGst!==false,
+      quotation_no:o.quotationNo||"", proforma_ids:JSON.stringify(o.proformaIds||[]),
+      tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[])
+    }});
+    syncItems("order", o.orderNo, o.items);
+  };
+  const upsertQuotation = (q) => {
+    enqueue({action:"upsert",table:"quotations",row:{
+      inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
+      order_id:q.orderId, amount:q.amount||0, notes:q.notes||""
+    }});
+    syncItems("quotation", q.invNo, q.items);
+  };
+  const upsertProforma = (p) => {
+    enqueue({action:"upsert",table:"proformas",row:{
+      inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
+      order_id:p.orderId, amount:p.amount||0, notes:p.notes||""
+    }});
+    syncItems("proforma", p.invNo, p.items);
+  };
+  const upsertTaxInvoice = (t) => {
+    enqueue({action:"upsert",table:"tax_invoices",row:{
+      inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
+      order_id:t.orderId, amount:t.amount||0, notes:t.notes||""
+    }});
+    syncItems("tax_invoice", t.invNo, t.items);
+  };
+  const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{
+    id:c.id, name:c.name, gstin:c.gstin||"", contact:c.contact||"", email:c.email||"",
+    billing_name:c.billingName||"", billing_address:c.billingAddress||"",
+    billing_state_code:c.billingStateCode||"", place_of_supply:c.placeOfSupply||"",
+    shipping_name:c.shippingName||"", shipping_contact:c.shippingContact||"",
+    shipping_gstin:c.shippingGstin||"", shipping_address:c.shippingAddress||"",
+    shipping_state_code:c.shippingStateCode||""
+  }});
+  const upsertRecipient = (r) => enqueue({action:"upsert",table:"recipients",row:{id:r.id,name:r.name}});
+  const upsertExpense = (e) => enqueue({action:"upsert",table:"expenses",row:{
+    id:e.id, date:e.date, paid_by:e.paidBy, amount:e.amount||0,
+    category:e.category||"", comment:e.comment||""
+  }});
+  const upsertPayment = (p) => enqueue({action:"upsert",table:"payments",row:{
+    id:p.id, order_id:p.orderId, date:p.date, amount:p.amount||0,
+    mode:p.mode||"", received_by:p.receivedBy||"", txn_ref:p.txnRef||"", comments:p.comments||""
+  }});
+  const deleteExpense = (id) => enqueue({action:"delete",table:"expenses",col:"id",val:id});
+  const deleteClient = (id) => enqueue({action:"delete",table:"clients",col:"id",val:id});
+  const deleteRecipient = (id) => enqueue({action:"delete",table:"recipients",col:"id",val:id});
+  const saveSettings = (patch) => enqueue({action:"saveSettings",data:patch});
 
   // ── Sync-aware setters ──────────────────────────────────────────────────
   const syncSetOrders=(v)=>{ const n=typeof v==="function"?v(orders):v; setOrders(n); n.forEach(o=>{ const prev=orders.find(p=>p.orderNo===o.orderNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(o)) upsertOrder(o); }); };
@@ -2024,12 +2361,34 @@ export default function App() {
   const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
   const syncSetDrive=(v)=>{ setDrive(v); saveSettings({drive:v}); };
 
+  // ── Auth handlers ────────────────────────────────────────────────────────
+  const handleLogin = (token, userData) => {
+    setAccessToken(token);
+    setUser(userData);
+    localStorage.setItem("sb_token", token);
+    // Trigger data load
+    window.location.reload();
+  };
+  const handleLogout = () => {
+    if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
+    setAccessToken(""); setUser(null);
+    localStorage.removeItem("sb_token");
+    setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
+    setClients([]); setRecipients([]); setExpenses([]);
+  };
+
+  // ── Supabase credentials handlers ───────────────────────────────────────
+  const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
+  const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
+
   const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
+
+  if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
-      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><p className="text-2xl mb-2">⏳</p><p className="text-sm font-semibold text-indigo-600">Loading data from Google Sheets…</p></div></div>}
+      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><p className="text-2xl mb-2">⏳</p><p className="text-sm font-semibold text-indigo-600">Loading data from Supabase…</p></div></div>}
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -2039,19 +2398,22 @@ export default function App() {
             {syncStatus==="error"&&<span className="text-xs text-red-400 ml-2">⚠ Sync failed</span>}
             <div><h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">{seller.name}</h1><p className="text-xs text-gray-400">Invoice & Order Management · GST Billing</p></div>
           </div>
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
+            </div>
+            <button onClick={handleLogout} title="Sign out" className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all text-sm">⏏</button>
           </div>
         </div>
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} scriptUrl={scriptUrl} seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl={scriptUrl} drive={drive} upsertPayment={upsertPayment}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} scriptUrl="" seller={seller} series={series} drive={drive} clients={clients} recipients={recipients}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} scriptUrl="" drive={drive} upsertPayment={upsertPayment}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
-          {tab==="settings"&&<Settings scriptUrl={scriptUrl} setScriptUrl={handleSetScriptUrl} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} drive={drive} setDrive={syncSetDrive} recipients={recipients} setRecipients={syncSetRecipients}/>}
+          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} drive={drive} setDrive={syncSetDrive} recipients={recipients} setRecipients={syncSetRecipients}/>}
         </div>
       </div>
     </div>
