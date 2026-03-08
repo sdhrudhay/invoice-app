@@ -973,7 +973,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const handleSaveOrder = (updated) => {
     const orderNo = updated.orderNo;
     const newItems = updated.items;
-    syncSetOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
+    setOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
     // Sync all payments to Supabase
     if (updated.payments?.length) {
       updated.payments.forEach(p=>upsertPayment({...p, orderId:orderNo, id:String(p.id||Date.now())}));
@@ -983,7 +983,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
       const updatedQt = quotations.find(q=>q.orderId===orderNo);
       if (updatedQt) {
         const newQt = {...updatedQt, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
-        syncSetQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
+        setQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
       }
       // Do NOT push items to proforma or tax invoices when editing order
     }
@@ -1002,10 +1002,10 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const handleSaveInvoice = (updatedInv, type, mergedItems) => {
     const orderNo = openOrder?.orderNo;
     if(type==="proforma"){
-      syncSetProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
       // Do NOT push proforma items back to order/quotation/tax invoice
     } else {
-      syncSetTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
       // Do NOT push tax invoice items back to order/quotation
     }
   };
@@ -1014,13 +1014,13 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo = openOrder.orderNo;
     const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
     if(type==="proforma"){
-      syncSetProformas(p=>[...p, inv]);
-      syncSetOrders(orders.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
+      setProformas(p=>[...p, inv]);
+      setOrders(orders.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
     } else {
-      syncSetTaxInvoices(p=>[...p, inv]);
+      setTaxInvoices(p=>[...p, inv]);
       // For B2C: always flip needsGst to true when tax invoice is created
       const isB2C = orderObj.type==="B2C";
-      syncSetOrders(orders.map(o=>{
+      setOrders(orders.map(o=>{
         if (o.orderNo!==orderNo) return o;
         return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(isB2C?{needsGst:true}:{})};
       }));
