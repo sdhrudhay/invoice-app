@@ -438,6 +438,7 @@ function ClientSearch({ clients, onSelect, value }) {
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
 function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{} }) {
+  const topRef = useRef(null);
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
   const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
@@ -488,6 +489,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     setLastOrder(order);
     reset();
     setSaving(false);
+    setTimeout(()=>topRef.current?.scrollIntoView({behavior:"smooth", block:"start"}), 100);
   };
 
   const reset = () => {
@@ -497,7 +499,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const previewNo = buildOrderNo(series, type, orders);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={topRef}>
       {msgErr&&msg&&<div className="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 border border-red-200 text-red-700">{msg}</div>}
       {lastOrder&&(
         <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap">
@@ -523,7 +525,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           </div>
           {(type==="B2B" ? clients.filter(c=>c.clientType!=="B2C") : clients.filter(c=>c.clientType==="B2C")).length > 0 && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-              <ClientSearch clients={clients} onSelect={applyClient} value={selectedClient?selectedClient.name+" ("+selectedClient.id+")":""}/>
+              <ClientSearch clients={clients.filter(c=>(c.clientType||"B2B")===(type==="B2B"?"B2B":"B2C"))} onSelect={applyClient} value={selectedClient?selectedClient.name+" ("+selectedClient.id+")":""}/>
               {selectedClient && <p className="text-xs text-indigo-500 mt-2 font-medium">✓ Client details auto-filled — edit below if needed for this order</p>}
             </div>
           )}
@@ -680,6 +682,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             <p className="font-mono text-sm text-slate-300">{order.orderNo}</p>
             <p className="font-bold text-lg leading-tight">{order.customerName}</p>
           </div>
+          <button onClick={()=>{ if(window.confirm("Delete this order and all its invoices? This cannot be undone.")) onDeleteOrder(order.orderNo); }} className="text-xs border border-red-400 text-red-300 hover:bg-red-900/40 px-3 py-1.5 rounded-lg font-semibold mr-2">🗑 Delete</button>
           <button onClick={onClose} className="text-slate-300 hover:text-white text-2xl font-bold leading-none px-1">×</button>
         </div>
 
@@ -1709,16 +1712,17 @@ function IncomeView({ orders, recipients, seller }) {
   orders.forEach(o => {
     if (num(o.advance) > 0) {
       allPayments.push({
-        date: o.orderDate, orderNo: o.orderNo, customerName: o.customerName,
+        date: o.orderDate||"", orderNo: o.orderNo||"", customerName: o.customerName||"",
         amount: num(o.advance), mode: o.paymentMode||"", receivedBy: resolveName(o.advanceRecipient),
-        txnRef: o.advanceTxnRef||"", note: "Advance", type: o.type
+        txnRef: o.advanceTxnRef||"", note: "Advance", type: o.type||""
       });
     }
     (o.payments||[]).forEach(p => {
+      if (!num(p.amount)) return;
       allPayments.push({
-        date: p.date, orderNo: o.orderNo, customerName: o.customerName,
+        date: p.date||"", orderNo: o.orderNo||"", customerName: o.customerName||"",
         amount: num(p.amount), mode: p.mode||"", receivedBy: resolveName(p.receivedBy),
-        txnRef: p.txnRef||"", note: p.comments||"Payment", type: o.type
+        txnRef: p.txnRef||"", note: p.comments||"Payment", type: o.type||""
       });
     });
   });
