@@ -883,7 +883,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
                 {/* Payment history */}
                 {num(o.advance)>0&&(()=>{
-                  const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===o.advanceRecipient)||allRecipientsRef.current.find(r=>r.id===o.advanceRecipient));
+                  const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===o.advanceRecipient)||allRecipients.find(r=>r.id===o.advanceRecipient));
                   return (
                     <div className="border border-gray-100 rounded-xl px-4 py-3 bg-white">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -911,7 +911,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{p.mode}</span>
                           <span className="text-xs text-gray-400">{p.date}</span>
                         </div>
-                        {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(x=>x.id===p.receivedBy)||allRecipientsRef.current.find(x=>x.id===p.receivedBy));return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
+                        {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(x=>x.id===p.receivedBy)||allRecipients.find(x=>x.id===p.receivedBy));return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
                         {p.txnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {p.txnRef}</p>}
                         {p.comments&&<p className="text-xs text-gray-500 mt-0.5">{p.comments}</p>}
                       </div>
@@ -955,7 +955,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], upsertPayment=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -1186,7 +1186,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, deleteRecipient=()=>{} }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[] }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false); const [saved,setSaved]=useState(false);
   const logoRef=useRef();
@@ -1312,7 +1312,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       <section className="space-y-3">
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">👤 Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
-        <RecipientMaster recipients={recipients} setRecipients={setRecipients} deleteRecipient={deleteRecipient}/>
+        <RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>
       </section>
 
       <div className="flex gap-3 pt-2 border-t">
@@ -1326,7 +1326,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 // ─── Recipient Master ─────────────────────────────────────────────────────────
 const EMPTY_RECIPIENT = { id:"", name:"" };
 
-function RecipientMaster({ recipients, setRecipients, deleteRecipient=()=>{} }) {
+function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, allRecipients=[] }) {
   const [form, setForm] = useState({...EMPTY_RECIPIENT});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1344,7 +1344,7 @@ function RecipientMaster({ recipients, setRecipients, deleteRecipient=()=>{} }) 
     setForm({...EMPTY_RECIPIENT});
   };
   const handleEdit = (r) => { setForm({...r}); setEditId(r.id); };
-  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) { const r = recipients.find(r=>r.id===id); if(r) { const softDeleted={...r,isDeleted:true}; upsertRecipient(softDeleted); allRecipientsRef.current=allRecipientsRef.current.map(x=>x.id===id?softDeleted:x); } setRecipients(recipients.filter(r=>r.id!==id)); } };
+  const handleDelete = (id) => { if(window.confirm("Delete this recipient?")) { const r = recipients.find(x=>x.id===id); if(r) upsertRecipient({...r, isDeleted:true}); setRecipients(recipients.filter(x=>x.id!==id)); } };
   const handleCancel = () => { setForm({...EMPTY_RECIPIENT}); setEditId(null); };
 
   const filtered = recipients.filter(r=>r.name.toLowerCase().includes(search.toLowerCase()));
@@ -1653,7 +1653,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, seller, deleteExpen
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ orders, expenses, recipients, seller }) {
+function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
   // Build per-recipient ledger
   // Each recipient either:
   //   collected money (advance/payments) → recipient owes company (positive = recipient owes)
@@ -1666,8 +1666,8 @@ function Dashboard({ orders, expenses, recipients, seller }) {
     if (!id) return null;
     if (id === "__company__") return seller?.name || "Company";
     // Search active recipients first, then fall back to allRecipientsRef (deleted ones)
-    const r = recipients.find(r => r.id === id) || allRecipientsRef.current.find(r => r.id === id);
-    return r ? r.name : id; // last fallback: show id if truly unknown
+    const r = recipients.find(r => r.id === id) || allRecipients.find(r => r.id === id);
+    return r ? r.name : id;
   };
 
   // Gather all recipient IDs (excluding company)
@@ -2299,11 +2299,11 @@ export default function App() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} upsertPayment={upsertPayment}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} seller={seller} deleteExpense={deleteExpense}/>}
-          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} seller={seller}/>}
-          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} deleteRecipient={deleteRecipient}/>}
+          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
+          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current}/>}
         </div>
       </div>
     </div>
