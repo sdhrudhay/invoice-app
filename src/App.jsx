@@ -1338,13 +1338,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 // ─── Settings ─────────────────────────────────────────────────────────────────
 function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, drive, setDrive, recipients=[], setRecipients }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series}); const [dr,setDr]=useState({...drive});
-  const [localSbUrl,setLocalSbUrl]=useState(sbUrl); const [localSbKey,setLocalSbKey]=useState(sbKey);
   const [showSetup,setShowSetup]=useState(false); const [saved,setSaved]=useState(false);
   const logoRef=useRef();
 
   const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
-  const save = () => { setSbUrl(localSbUrl); setSbKey(localSbKey); setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
-  const cancel = () => { setLocalSbUrl(sbUrl); setLocalSbKey(sbKey); setS({...seller}); setSr({...series}); setDr({...drive}); };
+  const save = () => { setSeller(s); setSeries(sr); setDrive(dr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const cancel = () => { setS({...seller}); setSr({...series}); setDr({...drive}); };
 
   const pB2C = buildOrderNo(sr,"B2C",[]); const pB2B = buildOrderNo(sr,"B2B",[]);
   const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
@@ -1464,27 +1463,13 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         </div>
       </section>
 
-      {/* Supabase */}
+      {/* Supabase status indicator only */}
       <section className="border-t pt-6">
         <h3 className="font-bold text-gray-800 mb-1">🗄️ Supabase Database</h3>
-        <p className="text-xs text-gray-400 mb-4">Connect your Supabase project to sync all data. Free tier is more than enough for this app.</p>
-        <div className="grid grid-cols-1 gap-3 mb-3">
-          <F label="Project URL" value={localSbUrl} onChange={setLocalSbUrl} placeholder="https://xxxxxxxxxxxx.supabase.co"/>
-          <F label="Anon / Public Key" value={localSbKey} onChange={setLocalSbKey} placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"/>
-        </div>
-        {localSbUrl&&localSbKey&&<p className="text-xs text-emerald-600 font-medium mb-3">✓ Credentials set — click Save All Settings to connect</p>}
-        <button onClick={()=>setShowSetup(!showSetup)} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">{showSetup?"▼ Hide":"▶ Show"} Setup Instructions</button>
-        {showSetup&&(
-          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1.5">
-            <p className="font-bold text-sm">One-time Supabase setup (~5 minutes)</p>
-            <p>1. Go to <b>supabase.com</b> → create a free project</p>
-            <p>2. In your project go to <b>SQL Editor</b> and run the SQL below to create all tables</p>
-            <p>3. Go to <b>Project Settings → API</b> → copy the <b>Project URL</b> and <b>anon public key</b></p>
-            <p>4. Paste them in the fields above and click <b>Save All Settings</b></p>
-            <p className="font-bold mt-2">SQL to run in Supabase SQL Editor:</p>
-            <pre className="bg-slate-900 text-emerald-300 text-xs p-3 rounded-lg overflow-x-auto whitespace-pre leading-relaxed mt-1">{SUPABASE_SQL}</pre>
-          </div>
-        )}
+        {(sbUrl&&sbKey)
+          ? <p className="text-xs text-emerald-600 font-medium">✓ Connected to Supabase</p>
+          : <p className="text-xs text-red-400 font-medium">⚠ Not connected — set VITE_SUPABASE_URL and VITE_SUPABASE_KEY in your environment</p>
+        }
       </section>
 
       <section className="space-y-3">
@@ -2402,7 +2387,7 @@ export default function App() {
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
               {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
             </div>
-            <button onClick={handleLogout} title="Sign out" className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all text-sm">⏏</button>
+            <button onClick={handleLogout} className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">⏏ Sign Out</button>
           </div>
         </div>
       </div>
