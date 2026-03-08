@@ -2052,6 +2052,27 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
     try {
       const client = createSupabaseClient(sbUrl, sbKey);
       const data = await client.auth.signIn(email, password);
+      // Send login notification email via EmailJS
+      const ejsService = getEnv("VITE_EMAILJS_SERVICE");
+      const ejsTemplate = getEnv("VITE_EMAILJS_TEMPLATE");
+      const ejsKey = getEnv("VITE_EMAILJS_KEY");
+      if (ejsService && ejsTemplate && ejsKey) {
+        const now = new Date().toLocaleString("en-IN", {timeZone:"Asia/Kolkata"});
+        fetch("https://api.emailjs.com/api/v1.0/email/send", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({
+            service_id: ejsService,
+            template_id: ejsTemplate,
+            user_id: ejsKey,
+            template_params: {
+              user_email: email,
+              login_time: now + " IST",
+              user_agent: navigator.userAgent
+            }
+          })
+        }).catch(()=>{});
+      }
       onLogin(data.access_token, data.user);
     } catch(e) {
       setError(e.message);
@@ -2387,7 +2408,7 @@ export default function App() {
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
               {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
             </div>
-            <button onClick={handleLogout} className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">⏏ Sign Out</button>
+            <button onClick={handleLogout} className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">Sign Out</button>
           </div>
         </div>
       </div>
