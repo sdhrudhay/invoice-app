@@ -29,11 +29,12 @@ function genInvNo(prefix, period, list, digits) {
   return { invNo: `${base}/${String(count).padStart(digits, "0")}`, invNoBase: base };
 }
 
-function genClientId() {
-  return "CLT-" + Date.now();
+function genClientId(clients=[]) {
+  const n = clients.length + 1;
+  return "CLT-" + String(n).padStart(4,"0");
 }
 
-const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"" };
+const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"", clientType:"B2B" };
 
 const EMPTY_ITEM = { sl: 1, item: "", hsn: "", unit: "Nos", unitPrice: "", qty: "", discount: "", grossAmt: 0, cgstRate: 9, cgstAmt: 0, sgstRate: 9, sgstAmt: 0, netAmt: 0 };
 
@@ -129,6 +130,7 @@ create table if not exists clients (
   billing_name text, billing_address text, billing_state_code text,
   place_of_supply text, shipping_name text, shipping_contact text,
   shipping_gstin text, shipping_address text, shipping_state_code text,
+  client_type text default 'B2B',
   is_deleted boolean default false,
   created_at timestamptz default now()
 );
@@ -435,7 +437,7 @@ function ClientSearch({ clients, onSelect, value }) {
 }
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[] }) {
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{} }) {
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
   const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
@@ -447,6 +449,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const [advanceTxnRef,setAdvanceTxnRef]=useState("");
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
   const [selectedClient,setSelectedClient]=useState(null);
+  const [lastOrder,setLastOrder]=useState(null);
 
   const applyClient = (c) => {
     if (!c) { setSelectedClient(null); setSameAsBilling(false); return; }
@@ -482,7 +485,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0) };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
-    notify(`Order ${orderNo} & Quotation ${qtNo} saved!`);
+    setLastOrder(order);
+    reset();
     setSaving(false);
   };
 
@@ -494,7 +498,19 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 
   return (
     <div className="space-y-6">
-      {msg&&<div className={`px-4 py-2 rounded-lg text-sm font-medium ${msgErr?"bg-red-50 border border-red-200 text-red-700":"bg-emerald-50 border border-emerald-200 text-emerald-700"}`}>{msg}</div>}
+      {msgErr&&msg&&<div className="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 border border-red-200 text-red-700">{msg}</div>}
+      {lastOrder&&(
+        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="font-bold text-emerald-800 text-base">&#x2705; Order Created Successfully!</p>
+            <p className="text-sm text-emerald-700 mt-0.5">Order <span className="font-mono font-bold">{lastOrder.orderNo}</span> for <span className="font-semibold">{lastOrder.customerName}</span> has been saved.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>onViewOrder(lastOrder)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">View Order</button>
+            <button onClick={()=>setLastOrder(null)} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm">Dismiss</button>
+          </div>
+        </div>
+      )}
       <div className="space-y-5">
           <div className="flex gap-3 items-center flex-wrap">
             <span className="text-sm font-semibold text-gray-600">Customer Type:</span>
@@ -505,7 +521,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             {type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-1"><input type="checkbox" checked={needsGst} onChange={e=>{const ng=e.target.checked;setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));} } className="rounded"/> Wants GST Invoice</label>}
             <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
           </div>
-          {type==="B2B" && clients.length > 0 && (
+          {(type==="B2B" ? clients.filter(c=>c.clientType!=="B2C") : clients.filter(c=>c.clientType==="B2C")).length > 0 && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
               <ClientSearch clients={clients} onSelect={applyClient} value={selectedClient?selectedClient.name+" ("+selectedClient.id+")":""}/>
               {selectedClient && <p className="text-xs text-indigo-500 mt-2 font-medium">✓ Client details auto-filled — edit below if needed for this order</p>}
@@ -584,7 +600,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 }
 
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, recipients=[] }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[] }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [editInv, setEditInv] = useState(null);
@@ -954,12 +970,13 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
   const [balFilter,setBalFilter]=useState(false);
   const [openOrder,setOpenOrder]=useState(null);
+  useEffect(()=>{ if(initialOrder){ setOpenOrder(initialOrder); onClearInitialOrder(); } },[initialOrder]);
 
   const getTotal = (o) => {
     const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+num(t.amount),0);
@@ -982,6 +999,20 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     setQuotations(prev => prev.map(q => q.orderId===orderNo
       ? {...q, items:mergedItems, amount:mergedItems.reduce((s,i)=>s+num(i.netAmt),0)}
       : q));
+  };
+
+  const handleDeleteOrder = (orderNo) => {
+    setOrders(orders.filter(o=>o.orderNo!==orderNo));
+    setQuotations(quotations.filter(q=>q.orderId!==orderNo));
+    setProformas(proformas.filter(p=>p.orderId!==orderNo));
+    setTaxInvoices(taxInvoices.filter(t=>t.orderId!==orderNo));
+    enqueue({action:"delete",table:"orders",col:"order_no",val:orderNo});
+    enqueue({action:"delete",table:"quotations",col:"order_id",val:orderNo});
+    enqueue({action:"delete",table:"proformas",col:"order_id",val:orderNo});
+    enqueue({action:"delete",table:"tax_invoices",col:"order_id",val:orderNo});
+    enqueue({action:"deleteMany",table:"items",col:"document_id",val:orderNo});
+    enqueue({action:"deleteMany",table:"payments",col:"order_id",val:orderNo});
+    setOpenOrder(null);
   };
 
   const handleSaveOrder = (updated) => {
@@ -1177,6 +1208,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           onSaveOrder={handleSaveOrder}
           onSaveInvoice={handleSaveInvoice}
           onCreateInvoice={handleCreateInvoice}
+          onDeleteOrder={handleDeleteOrder}
           recipients={recipients}
         />
       )}
@@ -1337,7 +1369,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
       setRecipients(recipients.map(r=>r.id===editId?{...form,id:editId}:r));
       setEditId(null);
     } else {
-      const id = "RCP-"+Date.now();
+      const id = "RCP-"+String(recipients.length+1).padStart(4,"0");
       setRecipients([...recipients,{...form,id}]);
     }
     setForm({...EMPTY_RECIPIENT});
@@ -1386,12 +1418,14 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
 // ─── Client Master ────────────────────────────────────────────────────────────
 function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_CLIENT});
+  const [clientTab, setClientTab] = useState("B2B");
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  const filtered = clients.filter(c =>
+  const tabClients = clients.filter(c=>(c.clientType||"B2B")===clientTab);
+  const filtered = tabClients.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.id.toLowerCase().includes(search.toLowerCase()) ||
     (c.gstin||"").includes(search)
@@ -1403,15 +1437,15 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
       setClients(clients.map(c => c.id === editId ? { ...form, id: editId } : c));
       setEditId(null);
     } else {
-      const id = genClientId();
+      const id = genClientId(clients);
       setClients([...clients, { ...form, id }]);
     }
     setForm({...EMPTY_CLIENT}); setShowForm(false); setSameAsBilling(false);
   };
 
-  const handleEdit = (c) => { setForm({...c}); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
+  const handleEdit = (c) => { setForm({...c}); setClientTab(c.clientType||"B2B"); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
   const handleDelete = (id) => { if (window.confirm("Delete this client?")) { const updated = clients.map(c=>c.id===id?{...c,isDeleted:true}:c); setClients(updated.filter(c=>!c.isDeleted)); deleteClient(updated.find(c=>c.id===id)); } };
-  const handleNew = () => { setForm({...EMPTY_CLIENT}); setEditId(null); setShowForm(true); setSameAsBilling(false); };
+  const handleNew = () => { setForm({...EMPTY_CLIENT, clientType:clientTab}); setEditId(null); setShowForm(true); setSameAsBilling(false); };
 
   const upd = (k,v) => setForm(f=>({...f,[k]:v}));
 
@@ -1419,10 +1453,15 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="font-bold text-lg text-slate-800">B2B Client Master</h2>
+          <h2 className="font-bold text-lg text-slate-800">Client Master</h2>
           <p className="text-xs text-gray-400">Save client details once, auto-fill on every new order.</p>
         </div>
-        <button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {["B2B","B2C"].map(t=><button key={t} onClick={()=>{setClientTab(t);setShowForm(false);setEditId(null);setForm({...EMPTY_CLIENT,clientType:t});}} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${clientTab===t?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t}</button>)}
+          </div>
+          <button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>
+        </div>
       </div>
 
       {showForm && (
@@ -1435,8 +1474,8 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
             <div className="grid grid-cols-2 gap-4">
-              <F label="Company Name" value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
-              <F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} placeholder="29XXXXX0000X1ZX"/>
+              <F label={clientTab==="B2C"?"Customer Name":"Company Name"} value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
+              {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} placeholder="29XXXXX0000X1ZX"/>}
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
               <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} placeholder="client@email.com"/>
               <F label="Place of Supply" value={form.placeOfSupply} onChange={v=>upd("placeOfSupply",v)} placeholder="e.g. Karnataka (29)"/>
@@ -1496,7 +1535,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
       {filtered.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <p className="text-3xl mb-2">🏢</p>
-          <p className="font-medium">{clients.length === 0 ? "No clients yet. Add your first B2B client!" : "No clients match your search."}</p>
+          <p className="font-medium">{tabClients.length === 0 ? `No ${clientTab} clients yet. Add your first ${clientTab} client!` : "No clients match your search."}</p>
         </div>
       )}
 
@@ -1647,6 +1686,111 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
           );
         })}
       </div>
+    </div>
+  );
+}
+
+
+// ─── Income View ──────────────────────────────────────────────────────────────
+function IncomeView({ orders, recipients, seller }) {
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const resolveName = (id) => {
+    if (!id) return "";
+    if (id === "__company__") return seller?.name || "Company";
+    const r = recipients.find(r => r.id === id);
+    return r ? r.name : "(Deleted)";
+  };
+
+  // Gather all payments: advance + payment entries
+  const allPayments = [];
+  orders.forEach(o => {
+    if (num(o.advance) > 0) {
+      allPayments.push({
+        date: o.orderDate, orderNo: o.orderNo, customerName: o.customerName,
+        amount: num(o.advance), mode: o.paymentMode||"", receivedBy: resolveName(o.advanceRecipient),
+        txnRef: o.advanceTxnRef||"", note: "Advance", type: o.type
+      });
+    }
+    (o.payments||[]).forEach(p => {
+      allPayments.push({
+        date: p.date, orderNo: o.orderNo, customerName: o.customerName,
+        amount: num(p.amount), mode: p.mode||"", receivedBy: resolveName(p.receivedBy),
+        txnRef: p.txnRef||"", note: p.comments||"Payment", type: o.type
+      });
+    });
+  });
+
+  const filtered = allPayments
+    .filter(p => {
+      if (fromDate && p.date < fromDate) return false;
+      if (toDate && p.date > toDate) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        return p.orderNo.toLowerCase().includes(s) || p.customerName.toLowerCase().includes(s) || p.receivedBy.toLowerCase().includes(s);
+      }
+      return true;
+    })
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  const total = filtered.reduce((s,p) => s + p.amount, 0);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-bold text-lg text-slate-800">Income</h2>
+        <p className="text-xs text-gray-400">All payments received across orders.</p>
+      </div>
+      <div className="flex flex-wrap gap-3 items-center">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search order, customer, recipient…"
+          className="border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-48"/>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span>From</span>
+          <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          <span>To</span>
+          <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        </div>
+        {(fromDate||toDate) && <button onClick={()=>{setFromDate("");setToDate("");}} className="text-xs text-indigo-500 hover:underline">Clear dates</button>}
+      </div>
+
+      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-5 text-white flex items-center justify-between">
+        <div>
+          <p className="text-sm opacity-80">Total Received ({filtered.length} entries)</p>
+          <p className="text-3xl font-black mt-1">&#x20B9;{total.toLocaleString("en-IN", {minimumFractionDigits:2})}</p>
+        </div>
+        <span className="text-5xl opacity-20">&#x20B9;</span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <p className="text-3xl mb-2">&#x1F4B0;</p>
+          <p className="font-medium">No payments found.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((p,i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-slate-800 text-sm">{p.customerName}</span>
+                  <span className="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{p.orderNo}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${p.type==="B2B"?"bg-blue-100 text-blue-700":"bg-emerald-100 text-emerald-700"}`}>{p.type}</span>
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-xs text-gray-400">{p.date}</span>
+                  <span className="text-xs text-gray-500">{p.note}</span>
+                  {p.mode && <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{p.mode}</span>}
+                  {p.receivedBy && <span className="text-xs text-indigo-500">&#x1F464; {p.receivedBy}</span>}
+                  {p.txnRef && <span className="text-xs text-gray-400 font-mono">Ref: {p.txnRef}</span>}
+                </div>
+              </div>
+              <span className="font-bold text-emerald-600 text-base shrink-0">+&#x20B9;{num(p.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1943,6 +2087,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab,setTab]=useState("new");
+  const [viewOrder,setViewOrder]=useState(null);
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
@@ -2048,7 +2193,7 @@ export default function App() {
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no) });
-      const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false });
+      const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
       const ordMapped = ord?.length ? ord.map(mapOrder) : [];
@@ -2154,7 +2299,7 @@ export default function App() {
     }});
     syncItems("tax_invoice", t.invNo, t.items);
   };
-  const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{ is_deleted:c.isDeleted||false,
+  const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{ is_deleted:c.isDeleted||false, client_type:c.clientType||"B2B",
     id:c.id, name:c.name, gstin:c.gstin||"", contact:c.contact||"", email:c.email||"",
     billing_name:c.billingName||"", billing_address:c.billingAddress||"",
     billing_state_code:c.billingStateCode||"", place_of_supply:c.placeOfSupply||"",
@@ -2260,7 +2405,7 @@ export default function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
+  const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"income",label:"💰 Income"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -2297,8 +2442,8 @@ export default function App() {
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
