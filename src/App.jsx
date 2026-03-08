@@ -599,8 +599,17 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
   const qt = quotations.find(q=>q.orderId===order.orderNo);
-  // Local editable items (initialised fresh whenever order prop changes)
+  // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
+  // Sync orderItems when order.items prop changes (e.g. after initial load from Supabase)
+  const prevOrderNo = useRef(order.orderNo);
+  useEffect(() => {
+    if (prevOrderNo.current !== order.orderNo) {
+      // Only reinit if a different order opened
+      setOrderItems((order.items||[]).map(i=>({...i})));
+      prevOrderNo.current = order.orderNo;
+    }
+  }, [order.orderNo, order.items]);
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
@@ -620,9 +629,10 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleAddPayment = () => {
     if (!newPay.amount || isNaN(num(newPay.amount))) return;
     if (!newPay.receivedBy) { alert("Please select who received this payment."); return; }
-    const entry = {...newPay, id: Date.now()};
+    const entry = {...newPay, id: String(Date.now()), orderId: order.orderNo};
     const updated = [...payments, entry];
     setPayments(updated);
+    // Save payment directly via prop and also persist to order
     onSaveOrder({...o, items: orderItems, payments: updated});
     setNewPay({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
     setPaySaved(true); setTimeout(()=>setPaySaved(false), 2000);
@@ -964,8 +974,10 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo = updated.orderNo;
     const newItems = updated.items;
     syncSetOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
-    // Sync payments separately
-    if (updated.payments?.length) updated.payments.forEach(p=>upsertPayment({...p,orderId:orderNo}));
+    // Sync all payments to Supabase
+    if (updated.payments?.length) {
+      updated.payments.forEach(p=>upsertPayment({...p, orderId:orderNo, id:String(p.id||Date.now())}));
+    }
     // Sync quotation items (NOT proforma or tax invoice — see fix 5)
     if (newItems) {
       const updatedQt = quotations.find(q=>q.orderId===orderNo);
@@ -1910,6 +1922,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 export default function App() {
   const [tab,setTab]=useState("new");
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
+  const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
   const [orders,setOrders]=useState([]);
   const [quotations,setQuotations]=useState([]);
@@ -1935,17 +1948,21 @@ export default function App() {
     if (sbUrl && sbKey) sbRef.current = createSupabaseClient(sbUrl, sbKey);
   },[sbUrl, sbKey]);
 
+  // Keep accessToken ref in sync with state
+  useEffect(()=>{ accessTokenRef.current = accessToken; },[accessToken]);
+
   const sb = () => {
     // Override Authorization header with user's access token when logged in
     if (!sbRef.current) return null;
-    if (!accessToken) return sbRef.current;
+    const token = accessTokenRef.current || accessToken;
+    if (!token) return sbRef.current;
     const client = createSupabaseClient(sbUrl, sbKey);
     // Patch headers with user token
     const origFrom = client.from.bind(client);
     client._token = accessToken;
     const patchedHeaders = (h) => ({...h, "Authorization": `Bearer ${accessToken}`});
     const rest = `${sbUrl}/rest/v1`;
-    const headers = { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${accessToken}` };
+    const headers = { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${token}` };
     client.from = (table) => ({
       select: async (cols="*") => {
         const r = await fetch(`${rest}/${table}?select=${cols}&order=created_at.asc`, { headers: {...headers, "Prefer":"return=representation"} });
@@ -2205,6 +2222,7 @@ export default function App() {
 
   const handleLogin = (token, userData) => {
     setAccessToken(token);
+    accessTokenRef.current = token;
     setUser(userData);
     sessionStorage.setItem("sb_token", token);
     window.location.reload();
