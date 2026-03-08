@@ -292,6 +292,16 @@ function printOrOpen(html) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+function downloadHtml(html, filename) {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename + ".html";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 // ─── Reusable UI ──────────────────────────────────────────────────────────────
 function Badge({ label }) {
   const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700" };
@@ -535,11 +545,11 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
                   const checked=e.target.checked;
                   setSameAsBilling(checked);
                   if(checked){
-                    setShippingName(billingName||customerName);
-                    setShippingContact(phone);
-                    setShippingAddress(billingAddress);
-                    setShippingGstin(gstin);
-                    setShippingStateCode(billingStateCode);
+                    setShippingName(billingName||customerName||"");
+                    setShippingContact(phone||"");
+                    setShippingAddress(billingAddress||"");
+                    setShippingGstin(gstin||"");
+                    setShippingStateCode(billingStateCode||"");
                   } else {
                     setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode("");
                   }
@@ -596,9 +606,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveInv = (updatedInv, type) => {
     const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)};
-    const merged = mergeItemsIntoOrder(orderItems, updatedInv.items);
-    setOrderItems(merged);
-    onSaveInvoice(saved, type, merged);
+    onSaveInvoice(saved, type);
     setEditInv(null);
   };
   const handleCreate = (type) => setCreating(type);
@@ -622,9 +630,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
     const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)};
-    const merged = mergeItemsIntoOrder(orderItems, inv.items);
-    setOrderItems(merged);
-    onCreateInvoice(newInv, type, merged, needsGstNow);
+    onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
   };
@@ -668,8 +674,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <F label="Due Date" type="date" value={o.dueDate||""} onChange={v=>upd("dueDate",v)}/>
                 <S label="Payment Mode" value={o.paymentMode} onChange={v=>upd("paymentMode",v)} options={PAYMENT_MODES}/>
                 <F label="Advance Paid (₹)" type="number" value={o.advance||""} onChange={v=>upd("advance",v)}/>
+                <F label="Advance Txn Ref (optional)" value={o.advanceTxnRef||""} onChange={v=>upd("advanceTxnRef",v)} placeholder="UPI ref, cheque no…"/>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Advance Received By <span className="text-red-400">*</span></label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Advance Received By</label>
                   <select value={o.advanceRecipient||""} onChange={e=>upd("advanceRecipient",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                     <option value="">— Select recipient —</option>
                     <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
@@ -718,7 +725,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 ? <>
                     <div className="flex items-center justify-between">
                       <div><span className="font-mono font-bold text-sky-700">{qt.invNo}</span><span className="text-xs text-gray-400 ml-2">{qt.invDate}</span><span className="text-xs font-semibold text-sky-700 ml-3">₹{fmt(qt.amount)}</span></div>
-                      <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">🖨 Print Quotation</button>
+                      <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildQuotationHtml(o,qt,seller),qt.invNo)} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                     </div>
                     <div className="border-t pt-4">
                       <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
@@ -751,7 +758,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                           <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
                             <button onClick={()=>setEditInv({inv:{...p,items:p.items.map(i=>({...i}))},type:"proforma"})} className="text-xs border border-blue-300 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">🖨 Print</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
                       );
@@ -770,7 +777,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
                             <button onClick={()=>setEditInv({inv:{...t,items:t.items.map(i=>({...i}))},type:"tax"})} className="text-xs border border-slate-300 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">🖨 Print</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
                       );
@@ -830,7 +837,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Amount (₹)" type="number" value={newPay.amount} onChange={v=>setNewPay(p=>({...p,amount:v}))} placeholder="0.00"/>
                     <S label="Payment Mode" value={newPay.mode} onChange={v=>setNewPay(p=>({...p,mode:v}))} options={PAYMENT_MODES}/>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By{num(advance)>0&&<span className="text-red-400"> *</span>}</label>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By{num(o.advance)>0&&<span className="text-red-400"> *</span>}</label>
                       <select value={newPay.receivedBy} onChange={e=>setNewPay(p=>({...p,receivedBy:e.target.value}))} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                         <option value="">— Select recipient —</option>
                         <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
@@ -954,19 +961,16 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     syncSetOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
     // Sync payments separately
     if (updated.payments?.length) updated.payments.forEach(p=>upsertPayment({...p,orderId:orderNo}));
-    // Sync quotation
+    // Sync quotation items (NOT proforma or tax invoice — see fix 5)
     if (newItems) {
-      syncSetQuotations(prev => prev.map(q => q.orderId===orderNo
-        ? {...q, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)}
-        : q));
-      syncSetTaxInvoices(prev => prev.map(t => {
-        if (t.orderId !== orderNo) return t;
-        const merged = mergeItemsIntoOrder(t.items, newItems);
-        return {...t, items: merged, amount: merged.reduce((s,i)=>s+num(i.netAmt),0)};
-      }));
+      const updatedQt = quotations.find(q=>q.orderId===orderNo);
+      if (updatedQt) {
+        const newQt = {...updatedQt, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
+        syncSetQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
+      }
+      // Do NOT push items to proforma or tax invoices when editing order
     }
     setOpenOrder(updated);
-    const qt = quotations.find(q=>q.orderId===updated.orderNo);
   };
 
   const pushItemsToTaxInvoices = (orderNo, mergedItems) => {
@@ -980,16 +984,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const handleSaveInvoice = (updatedInv, type, mergedItems) => {
     const orderNo = openOrder?.orderNo;
-    const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
     if(type==="proforma"){
-      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
-      if (orderNo && mergedItems) {
-        syncItemsAndQuotation(orderNo, mergedItems);
-        pushItemsToTaxInvoices(orderNo, mergedItems);
-      }
+      syncSetProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+      // Do NOT push proforma items back to order/quotation/tax invoice
     } else {
-      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
-      if (orderNo) syncItemsAndQuotation(orderNo, mergedItems);
+      syncSetTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+      // Do NOT push tax invoice items back to order/quotation
     }
   };
 
@@ -997,20 +997,17 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo = openOrder.orderNo;
     const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
     if(type==="proforma"){
-      setProformas(p=>[...p, inv]);
-      setOrders(prev=>prev.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
-      if (mergedItems) {
-        syncItemsAndQuotation(orderNo, mergedItems);
-        pushItemsToTaxInvoices(orderNo, mergedItems);
-      }
-      } else {
-      setTaxInvoices(p=>[...p, inv]);
-      setOrders(prev=>prev.map(o=>{
+      syncSetProformas(p=>[...p, inv]);
+      syncSetOrders(orders.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
+    } else {
+      syncSetTaxInvoices(p=>[...p, inv]);
+      // For B2C: always flip needsGst to true when tax invoice is created
+      const isB2C = orderObj.type==="B2C";
+      syncSetOrders(orders.map(o=>{
         if (o.orderNo!==orderNo) return o;
-        return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(needsGstFlip?{needsGst:true}:{})};
+        return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(isB2C?{needsGst:true}:{})};
       }));
-      if (mergedItems) syncItemsAndQuotation(orderNo, mergedItems);
-      }
+    }
   };
 
   const todayStr = today();
@@ -1032,7 +1029,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             <span className="font-bold text-slate-700 font-mono text-xs">{o.orderNo}</span>
-            <Badge label={o.type}/>{!o.needsGst&&<Badge label="No GST"/>}<Badge label={o.status}/>
+            <Badge label={o.type}/>{o.type==="B2C"&&!o.needsGst&&!(taxInvoices.some(t=>t.orderId===o.orderNo))&&<Badge label="No GST"/>}<Badge label={o.status}/>
             {isOverdue&&<span className="text-xs font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">⚠ Overdue</span>}
             {isDueSoon&&!isOverdue&&<span className="text-xs font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">⏰ Due soon</span>}
           </div>
@@ -1066,9 +1063,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         </div>
         {/* Row 4: print buttons */}
         <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100" onClick={e=>e.stopPropagation()}>
-          {qt&&<button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-2.5 py-1 rounded-full font-mono">🖨 {qt.invNo}</button>}
-          {pfs.map(p=><button key={p.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-full font-mono">🖨 {p.invNo}</button>)}
-          {tis.map(t=><button key={t.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-700 hover:bg-slate-50 px-2.5 py-1 rounded-full font-mono">🖨 {t.invNo}</button>)}
+          {qt&&<button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-2.5 py-1 rounded-full font-mono">👁 {qt.invNo}</button>}
+          {pfs.map(p=><button key={p.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-full font-mono">👁 {p.invNo}</button>)}
+          {tis.map(t=><button key={t.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-700 hover:bg-slate-50 px-2.5 py-1 rounded-full font-mono">👁 {t.invNo}</button>)}
         </div>
       </div>
     );
