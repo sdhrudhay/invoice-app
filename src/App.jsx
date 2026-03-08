@@ -489,7 +489,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     setLastOrder(order);
     reset();
     setSaving(false);
-    setTimeout(()=>topRef.current?.scrollIntoView({behavior:"smooth", block:"start"}), 100);
+    setTimeout(()=>window.scrollTo({top:0,behavior:"smooth"}), 100);
   };
 
   const reset = () => {
@@ -517,7 +517,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="flex gap-3 items-center flex-wrap">
             <span className="text-sm font-semibold text-gray-600">Customer Type:</span>
             {["B2B","B2C"].map(t=>(
-              <button key={t} onClick={()=>{const ng=t==="B2B";setType(t);setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));} }
+              <button key={t} onClick={()=>{const ng=t==="B2B";setType(t);setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));setSelectedClient(null);} }
                 className={`px-5 py-2 rounded-full text-sm font-semibold border-2 transition-all ${type===t?"bg-indigo-600 border-indigo-600 text-white":"border-gray-300 text-gray-500 hover:border-indigo-400"}`}>{t}</button>
             ))}
             {type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-1"><input type="checkbox" checked={needsGst} onChange={e=>{const ng=e.target.checked;setNeedsGst(ng);setItems(prev=>prev.map(it=>calcItem(it,ng)));} } className="rounded"/> Wants GST Invoice</label>}
@@ -682,7 +682,6 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             <p className="font-mono text-sm text-slate-300">{order.orderNo}</p>
             <p className="font-bold text-lg leading-tight">{order.customerName}</p>
           </div>
-          <button onClick={()=>{ if(window.confirm("Delete this order and all its invoices? This cannot be undone.")) onDeleteOrder(order.orderNo); }} className="text-xs border border-red-400 text-red-300 hover:bg-red-900/40 px-3 py-1.5 rounded-lg font-semibold mr-2">🗑 Delete</button>
           <button onClick={onClose} className="text-slate-300 hover:text-white text-2xl font-bold leading-none px-1">×</button>
         </div>
 
@@ -747,7 +746,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
                 <ItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst}/>
               </div>
-              <div className="pt-3 border-t">
+              <div className="pt-3 border-t space-y-3">
                 <button
                   onClick={handleSaveOrder}
                   className={`relative w-full py-3 rounded-xl font-bold text-sm tracking-wide transition-all duration-300 overflow-hidden shadow-sm
@@ -762,6 +761,15 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                       : <><span className="text-base">💾</span> Save Changes</>
                     }
                   </span>
+                </button>
+                <button
+                  onClick={()=>{
+                    if(window.confirm(`Delete order ${order.orderNo} for ${order.customerName}?\n\nThis will permanently delete the order and all its quotations, invoices and payments. This cannot be undone.`))
+                      onDeleteOrder(order.orderNo);
+                  }}
+                  className="w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <span>🗑</span> Delete This Order
                 </button>
               </div>
             </>
@@ -1695,7 +1703,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
 
 
 // ─── Income View ──────────────────────────────────────────────────────────────
-function IncomeView({ orders, recipients, seller }) {
+function IncomeView({ orders, recipients, allRecipients=[], seller }) {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -1703,8 +1711,8 @@ function IncomeView({ orders, recipients, seller }) {
   const resolveName = (id) => {
     if (!id) return "";
     if (id === "__company__") return seller?.name || "Company";
-    const r = recipients.find(r => r.id === id);
-    return r ? r.name : "(Deleted)";
+    const r = recipients.find(r => r.id === id) || allRecipients.find(r => r.id === id);
+    return r ? r.name : "";
   };
 
   // Gather all payments: advance + payment entries
@@ -2450,6 +2458,7 @@ export default function App() {
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense}/>}
+          {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current}/>}
         </div>
