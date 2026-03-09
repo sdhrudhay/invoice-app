@@ -855,7 +855,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>setEditInv({inv:{...p,items:p.items.map(i=>({...i}))},type:"proforma"})} className="text-xs border border-blue-300 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
+                            <button onClick={()=>setEditInv({inv:{...p,items:p.items.map(i=>({...i}))},type:"proforma"})} className="text-xs border border-blue-300 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">Edit Date</button>
+                            <button onClick={()=>handleDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -874,7 +875,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>setEditInv({inv:{...t,items:t.items.map(i=>({...i}))},type:"tax"})} className="text-xs border border-slate-300 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium">✏️ Edit</button>
+                            <button onClick={()=>setEditInv({inv:{...t,items:t.items.map(i=>({...i}))},type:"tax"})} className="text-xs border border-slate-300 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium">Edit Date</button>
+                            <button onClick={()=>handleDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -1052,10 +1054,20 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
         {isNew&&<span className="text-xs text-emerald-600 font-medium">Items pre-filled from order — edit as needed</span>}
       </div>
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
-      <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} label="Invoice Items"/>
+      {isNew
+        ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} label="Invoice Items"/>
+        : (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">(locked — delete and recreate to change items)</span></p>
+            <div className="opacity-60 pointer-events-none select-none rounded-xl border border-gray-100 overflow-hidden">
+              <ItemTable items={d.items} setItems={()=>{}} needsGst={needsGst}/>
+            </div>
+          </div>
+        )
+      }
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
-        <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">✓ Save Invoice</button>
+        <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save</button>
         <button onClick={onCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Cancel</button>
       </div>
     </div>
@@ -1123,14 +1135,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         const newQt = {...updatedQt, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
         setQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
       }
-      // Also sync to tax invoices — merge new items in, keep existing ones
-      setTaxInvoices(prev => prev.map(t => {
-        if (t.orderId !== orderNo) return t;
-        const existingNames = new Set((t.items||[]).map(i=>(i.item||"").toLowerCase().trim()));
-        const toAdd = newItems.filter(i => i.item && !existingNames.has((i.item||"").toLowerCase().trim()));
-        const merged = [...(t.items||[]), ...toAdd].map((i,idx)=>({...i,sl:idx+1}));
-        return {...t, items:merged, amount:merged.reduce((s,i)=>s+num(i.netAmt),0)};
+      // Proforma mirrors order items (like quotation)
+      setProformas(prev => prev.map(p => {
+        if (p.orderId !== orderNo) return p;
+        return {...p, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
       }));
+      // Tax invoices are independent documents — never auto-merge order items into them
     }
     setOpenOrder(updated);
   };
@@ -1165,6 +1175,23 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     } else {
       setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
     }
+  };
+
+  const handleDeleteInvoice = (invNo, type) => {
+    if (!window.confirm(`Delete ${type==="proforma"?"Proforma":"Tax Invoice"} ${invNo}?\n\nThis cannot be undone. You can recreate it after deletion.`)) return;
+    const orderNo = openOrder?.orderNo;
+    if (type==="proforma") {
+      setProformas(prev => prev.filter(p => p.invNo !== invNo));
+      setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, proformaIds:(o.proformaIds||[]).filter(id=>id!==invNo)} : o));
+      enqueue({action:"delete", table:"proformas", col:"inv_no", val:invNo});
+      enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
+    } else {
+      setTaxInvoices(prev => prev.filter(t => t.invNo !== invNo));
+      setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, taxInvoiceIds:(o.taxInvoiceIds||[]).filter(id=>id!==invNo)} : o));
+      enqueue({action:"delete", table:"tax_invoices", col:"inv_no", val:invNo});
+      enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
+    }
+    toast(`${type==="proforma"?"Proforma":"Tax Invoice"} ${invNo} deleted`);
   };
 
   const doSaveInvoiceWithStatus = (updatedInv, type, orderNo, newStatus) => {
