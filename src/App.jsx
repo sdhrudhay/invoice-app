@@ -97,13 +97,13 @@ create table if not exists orders (
 -- Quotations
 create table if not exists quotations (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text,
   created_at timestamptz default now()
 );
 -- Proformas
 create table if not exists proformas (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text,
   created_at timestamptz default now()
 );
 -- Tax Invoices
@@ -161,6 +161,7 @@ create table if not exists settings (
 
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
 function buildQuotationHtml(order, inv, seller) {
+  seller = inv.sellerSnapshot || seller;
   const items = inv.items || [];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
@@ -222,6 +223,7 @@ ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> $
 
 // ─── Invoice HTML Builder ─────────────────────────────────────────────────────
 function buildInvoiceHtml(order, inv, type, seller) {
+  seller = inv.sellerSnapshot || seller;
   const isProforma = type === "proforma";
   const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
   const items = inv.items || [];
@@ -483,7 +485,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
     const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[] };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0) };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -664,7 +666,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)};
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -2204,7 +2206,7 @@ export default function App() {
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no) });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
@@ -2293,21 +2295,24 @@ export default function App() {
   const upsertQuotation = (q) => {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
-      order_id:q.orderId, amount:q.amount||0, notes:q.notes||""
+      order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
+      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null
     }});
     syncItems("quotation", q.invNo, q.items);
   };
   const upsertProforma = (p) => {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
-      order_id:p.orderId, amount:p.amount||0, notes:p.notes||""
+      order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
+      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null
     }});
     syncItems("proforma", p.invNo, p.items);
   };
   const upsertTaxInvoice = (t) => {
     enqueue({action:"upsert",table:"tax_invoices",row:{
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
-      order_id:t.orderId, amount:t.amount||0, notes:t.notes||""
+      order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
+      seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null
     }});
     syncItems("tax_invoice", t.invNo, t.items);
   };
