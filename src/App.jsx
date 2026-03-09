@@ -611,6 +611,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
   const [payments, setPayments] = useState(order.payments||[]);
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
+  const [statusPrompt, setStatusPrompt] = useState(null); // {updated} waiting for user decision
 
   // Keep payments in sync with parent order prop (so reopening shows saved payments)
   useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
@@ -635,6 +636,13 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const handleSaveOrder = () => {
     const updated = {...o, items: orderItems};
+    const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
+    const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
+    const itemsChanged = origItems !== newItems;
+    if (itemsChanged && order.status === "Completed") {
+      setStatusPrompt(updated);
+      return;
+    }
     onSaveOrder(updated);
     toast("Order changes saved");
   };
@@ -685,7 +693,31 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           <button onClick={onClose} className="text-slate-300 hover:text-white text-2xl font-bold leading-none px-1">×</button>
         </div>
 
-        {/* Tabs */}
+        {/* Status change modal */}
+      {statusPrompt && (
+        <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <h3 className="font-bold text-slate-800 text-base">Update Order Status?</h3>
+            <p className="text-sm text-gray-600">You changed items on a <span className="font-semibold text-emerald-700">Completed</span> order. Would you like to move it back to <span className="font-semibold text-yellow-700">Pending</span>?</p>
+            <div className="flex flex-col gap-2 pt-1">
+              <button onClick={()=>{ const u={...statusPrompt,status:"Pending"}; onSaveOrder(u); setO(p=>({...p,status:"Pending"})); toast("Order saved — status moved to Pending"); setStatusPrompt(null); }}
+                className="w-full py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-semibold text-sm">
+                Move to Pending
+              </button>
+              <button onClick={()=>{ onSaveOrder(statusPrompt); toast("Order changes saved"); setStatusPrompt(null); }}
+                className="w-full py-2.5 rounded-xl border-2 border-gray-200 text-gray-700 hover:bg-gray-50 font-semibold text-sm">
+                Keep as Completed
+              </button>
+              <button onClick={()=>setStatusPrompt(null)}
+                className="text-xs text-gray-400 hover:text-gray-600 text-center pt-1">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
         <div className="flex border-b shrink-0 bg-gray-50">
           {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"]].map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setEditInv(null);setCreating(null);}}
@@ -1053,15 +1085,37 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     }));
   };
 
+  const [invStatusPrompt, setInvStatusPrompt] = useState(null); // {updatedInv, type, orderNo}
+
   const handleSaveInvoice = (updatedInv, type, mergedItems) => {
-    toast(type==="proforma"?"Proforma saved":"Tax invoice saved");
     const orderNo = openOrder?.orderNo;
+    const orderObj = orders.find(o=>o.orderNo===orderNo);
+    if (type==="tax" && orderObj?.status==="Completed") {
+      const origInv = taxInvoices.find(t=>t.invNo===updatedInv.invNo);
+      const origItems = JSON.stringify((origInv?.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
+      const newItems  = JSON.stringify((updatedInv.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
+      if (origItems !== newItems) {
+        setInvStatusPrompt({updatedInv, type, orderNo});
+        return;
+      }
+    }
+    toast(type==="proforma"?"Proforma saved":"Tax invoice saved");
+    const orderNo2 = orderNo;
     if(type==="proforma"){
       setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
-      // Do NOT push proforma items back to order/quotation/tax invoice
     } else {
       setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
-      // Do NOT push tax invoice items back to order/quotation
+    }
+  };
+
+  const doSaveInvoiceWithStatus = (updatedInv, type, orderNo, newStatus) => {
+    if (type==="proforma") {
+      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+    } else {
+      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+    }
+    if (newStatus) {
+      setOrders(orders.map(o=>o.orderNo===orderNo?{...o,status:newStatus}:o));
     }
   };
 
@@ -1196,6 +1250,29 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         <div className="space-y-2">
           <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-red-600">✕ Cancelled</span><span className="text-xs text-gray-400">({cancelledOrders.length})</span></div>
           <div className="space-y-3">{cancelledOrders.map(renderCard)}</div>
+        </div>
+      )}
+
+      {invStatusPrompt && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+            <h3 className="font-bold text-slate-800 text-base">Update Order Status?</h3>
+            <p className="text-sm text-gray-600">You changed items on a <span className="font-semibold text-emerald-700">Completed</span> order. Would you like to move it back to <span className="font-semibold text-yellow-700">Pending</span>?</p>
+            <div className="flex flex-col gap-2 pt-1">
+              <button onClick={()=>{ doSaveInvoiceWithStatus(invStatusPrompt.updatedInv, invStatusPrompt.type, invStatusPrompt.orderNo, "Pending"); toast("Invoice saved — order moved to Pending"); setInvStatusPrompt(null); }}
+                className="w-full py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-semibold text-sm">
+                Move to Pending
+              </button>
+              <button onClick={()=>{ doSaveInvoiceWithStatus(invStatusPrompt.updatedInv, invStatusPrompt.type, invStatusPrompt.orderNo, null); toast(invStatusPrompt.type==="proforma"?"Proforma saved":"Tax invoice saved"); setInvStatusPrompt(null); }}
+                className="w-full py-2.5 rounded-xl border-2 border-gray-200 text-gray-700 hover:bg-gray-50 font-semibold text-sm">
+                Keep as Completed
+              </button>
+              <button onClick={()=>setInvStatusPrompt(null)}
+                className="text-xs text-gray-400 hover:text-gray-600 text-center pt-1">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1352,6 +1429,8 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
           {syncStatus==="error" && <span className="text-xs text-red-500 font-semibold bg-red-50 border border-red-200 px-3 py-1 rounded-full">Sync failed</span>}
         </div>
       </section>
+
+      <div className="border-t border-gray-300"/>
 
       <section className="space-y-3">
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">Recipients</h2>
