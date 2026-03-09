@@ -1221,7 +1221,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{} }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="" }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
   const logoRef=useRef();
@@ -1335,12 +1335,22 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         </div>
       </section>
 
-      <section className="border-t pt-6 flex items-center justify-between gap-4">
-        <h3 className="font-bold text-gray-800 text-sm">Database Connection</h3>
-        {(sbUrl&&sbKey)
-          ? <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">Connected</span>
-          : <span className="text-xs text-red-500 font-semibold bg-red-50 border border-red-200 px-3 py-1 rounded-full">Not connected</span>
-        }
+      <section className="border-t pt-6 space-y-0">
+        <div className="flex items-center justify-between gap-4 py-3">
+          <p className="text-sm font-semibold text-gray-700">Database Connection</p>
+          {(sbUrl&&sbKey)
+            ? <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">Connected</span>
+            : <span className="text-xs text-red-500 font-semibold bg-red-50 border border-red-200 px-3 py-1 rounded-full">Not connected</span>
+          }
+        </div>
+        <div className="border-t border-dashed border-gray-200"/>
+        <div className="flex items-center justify-between gap-4 py-3">
+          <p className="text-sm font-semibold text-gray-700">Sync Status</p>
+          {syncStatus==="" && <span className="text-xs text-gray-500 font-semibold bg-gray-50 border border-gray-200 px-3 py-1 rounded-full">All changes saved</span>}
+          {syncStatus==="saving" && <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full animate-pulse">Saving…</span>}
+          {syncStatus==="saved" && <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">Saved</span>}
+          {syncStatus==="error" && <span className="text-xs text-red-500 font-semibold bg-red-50 border border-red-200 px-3 py-1 rounded-full">Sync failed</span>}
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -2516,7 +2526,7 @@ function App() {
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
-          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast}/>}
+          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
       </div>
     </div>
