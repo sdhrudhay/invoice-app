@@ -2130,7 +2130,6 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 }
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
-export default 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 function Toast({ toasts }) {
   return (
@@ -2523,3 +2522,5 @@ function App() {
     </div>
   );
 }
+
+export default App;
