@@ -439,7 +439,7 @@ function ClientSearch({ clients, onSelect, value }) {
 }
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{} }) {
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{} }) {
   const topRef = useRef(null);
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
@@ -473,7 +473,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     setShippingStateCode(c.shippingStateCode||"");
   };
 
-  const notify = (t,err=false) => { setMsg(t); setMsgErr(err); setTimeout(()=>setMsg(""),4000); };
+  const notify = (t,err=false) => { if(err){setMsg(t);setMsgErr(true);setTimeout(()=>setMsg(""),4000);}else{toast(t);} };
 
   const handleSave = async () => {
     if (!customerName) { notify("Customer name is required",true); return; }
@@ -604,15 +604,13 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 }
 
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[] }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [editInv, setEditInv] = useState(null);
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
-  const [saved, setSaved] = useState(false);
   const [payments, setPayments] = useState(order.payments||[]);
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
-  const [paySaved, setPaySaved] = useState(false);
 
   // Keep payments in sync with parent order prop (so reopening shows saved payments)
   useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
@@ -638,7 +636,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleSaveOrder = () => {
     const updated = {...o, items: orderItems};
     onSaveOrder(updated);
-    setSaved(true); setTimeout(()=>setSaved(false),2000);
+    toast("Order changes saved");
   };
   const handleSaveInv = (updatedInv, type) => {
     const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)};
@@ -657,7 +655,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     // Save payment directly via prop and also persist to order
     onSaveOrder({...o, items: orderItems, payments: updated});
     setNewPay({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
-    setPaySaved(true); setTimeout(()=>setPaySaved(false), 2000);
+    toast("Payment added");
   };
   const handleDeletePayment = (id) => {
     const updated = payments.filter(p=>p.id!==id);
@@ -751,18 +749,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               <div className="pt-3 border-t space-y-3">
                 <button
                   onClick={handleSaveOrder}
-                  className={`relative w-full py-3 rounded-xl font-bold text-sm tracking-wide transition-all duration-300 overflow-hidden shadow-sm
-                    ${saved
-                      ? "bg-emerald-500 text-white scale-[0.99]"
-                      : "bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white hover:shadow-md hover:scale-[1.01]"
-                    }`}
+                  className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
                 >
-                  <span className="flex items-center justify-center gap-2">
-                    {saved
-                      ? <><span className="text-base">✓</span> Changes Saved!</>
-                      : <><span className="text-base">💾</span> Save Changes</>
-                    }
-                  </span>
+                  Save Changes
                 </button>
                 <button
                   onClick={()=>{
@@ -904,8 +893,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Txn / Ref No (optional)" value={newPay.txnRef} onChange={v=>setNewPay(p=>({...p,txnRef:v}))} placeholder="UPI ref, cheque no…"/>
                     <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment" className="col-span-2"/>
                   </div>
-                  <button onClick={handleAddPayment} className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${paySaved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>
-                    {paySaved?"✓ Payment Saved!":"+ Add Payment"}
+                  <button onClick={handleAddPayment} className="px-5 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all">
+                    + Add Payment
                   </button>
                 </div>
 
@@ -983,7 +972,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -1065,6 +1054,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   };
 
   const handleSaveInvoice = (updatedInv, type, mergedItems) => {
+    toast(type==="proforma"?"Proforma saved":"Tax invoice saved");
     const orderNo = openOrder?.orderNo;
     if(type==="proforma"){
       setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
@@ -1222,6 +1212,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           onSaveInvoice={handleSaveInvoice}
           onCreateInvoice={handleCreateInvoice}
           onDeleteOrder={handleDeleteOrder}
+          toast={toast}
           recipients={recipients}
         />
       )}
@@ -1230,13 +1221,13 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[] }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{} }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
-  const [showSetup,setShowSetup]=useState(false); const [saved,setSaved]=useState(false);
+  const [showSetup,setShowSetup]=useState(false);
   const logoRef=useRef();
 
   const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
-  const save = () => { setSeller(s); setSeries(sr); setSaved(true); setTimeout(()=>setSaved(false),2000); };
+  const save = () => { setSeller(s); setSeries(sr); toast("Settings saved"); };
   const cancel = () => { setS({...seller}); setSr({...series}); };
 
   const pB2C = buildOrderNo(sr,"B2C",[]); const pB2B = buildOrderNo(sr,"B2B",[]);
@@ -1360,7 +1351,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       </section>
 
       <div className="flex gap-3 pt-2 border-t">
-        <button onClick={save} className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${saved?"bg-emerald-600 text-white":"bg-indigo-600 hover:bg-indigo-700 text-white"}`}>{saved?"✓ Saved!":"Save All Settings"}</button>
+        <button onClick={save} className="px-6 py-2.5 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all">Save All Settings</button>
         <button onClick={cancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-5 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
       </div>
     </div>
@@ -1429,7 +1420,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
 }
 
 // ─── Client Master ────────────────────────────────────────────────────────────
-function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
+function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_CLIENT});
   const [clientTab, setClientTab] = useState("B2B");
   const [editId, setEditId] = useState(null);
@@ -1454,6 +1445,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
       setClients([...clients, { ...form, id }]);
     }
     setForm({...EMPTY_CLIENT}); setShowForm(false); setSameAsBilling(false);
+    toast(editId?"Client updated":"Client saved");
   };
 
   const handleEdit = (c) => { setForm({...c}); setClientTab(c.clientType||"B2B"); setEditId(c.id); setShowForm(true); setSameAsBilling(false); };
@@ -1584,7 +1576,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{} }) {
 const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
-function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{} }) {
+function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1594,12 +1586,12 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const [msg, setMsg] = useState("");
   const upd = (k,v) => setForm(p=>({...p,[k]:v}));
 
-  const notify = (m) => { setMsg(m); setTimeout(()=>setMsg(""),2500); };
+  const notify = (m, err=false) => { if(err){setMsg(m);setTimeout(()=>setMsg(""),2500);}else{toast(m);} };
 
   const handleSave = () => {
-    if (!form.date) { notify("Date is required"); return; }
-    if (!form.paidBy) { notify("Recipient is required"); return; }
-    if (!form.amount || isNaN(num(form.amount))) { notify("Valid amount is required"); return; }
+    if (!form.date) { notify("Date is required",true); return; }
+    if (!form.paidBy) { notify("Recipient is required",true); return; }
+    if (!form.amount || isNaN(num(form.amount))) { notify("Valid amount is required",true); return; }
     if (editId) {
       setExpenses(prev=>prev.map(e=>e.id===editId?{...form,id:editId}:e));
       setEditId(null);
@@ -1607,7 +1599,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       setExpenses(prev=>[...prev,{...form,id:Date.now()}]);
     }
     setForm({...EMPTY_EXPENSE, date:today()});
-    notify(editId?"Expense updated!":"Expense recorded!");
+    notify(editId?"Expense updated":"Expense recorded");
   };
   const handleEdit = (e) => { setForm({...e}); setEditId(e.id); window.scrollTo({top:0,behavior:"smooth"}); };
   const handleDelete = (id) => { if(window.confirm("Delete this expense?")) { const e = expenses.find(e=>e.id===id); if(e) deleteExpense({...e,isDeleted:true}); setExpenses(prev=>prev.filter(e=>e.id!==id)); } };
@@ -2138,7 +2130,23 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 }
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
-export default function App() {
+export default 
+// ─── Toast Notification ───────────────────────────────────────────────────────
+function Toast({ toasts }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 pointer-events-none">
+      {toasts.map(t => (
+        <div key={t.id} className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-sm font-semibold transition-all duration-300
+          ${t.type==="error" ? "bg-red-600 text-white" : "bg-slate-800 text-white"}`}>
+          <span>{t.type==="error" ? "✕" : "✓"}</span>
+          <span>{t.msg}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function App() {
   const [tab,setTab]=useState("new");
   const [viewOrder,setViewOrder]=useState(null);
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
@@ -2156,6 +2164,12 @@ export default function App() {
   const [series,setSeries]=useState(DEFAULT_SERIES);
   const [loading,setLoading]=useState(false);
   const [syncStatus,setSyncStatus]=useState("");
+  const [toasts,setToasts]=useState([]);
+  const toast = (msg, type="success") => {
+    const id = Date.now();
+    setToasts(p=>[...p,{id,msg,type}]);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)), 3000);
+  };
   const ENV_URL = getEnv("VITE_SUPABASE_URL");
   const ENV_KEY = getEnv("VITE_SUPABASE_KEY");
   const [sbUrl,setSbUrl]=useState(()=>localStorage.getItem("sb_url")||ENV_URL);
@@ -2468,6 +2482,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
+      <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><p className="text-2xl mb-2">⏳</p><p className="text-sm font-semibold text-indigo-600">Loading data from Supabase…</p></div></div>}
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
@@ -2476,8 +2491,6 @@ export default function App() {
               ? <img src={seller.logo} alt="logo" className="h-9 max-w-[120px] object-contain"/>
               : <span className="text-base font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
             }
-            {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse">⏳ Saving…</span>}
-            {syncStatus==="saved"&&<span className="text-xs text-emerald-500">✓ Saved</span>}
             {syncStatus==="error"&&<span className="text-xs text-red-400">⚠ Sync failed</span>}
           </div>
           <div className="flex items-center gap-2">
@@ -2498,13 +2511,13 @@ export default function App() {
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)}/>}
-          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient}/>}
-          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast}/>}
+          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
+          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
-          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current}/>}
+          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast}/>}
         </div>
       </div>
     </div>
