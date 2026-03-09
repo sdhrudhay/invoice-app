@@ -1063,6 +1063,40 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
 }
 
 // ─── Orders List ──────────────────────────────────────────────────────────────
+
+// ─── Excel Export Utility ─────────────────────────────────────────────────────
+async function loadSheetJs() {
+  if (window.XLSX) return window.XLSX;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function exportToExcel(rows, filename) {
+  if (!rows || rows.length === 0) return;
+  const XLSX = await loadSheetJs();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Auto column widths
+  const cols = Object.keys(rows[0]);
+  ws["!cols"] = cols.map(k => ({ wch: Math.max(k.length, ...rows.map(r => String(r[k]||"").length).slice(0,50)) + 2 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename + ".xlsx");
+}
+
+function ExcelBtn({ onClick }) {
+  return (
+    <button onClick={onClick}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-300 text-emerald-700 hover:bg-emerald-50 transition-all">
+      ⬇ Export Excel
+    </button>
+  );
+}
+
 function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
@@ -1248,8 +1282,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             ["Balance Due", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
           ].map(([lbl,val,cls],i)=>(
             <div key={i} className={`px-3 py-2 text-center ${i<4?"border-r border-gray-100":""}`}>
-              <p className="text-xs text-gray-400 leading-none mb-1">{lbl}</p>
-              <p className={`text-xs font-semibold ${cls}`}>{val}</p>
+              <p className="text-xs text-gray-500 font-semibold leading-none mb-1 text-center uppercase tracking-wide" style={{fontSize:"10px"}}>{lbl}</p>
+              <p className={`text-xs font-semibold ${cls} text-center`}>{val}</p>
             </div>
           ))}
         </div>
@@ -1294,6 +1328,24 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           <button onClick={()=>setBalFilter(v=>!v)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${balFilter?"bg-orange-500 border-orange-500 text-white":"border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500"}`}>
             Balance Due
           </button>
+          <ExcelBtn onClick={()=>{
+            const rows = filtered.map(o=>({
+              "Order No": o.orderNo,
+              "Type": o.type,
+              "Customer": o.customerName,
+              "GSTIN": o.gstin||"",
+              "Order Date": o.orderDate||"",
+              "Due Date": o.dueDate||"",
+              "Status": o.status,
+              "Total (₹)": getTotal(o),
+              "Advance (₹)": num(o.advance),
+              "Paid (₹)": getTotalPaid(o),
+              "Balance (₹)": getTotal(o)-getTotalPaid(o),
+              "Payment Mode": o.paymentMode||"",
+              "Comments": o.comments||""
+            }));
+            exportToExcel(rows, "Orders_Export");
+          }}/>
         </div>
       </div>
       {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-12">{filter==="All"&&typeFilter==="All"?"No orders yet. Create your first order!":`No ${[typeFilter!=="All"?typeFilter:"",filter!=="All"?filter.toLowerCase():""].filter(Boolean).join(" ")} orders found.`}</p>}
@@ -1618,6 +1670,20 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {["B2B","B2C"].map(t=><button key={t} onClick={()=>{setClientTab(t);setShowForm(false);setEditId(null);setForm({...EMPTY_CLIENT,clientType:t});}} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${clientTab===t?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t}</button>)}
           </div>
+          <ExcelBtn onClick={()=>{
+            exportToExcel(filtered.map(c=>({
+              "ID": c.id,
+              "Type": c.clientType||"B2B",
+              "Name": c.name,
+              "GSTIN": c.gstin||"",
+              "Contact": c.contact||"",
+              "Email": c.email||"",
+              "Billing Name": c.billingName||"",
+              "Billing Address": c.billingAddress||"",
+              "State Code": c.billingStateCode||"",
+              "Place of Supply": c.placeOfSupply||"",
+            })), `Clients_${clientTab}_Export`);
+          }}/>
           <button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>
         </div>
       </div>
@@ -1831,6 +1897,21 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         </div>
       </div>
 
+      {/* Export */}
+      <div className="flex justify-end">
+        <ExcelBtn onClick={()=>{
+          exportToExcel(filtered.map(e=>{
+            const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===e.paidBy)||allRecipients.find(r=>r.id===e.paidBy));
+            return {
+              "Date": e.date,
+              "Paid By": rcp?.name||"",
+              "Amount (₹)": num(e.amount),
+              "Category": e.category||"",
+              "Comment": e.comment||"",
+            };
+          }), "Expenses_Export");
+        }}/>
+      </div>
       {/* List */}
       {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-10">No expenses found.</p>}
       <div className="space-y-2">
@@ -2065,10 +2146,26 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
           <h2 className="font-bold text-xl text-slate-800">Assets</h2>
           <p className="text-xs text-gray-400 mt-0.5">Track company assets, purchase invoices and costs.</p>
         </div>
-        <button onClick={()=>{ setForm({...EMPTY_ASSET,purchaseDate:today()}); setEditId(null); setShowForm(v=>!v); }}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">
-          {showForm ? "Close Form" : "+ Add Asset"}
-        </button>
+        <div className="flex gap-2">
+          <ExcelBtn onClick={()=>{
+            const rows = filtered.map(a=>({
+              "Asset ID": a.id,
+              "Name": a.name,
+              "Category": a.category,
+              "Purchase Date": a.purchaseDate||"",
+              "Amount (₹)": num(a.amount),
+              "Paid By": resolveName(a.paidBy)||"",
+              "Vendor": a.vendor||"",
+              "Description": a.description||"",
+              "Invoice URL": a.invoiceUrl||""
+            }));
+            exportToExcel(rows, "Assets_Export");
+          }}/>
+          <button onClick={()=>{ setForm({...EMPTY_ASSET,purchaseDate:today()}); setEditId(null); setShowForm(v=>!v); }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">
+            {showForm ? "Close Form" : "+ Add Asset"}
+          </button>
+        </div>
       </div>
 
       {/* Form */}
@@ -2303,7 +2400,19 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
           <p className="text-sm opacity-80">Total Received ({filtered.length} entries)</p>
           <p className="text-3xl font-black mt-1">&#x20B9;{total.toLocaleString("en-IN", {minimumFractionDigits:2})}</p>
         </div>
-        <span className="text-5xl opacity-20">&#x20B9;</span>
+        <ExcelBtn onClick={()=>{
+          exportToExcel(filtered.map(p=>({
+            "Date": p.date,
+            "Order No": p.orderNo,
+            "Customer": p.customerName,
+            "Type": p.type,
+            "Amount (₹)": p.amount,
+            "Mode": p.mode,
+            "Received By": p.receivedBy,
+            "Txn Ref": p.txnRef,
+            "Note": p.note,
+          })), "Income_Export");
+        }}/>
       </div>
 
       {filtered.length === 0 ? (
@@ -2404,6 +2513,24 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
   return (
     <div className="space-y-6">
       {/* Header summary */}
+      <div className="flex justify-end">
+        <ExcelBtn onClick={()=>{
+          const rows = [];
+          summaries.forEach(s=>{
+            [...s.entries.collected.map(e=>({...e,entryType:"Collected"})), ...s.entries.expenses.map(e=>({...e,entryType:"Expense"}))]
+              .sort((a,b)=>(b.date||"").localeCompare(a.date||""))
+              .forEach(e=>rows.push({
+                "Recipient": s.name,
+                "Type": e.entryType,
+                "Date": e.date||"",
+                "Amount (₹)": e.amount,
+                "Description": e.label||"",
+                "Ref": e.ref||"",
+              }));
+          });
+          exportToExcel(rows, "Splitwise_Export");
+        }}/>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-orange-50 border border-orange-100 rounded-xl px-5 py-4">
           <p className="text-xs text-orange-400 uppercase tracking-wide font-semibold mb-1">Company Owes Recipients</p>
