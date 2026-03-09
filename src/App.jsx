@@ -630,7 +630,6 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
-  const [editInv, setEditInv] = useState(null);
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
   const [payments, setPayments] = useState(order.payments||[]);
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
@@ -672,7 +671,6 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleSaveInv = (updatedInv, type) => {
     const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)};
     onSaveInvoice(saved, type);
-    setEditInv(null);
   };
   const handleCreate = (type) => setCreating(type);
 
@@ -743,7 +741,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       {/* Tabs */}
         <div className="flex border-b shrink-0 bg-gray-50">
           {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"]].map(([id,label])=>(
-            <button key={id} onClick={()=>{setTab(id);setEditInv(null);setCreating(null);}}
+            <button key={id} onClick={()=>{setTab(id);setCreating(null);}}
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {label}
             </button>
@@ -835,7 +833,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             </div>
           )}
 
-          {tab==="invoices" && !editInv && !creating && (
+          {tab==="invoices" && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
                 {order.type==="B2B"&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
@@ -855,7 +853,6 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>setEditInv({inv:{...p,items:p.items.map(i=>({...i}))},type:"proforma"})} className="text-xs border border-blue-300 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">Edit Date</button>
                             <button onClick={()=>handleDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
@@ -875,7 +872,6 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>setEditInv({inv:{...t,items:t.items.map(i=>({...i}))},type:"tax"})} className="text-xs border border-slate-300 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium">Edit Date</button>
                             <button onClick={()=>handleDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
@@ -901,15 +897,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             />
           )}
 
-          {tab==="invoices" && editInv && !creating && (
-            <InvoiceEditor
-              inv={editInv.inv}
-              type={editInv.type}
-              needsGst={order.needsGst}
-              onSave={(updated)=>handleSaveInv(updated, editInv.type)}
-              onCancel={()=>setEditInv(null)}
-            />
-          )}
+
 
           {tab==="payments" && (() => {
             const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
