@@ -981,23 +981,29 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
   return (
     <>
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          {label && <p className="text-sm font-semibold text-gray-700">{label}</p>}
-          {sublabel && <span className="text-xs text-gray-400">{sublabel}</span>}
-          <button
+        <div className="space-y-0.5">
+          <div className="flex items-center justify-between">
+            {label && <p className="text-sm font-semibold text-gray-700">{label}</p>}
+            <button
             onClick={()=>setFullscreen(true)}
             className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
           >
             ⛶ Full Screen
           </button>
+          </div>
+          {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
         <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
       </div>
       {fullscreen && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
-          <div className="flex items-center justify-between px-6 py-3 border-b bg-white shrink-0">
-            <span className="font-bold text-slate-800 text-sm">Edit Items</span>
-            <button onClick={()=>setFullscreen(false)} className="text-sm border border-gray-200 text-gray-600 hover:bg-gray-50 px-4 py-1.5 rounded-lg font-medium">Done — Close</button>
+          <div className="flex items-center justify-between px-6 py-4 border-b bg-white shrink-0">
+            <span className="font-bold text-slate-800">Items — Full Screen</span>
+            <div className="flex gap-2">
+              <button onClick={()=>setFullscreen(false)} title="Minimize" className="text-sm border border-gray-200 text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg font-medium">⊟ Minimize</button>
+              <button onClick={()=>{setItems([...items]);setFullscreen(false);}} className="text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg font-semibold">Cancel</button>
+              <button onClick={()=>setFullscreen(false)} className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-semibold">Done</button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
             <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
@@ -1195,27 +1201,19 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         <p className="text-sm font-bold text-gray-800 mt-1 leading-tight">{o.customerName}</p>
         {o.type==="B2B"&&o.gstin&&<p className="text-xs text-gray-400 font-mono">{o.gstin}</p>}
         {/* Row 3: data pills */}
-        <div className="flex gap-4 mt-2 flex-wrap">
-          <div>
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Order Date</p>
-            <p className="text-xs font-semibold text-gray-600">{o.orderDate||"—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Due Date</p>
-            <p className={`text-xs font-semibold ${isOverdue?"text-red-600":isDueSoon?"text-amber-600":"text-gray-600"}`}>{due||"—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Total</p>
-            <p className="text-xs font-semibold text-gray-800">{tN>0?`₹${fmt(tN)}`:"—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Advance</p>
-            <p className="text-xs font-semibold text-emerald-600">{num(o.advance)>0?`₹${fmt(o.advance)}`:"—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 leading-none mb-0.5">Balance Due</p>
-            <p className={`text-xs font-semibold ${bal>0?"text-orange-500":"text-gray-400"}`}>{tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—"}</p>
-          </div>
+        <div className="grid grid-cols-5 gap-0 mt-2 border border-gray-100 rounded-lg overflow-hidden">
+          {[
+            ["Order Date", o.orderDate||"—", "text-gray-600"],
+            ["Due Date", due||"—", isOverdue?"text-red-600":isDueSoon?"text-amber-600":"text-gray-600"],
+            ["Total", tN>0?`₹${fmt(tN)}`:"—", "text-gray-800"],
+            ["Advance", num(o.advance)>0?`₹${fmt(o.advance)}`:"—", "text-emerald-600"],
+            ["Balance Due", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
+          ].map(([lbl,val,cls],i)=>(
+            <div key={i} className={`px-3 py-2 text-center ${i<4?"border-r border-gray-100":""}`}>
+              <p className="text-xs text-gray-400 leading-none mb-1">{lbl}</p>
+              <p className={`text-xs font-semibold ${cls}`}>{val}</p>
+            </div>
+          ))}
         </div>
         {/* Row 4: print buttons */}
         <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100" onClick={e=>e.stopPropagation()}>
