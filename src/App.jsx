@@ -1895,20 +1895,84 @@ const downloadInvoice = async (url, assetName) => {
 
 const openInvoice = (url) => {
   if (!url) return;
-  // PDFs: open via Google Docs viewer so they always render
-  if (url.match(/\.pdf($|\?)/i) || url.includes("/raw/upload/")) {
-    window.open("https://docs.google.com/viewer?url=" + encodeURIComponent(url), "_blank");
-  } else {
-    window.open(url, "_blank");
-  }
+  window.open(url, "_blank");
 };
 
+// Load PDF.js from CDN lazily
+async function getPdfJs() {
+  if (window._pdfjs) return window._pdfjs;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      window._pdfjs = window.pdfjsLib;
+      resolve(window._pdfjs);
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// Convert any file to a JPEG image blob
+// - Images: draw onto canvas and export as JPEG
+// - PDFs: render first page via PDF.js then export as JPEG
+// - Other (docs etc): attempt image read, fallback to error
+async function convertToImage(file) {
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const isImage = file.type.startsWith("image/");
+
+  if (isPdf) {
+    const pdfjs = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const scale = 2; // 2x for good resolution
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
+  }
+
+  if (isImage) {
+    // Re-encode as JPEG for consistency (also handles webp, bmp, etc.)
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(objectUrl);
+        canvas.toBlob(resolve, "image/jpeg", 0.92);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Could not read image")); };
+      img.src = objectUrl;
+    });
+  }
+
+  throw new Error("Unsupported file type. Please upload an image or PDF.");
+}
+
 async function uploadToCloudinary(file, cloudName, uploadPreset) {
+  // Always convert to JPEG image before uploading
+  const imageBlob = await convertToImage(file);
+  const imageFile = new File([imageBlob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", imageFile);
   fd.append("upload_preset", uploadPreset);
   fd.append("folder", "elace-assets");
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, { method:"POST", body:fd });
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method:"POST", body:fd });
   if (!res.ok) throw new Error("Upload failed");
   const data = await res.json();
   return { url: data.secure_url, publicId: data.public_id };
@@ -1932,19 +1996,26 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
     return r ? r.name : "";
   };
 
+  const [uploadStatus, setUploadStatus] = useState(""); // "", "converting", "uploading"
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!cdnCloud||!cdnPreset) { toast("File upload is not configured — contact admin","error"); return; }
     setUploading(true);
     try {
+      const isPdf = file.type==="application/pdf"||file.name.toLowerCase().endsWith(".pdf");
+      const isImage = file.type.startsWith("image/");
+      if (!isPdf && !isImage) { toast("Only images and PDFs are supported","error"); return; }
+      if (isPdf) setUploadStatus("converting");
+      else setUploadStatus("uploading");
       const { url, publicId } = await uploadToCloudinary(file, cdnCloud, cdnPreset);
       upd("invoiceUrl", url); upd("invoicePublicId", publicId);
       toast("Invoice uploaded successfully");
     } catch(err) {
-      toast("Upload failed — check Cloudinary settings","error");
+      toast(err.message||"Upload failed","error");
     } finally {
       setUploading(false);
+      setUploadStatus("");
       if (fileRef.current) fileRef.current.value = "";
     }
   };
@@ -2047,7 +2118,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
               <div className="flex items-center gap-3">
                 <button onClick={()=>fileRef.current?.click()} disabled={uploading||!cdnCloud||!cdnPreset}
                   className="flex items-center gap-2 text-sm border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                  {uploading ? "Uploading…" : "Upload Invoice (PDF / Image)"}
+                  {uploadStatus==="converting" ? "Converting to image…" : uploadStatus==="uploading" ? "Uploading…" : "Upload Invoice (PDF / Image)"}
                 </button>
                 {(!cdnCloud||!cdnPreset) && <span className="text-xs text-amber-600">File upload not configured</span>}
                 <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileChange}/>
