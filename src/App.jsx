@@ -476,8 +476,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const notify = (t,err=false) => { if(err){setMsg(t);setMsgErr(true);setTimeout(()=>setMsg(""),4000);}else{toast(t);} };
 
   const handleSave = async () => {
-    if (!customerName) { notify("Customer name is required",true); return; }
-    if (num(advance)>0 && !advanceRecipient) { notify("Please select who received the advance",true); return; }
+    if (!customerName) { notify("Customer name is required",true); toast("Customer name is required","error"); return; }
+    if (num(advance)>0 && !advanceRecipient) { notify("Please select who received the advance",true); toast("Select who received the advance","error"); return; }
     setSaving(true);
     const orderNoBase = [series.prefix, series.format==="YYYYMM"?yyyymm():series.format==="YYYY"?yyyy():series.format==="YYYYMMDD"?yyyymmdd():""].filter(Boolean).join("/");
     const orderNo = buildOrderNo(series, type, orders);
@@ -647,8 +647,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const totalPaid = payments.reduce((s,p)=>s+num(p.amount),0) + num(o.advance);
   const handleAddPayment = () => {
-    if (!newPay.amount || isNaN(num(newPay.amount))) return;
-    if (!newPay.receivedBy) { alert("Please select who received this payment."); return; }
+    if (!newPay.amount || isNaN(num(newPay.amount))) { toast("Enter a valid payment amount","error"); return; }
+    if (!newPay.receivedBy) { toast("Select who received this payment","error"); return; }
     const entry = {...newPay, id: String(Date.now()), orderId: order.orderNo};
     const updated = [...payments, entry];
     setPayments(updated);
@@ -1245,7 +1245,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
     <div className="space-y-8 max-w-2xl">
       {/* Business */}
       <section>
-        <h3 className="font-bold text-gray-800 mb-4">🏢 Business Details</h3>
+        <h3 className="font-bold text-gray-800 mb-4">Business Details</h3>
         <div className="grid grid-cols-2 gap-4">
           <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="col-span-2"/>
           <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/><F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
@@ -1259,7 +1259,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
       {/* Logo */}
       <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-2">🖼 Company Logo</h3>
+        <h3 className="font-bold text-gray-800 mb-2">Company Logo</h3>
         <p className="text-xs text-gray-400 mb-4">Displayed top-left on every printed invoice. PNG/JPG recommended.</p>
         <div className="flex items-center gap-4">
           {s.logo
@@ -1276,7 +1276,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
       {/* Number Series */}
       <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">🔢 Number Series</h3>
+        <h3 className="font-bold text-gray-800 mb-1">Number Series</h3>
         <p className="text-xs text-gray-400 mb-4">Customize order and invoice number formats. B2B orders auto-get <code className="bg-gray-100 px-1 rounded text-xs">-B</code> suffix.</p>
 
         <div className="space-y-3">
@@ -1327,7 +1327,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
       {/* Terms & Conditions */}
       <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">📋 Terms &amp; Conditions</h3>
+        <h3 className="font-bold text-gray-800 mb-1">Terms & Conditions</h3>
         <p className="text-xs text-gray-400 mb-4">Printed at the bottom of each invoice. Leave blank to omit.</p>
         <div className="space-y-4">
           <F label="Proforma Invoice — Terms & Conditions" value={s.pfTerms} onChange={v=>setS({...s,pfTerms:v})} rows={4} placeholder="Enter terms for proforma invoices…"/>
@@ -1335,17 +1335,16 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         </div>
       </section>
 
-      {/* Supabase status indicator only */}
-      <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">🗄️ Supabase Database</h3>
+      <section className="border-t pt-6 flex items-center justify-between gap-4">
+        <h3 className="font-bold text-gray-800 text-sm">Database Connection</h3>
         {(sbUrl&&sbKey)
-          ? <p className="text-xs text-emerald-600 font-medium">✓ Connected to Supabase</p>
-          : <p className="text-xs text-red-400 font-medium">⚠ Not connected — set VITE_SUPABASE_URL and VITE_SUPABASE_KEY in your environment</p>
+          ? <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">Connected</span>
+          : <span className="text-xs text-red-500 font-semibold bg-red-50 border border-red-200 px-3 py-1 rounded-full">Not connected</span>
         }
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-base font-bold text-gray-800 border-b pb-2">👤 Recipients</h2>
+        <h2 className="text-base font-bold text-gray-800 border-b pb-2">Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
         <RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>
       </section>
@@ -1387,7 +1386,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
   return (
     <div className="space-y-6 max-w-lg">
       <div>
-        <h3 className="font-bold text-gray-800 mb-1">{editId?"✏️ Edit Recipient":"➕ Add Recipient"}</h3>
+        <h3 className="font-bold text-gray-800 mb-1">{editId?"Edit Recipient":"Add Recipient"}</h3>
         <p className="text-xs text-gray-400 mb-4">Add people or companies who can receive payments — they'll appear as a dropdown when recording advance or payments.</p>
         <div className="bg-gray-50 rounded-xl p-4 space-y-3 border border-gray-100">
           <F label="Name" value={form.name} onChange={v=>upd("name",v)} required placeholder="e.g. Rahul, Acme Pvt Ltd"/>
@@ -1436,7 +1435,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
   );
 
   const handleSave = () => {
-    if (!form.name) return;
+    if (!form.name) { toast("Client name is required","error"); return; }
     if (editId) {
       setClients(clients.map(c => c.id === editId ? { ...form, id: editId } : c));
       setEditId(null);
@@ -1586,7 +1585,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const [msg, setMsg] = useState("");
   const upd = (k,v) => setForm(p=>({...p,[k]:v}));
 
-  const notify = (m, err=false) => { if(err){setMsg(m);setTimeout(()=>setMsg(""),2500);}else{toast(m);} };
+  const notify = (m, err=false) => { if(err){setMsg(m);setTimeout(()=>setMsg(""),2500);toast(m,"error");}else{toast(m);} };
 
   const handleSave = () => {
     if (!form.date) { notify("Date is required",true); return; }
@@ -1625,7 +1624,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
     <div className="space-y-6">
       {/* Form */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
-        <h3 className="font-bold text-gray-800 text-sm">{editId?"✏️ Edit Expense":"➕ Record Expense"}</h3>
+        <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
         {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
         <div className="grid grid-cols-2 gap-3">
           <F label="Date" type="date" value={form.date} onChange={v=>upd("date",v)} required/>
@@ -2299,6 +2298,7 @@ function App() {
       setSyncStatus("saved");
     } catch(e) {
       setSyncStatus("error");
+      toast("Failed to save changes — check your connection", "error");
     } finally {
       syncing.current = false;
       setTimeout(()=>setSyncStatus(""),3000);
@@ -2482,7 +2482,7 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <Toast toasts={toasts}/>
-      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><p className="text-2xl mb-2">⏳</p><p className="text-sm font-semibold text-indigo-600">Loading data from Supabase…</p></div></div>}
+      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -2490,7 +2490,7 @@ function App() {
               ? <img src={seller.logo} alt="logo" className="h-9 max-w-[120px] object-contain"/>
               : <span className="text-base font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
             }
-            {syncStatus==="error"&&<span className="text-xs text-red-400">⚠ Sync failed</span>}
+            {syncStatus==="error"&&<span className="text-xs text-red-400">Failed to save — check connection</span>}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
