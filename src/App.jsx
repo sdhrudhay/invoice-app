@@ -978,35 +978,35 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Expandable Item Table ────────────────────────────────────────────────────
 function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
   const [fullscreen, setFullscreen] = useState(false);
+  const [fsItems, setFsItems] = useState(null); // local copy for fullscreen edits
+  const openFullscreen = () => { setFsItems(items.map(i=>({...i}))); setFullscreen(true); };
+  const handleDone = () => { setItems(fsItems); setFullscreen(false); setFsItems(null); };
+  const handleCancel = () => { setFullscreen(false); setFsItems(null); };
   return (
     <>
       <div className="space-y-2">
         <div className="space-y-0.5">
           <div className="flex items-center justify-between">
             {label && <p className="text-sm font-semibold text-gray-700">{label}</p>}
-            <button
-            onClick={()=>setFullscreen(true)}
-            className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
-          >
-            ⛶ Full Screen
-          </button>
+            <button onClick={openFullscreen} className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all">
+              ⛶ Full Screen
+            </button>
           </div>
           {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
         <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
       </div>
-      {fullscreen && (
+      {fullscreen && fsItems !== null && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b bg-white shrink-0">
             <span className="font-bold text-slate-800">Items — Full Screen</span>
             <div className="flex gap-2">
-              <button onClick={()=>setFullscreen(false)} title="Minimize" className="text-sm border border-gray-200 text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg font-medium">⊟ Minimize</button>
-              <button onClick={()=>{setItems([...items]);setFullscreen(false);}} className="text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg font-semibold">Cancel</button>
-              <button onClick={()=>setFullscreen(false)} className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-semibold">Done</button>
+              <button onClick={handleCancel} className="text-sm bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg font-semibold">Cancel</button>
+              <button onClick={handleDone} className="text-sm bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-semibold">Done</button>
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
+            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst}/>
           </div>
         </div>
       )}
