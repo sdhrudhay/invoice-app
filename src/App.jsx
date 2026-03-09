@@ -321,7 +321,7 @@ function F({ label, value, onChange, type="text", required, className="", placeh
       <div className="relative">
         {rows
           ? <textarea value={value} onChange={e=>onChange(e.target.value)} rows={rows} placeholder={placeholder} disabled={disabled} className={b+" resize-none"}/>
-          : <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled} className={b} {...(type==="number"?{onWheel:e=>e.target.blur(),inputMode:"decimal"}:{})}/>
+          : <input type={type} value={value} onChange={e=>{ const v=e.target.value; if(type==="number"&&v!==""&&parseFloat(v)<0) return; onChange(v); }} placeholder={placeholder} disabled={disabled} className={b} {...(type==="number"?{onWheel:e=>e.target.blur(),inputMode:"decimal",min:"0"}:{})}/>
         }
         {disabled && <div className="absolute inset-0 rounded-lg bg-gray-200 opacity-30 pointer-events-none"/>}
       </div>
@@ -359,9 +359,9 @@ function ItemTable({ items, setItems, needsGst }) {
               <td className="px-2 py-1.5"><input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/></td>
               <td className="px-2 py-1.5"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16"}/></td>
               <td className="px-2 py-1.5"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none">{["Nos","Kg","Ltr","Mtr","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.unitPrice} onChange={e=>upd(i,"unitPrice",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-20 text-right"}/></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={e=>upd(i,"qty",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-14 text-right"}/></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.discount} onChange={e=>upd(i,"discount",e.target.value)} onWheel={e=>e.target.blur()} inputMode="decimal" className={inp+" w-12 text-right"}/></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-right"}/></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-right"}/></td>
+              <td className="px-2 py-1.5"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-right"}/></td>
               {needsGst&&<>
                 <td className="px-2 py-1.5"><select value={it.cgstRate} onChange={e=>upd(i,"cgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
                 <td className="px-2 py-1.5"><select value={it.sgstRate} onChange={e=>upd(i,"sgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
