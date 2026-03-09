@@ -689,7 +689,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
         {/* Tabs */}
         <div className="flex border-b shrink-0 bg-gray-50">
-          {[["details","📋 Order"],["quotation","📄 Quotation"],["invoices","🧾 Invoices"],["payments","💰 Payments"]].map(([id,label])=>(
+          {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"]].map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setEditInv(null);setCreating(null);}}
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {label}
@@ -1182,7 +1182,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             </div>
           </div>
           <button onClick={()=>setBalFilter(v=>!v)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${balFilter?"bg-orange-500 border-orange-500 text-white":"border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500"}`}>
-            💰 Balance Due
+            Balance Due
           </button>
         </div>
       </div>
@@ -1589,6 +1589,8 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("All");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [msg, setMsg] = useState("");
   const upd = (k,v) => setForm(p=>({...p,[k]:v}));
 
@@ -1613,6 +1615,8 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
 
   const filtered = expenses
     .filter(e=>catFilter==="All"||e.category===catFilter)
+    .filter(e=>!fromDate||e.date>=fromDate)
+    .filter(e=>!toDate||e.date<=toDate)
     .filter(e=>{
       const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:recipients.find(r=>r.id===e.paidBy);
       return search===""||
@@ -1666,6 +1670,13 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       <div className="space-y-2">
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by recipient, category or comment…" className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">From</span>
+          <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          <span className="text-xs font-semibold text-gray-500">To</span>
+          <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          {(fromDate||toDate)&&<button onClick={()=>{setFromDate("");setToDate("");}} className="text-xs text-indigo-500 hover:underline">Clear</button>}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Category</span>
           <div className="flex gap-1 flex-wrap">
             {["All",...EXPENSE_CATEGORIES].map(c=>(
@@ -1709,6 +1720,9 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [recipientFilter, setRecipientFilter] = useState("");
+  const [modeFilter, setModeFilter] = useState("All");
 
   const resolveName = (id) => {
     if (!id) return "";
@@ -1737,15 +1751,25 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
     });
   });
 
+  // Collect unique payment modes for filter dropdown
+  const allModes = ["All", ...new Set(allPayments.map(p=>p.mode).filter(Boolean))];
+  // Collect all recipients who appear in payments
+  const allPayRecipients = [...new Map(allPayments.filter(p=>p.receivedBy).map(p=>[p.receivedBy,p.receivedBy])).values()];
+
   const filtered = allPayments
+    .filter(p => !fromDate || p.date >= fromDate)
+    .filter(p => !toDate || p.date <= toDate)
+    .filter(p => typeFilter === "All" || p.type === typeFilter)
+    .filter(p => !recipientFilter || p.receivedBy === recipientFilter)
+    .filter(p => modeFilter === "All" || p.mode === modeFilter)
     .filter(p => {
-      if (fromDate && p.date < fromDate) return false;
-      if (toDate && p.date > toDate) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        return p.orderNo.toLowerCase().includes(s) || p.customerName.toLowerCase().includes(s) || p.receivedBy.toLowerCase().includes(s);
-      }
-      return true;
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return p.orderNo.toLowerCase().includes(s)
+        || p.customerName.toLowerCase().includes(s)
+        || p.receivedBy.toLowerCase().includes(s)
+        || p.txnRef.toLowerCase().includes(s)
+        || p.note.toLowerCase().includes(s);
     })
     .sort((a,b) => b.date.localeCompare(a.date));
 
@@ -1757,16 +1781,31 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
         <h2 className="font-bold text-lg text-slate-800">Income</h2>
         <p className="text-xs text-gray-400">All payments received across orders.</p>
       </div>
-      <div className="flex flex-wrap gap-3 items-center">
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search order, customer, recipient…"
-          className="border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-48"/>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span>From</span>
-          <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-          <span>To</span>
-          <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+      <div className="space-y-3">
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search by order no, customer, recipient, txn ref…"
+          className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500">From</span>
+            <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <span className="text-xs font-semibold text-gray-500">To</span>
+            <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex gap-1">
+            {["All","B2B","B2C"].map(t=><button key={t} onClick={()=>setTypeFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${typeFilter===t?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300"}`}>{t}</button>)}
+          </div>
+          <select value={recipientFilter} onChange={e=>setRecipientFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">All Recipients</option>
+            {allPayRecipients.map(r=><option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={modeFilter} onChange={e=>setModeFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            {allModes.map(m=><option key={m} value={m}>{m==="All"?"All Modes":m}</option>)}
+          </select>
+          {(fromDate||toDate||typeFilter!=="All"||recipientFilter||modeFilter!=="All")&&(
+            <button onClick={()=>{setFromDate("");setToDate("");setTypeFilter("All");setRecipientFilter("");setModeFilter("All");}} className="text-xs text-indigo-500 hover:underline">Clear all</button>
+          )}
         </div>
-        {(fromDate||toDate) && <button onClick={()=>{setFromDate("");setToDate("");}} className="text-xs text-indigo-500 hover:underline">Clear dates</button>}
       </div>
 
       <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-5 text-white flex items-center justify-between">
@@ -2422,7 +2461,7 @@ export default function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"📝 New Order"},{id:"orders",label:"📋 Orders"},{id:"clients",label:"🏢 Clients"},{id:"expenses",label:"💸 Expenses"},{id:"income",label:"💰 Income"},{id:"dashboard",label:"⚖️ Splitwise"},{id:"settings",label:"⚙️ Settings"}];
+  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
