@@ -2754,7 +2754,7 @@ function App() {
       client.from("payments").select(),
       client.from("assets").select(),
       client.from("settings").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,sets])=>{
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
