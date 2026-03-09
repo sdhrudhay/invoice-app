@@ -153,6 +153,15 @@ create table if not exists payments (
   mode text, received_by text, txn_ref text, comments text,
   created_at timestamptz default now()
 );
+-- Assets
+create table if not exists assets (
+  id text primary key, name text, category text, purchase_date text,
+  amount numeric default 0, paid_by text, vendor text, description text,
+  invoice_url text, invoice_public_id text,
+  linked_expense_id text,
+  is_deleted boolean default false,
+  created_at timestamptz default now()
+);
 -- Settings
 create table if not exists settings (
   key text primary key, value text,
@@ -1440,6 +1449,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         </div>
       </section>
 
+
       <section className="border-t pt-6 space-y-0">
         <div className="flex items-center justify-between gap-4 py-3">
           <p className="text-sm font-semibold text-gray-700">Database Connection</p>
@@ -1687,7 +1697,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
 }
 
 // ─── Expense Tracker ──────────────────────────────────────────────────────────
-const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Miscellaneous"];
+const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Asset Purchase","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
 function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{} }) {
@@ -1820,6 +1830,251 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   );
 }
 
+
+// ─── Asset Manager ────────────────────────────────────────────────────────────
+const ASSET_CATEGORIES = ["Printer","Computer","Furniture","Vehicle","Equipment","Electronics","Machinery","Fixture","Miscellaneous"];
+const EMPTY_ASSET = { id:"", name:"", category:"Printer", purchaseDate:"", amount:"", paidBy:"", vendor:"", description:"", invoiceUrl:"", invoicePublicId:"", linkedExpenseId:"" };
+
+async function uploadToCloudinary(file, cloudName, uploadPreset) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("upload_preset", uploadPreset);
+  fd.append("folder", "elace-assets");
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, { method:"POST", body:fd });
+  if (!res.ok) throw new Error("Upload failed");
+  const data = await res.json();
+  return { url: data.secure_url, publicId: data.public_id };
+}
+
+function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, cdnCloud="", cdnPreset="", toast=()=>{} }) {
+  const [form, setForm] = useState({...EMPTY_ASSET, purchaseDate:today()});
+  const [editId, setEditId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("All");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+  const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const resolveName = (id) => {
+    if (!id) return "";
+    if (id === "__company__") return seller?.name || "Company";
+    const r = recipients.find(r=>r.id===id)||allRecipients.find(r=>r.id===id);
+    return r ? r.name : "";
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!cdnCloud||!cdnPreset) { toast("File upload is not configured — contact admin","error"); return; }
+    setUploading(true);
+    try {
+      const { url, publicId } = await uploadToCloudinary(file, cdnCloud, cdnPreset);
+      upd("invoiceUrl", url); upd("invoicePublicId", publicId);
+      toast("Invoice uploaded successfully");
+    } catch(err) {
+      toast("Upload failed — check Cloudinary settings","error");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleSave = () => {
+    if (!form.name) { toast("Asset name is required","error"); return; }
+    if (!form.purchaseDate) { toast("Purchase date is required","error"); return; }
+    setSaving(true);
+    const id = editId || ("AST-" + String(assets.length + 1).padStart(4,"0"));
+    let linkedExpenseId = form.linkedExpenseId;
+
+    if (num(form.amount) > 0 && form.paidBy) {
+      const expComment = `Asset: ${form.name}${form.vendor ? " ("+form.vendor+")" : ""}`;
+      if (editId && form.linkedExpenseId) {
+        const updatedExp = { id:form.linkedExpenseId, date:form.purchaseDate, paidBy:form.paidBy, amount:num(form.amount), category:"Asset Purchase", comment:expComment, isDeleted:false };
+        setExpenses(prev => prev.map(e => e.id===form.linkedExpenseId ? updatedExp : e));
+      } else {
+        linkedExpenseId = "EXP-AST-" + Date.now();
+        const newExp = { id:linkedExpenseId, date:form.purchaseDate, paidBy:form.paidBy, amount:num(form.amount), category:"Asset Purchase", comment:expComment, isDeleted:false };
+        setExpenses(prev => [...prev, newExp]);
+        toast(`Expense of ₹${fmt(num(form.amount))} created for ${resolveName(form.paidBy)}`);
+      }
+    }
+
+    const asset = { ...form, id, amount:num(form.amount)||0, linkedExpenseId };
+    if (editId) {
+      setAssets(prev => prev.map(a => a.id===editId ? asset : a));
+      toast("Asset updated");
+    } else {
+      setAssets(prev => [...prev, asset]);
+      toast("Asset saved");
+    }
+    setForm({...EMPTY_ASSET, purchaseDate:today()});
+    setEditId(null); setShowForm(false); setSaving(false);
+  };
+
+  const handleEdit = (a) => { setForm({...a}); setEditId(a.id); setShowForm(true); window.scrollTo({top:0,behavior:"smooth"}); };
+
+  const handleDelete = (a) => {
+    if (!window.confirm(`Delete asset "${a.name}"?\n\nThe linked expense will also be removed.`)) return;
+    deleteAsset(a);
+    setAssets(prev => prev.filter(x => x.id !== a.id));
+    if (a.linkedExpenseId) setExpenses(prev => prev.filter(e => e.id !== a.linkedExpenseId));
+    toast("Asset deleted");
+  };
+
+  const filtered = assets
+    .filter(a => catFilter==="All" || a.category===catFilter)
+    .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || (a.vendor||"").toLowerCase().includes(search.toLowerCase()))
+    .slice().sort((a,b) => (b.purchaseDate||"").localeCompare(a.purchaseDate||""));
+
+  const totalValue = filtered.reduce((s,a) => s+num(a.amount), 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-bold text-xl text-slate-800">Assets</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Track company assets, purchase invoices and costs.</p>
+        </div>
+        <button onClick={()=>{ setForm({...EMPTY_ASSET,purchaseDate:today()}); setEditId(null); setShowForm(v=>!v); }}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">
+          {showForm ? "Close Form" : "+ Add Asset"}
+        </button>
+      </div>
+
+      {/* Form */}
+      {showForm && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+          <h3 className="font-bold text-slate-700 text-sm">{editId ? "Edit Asset — "+editId : "New Asset"}</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2"><F label="Asset Name *" value={form.name} onChange={v=>upd("name",v)} placeholder="e.g. Creality Ender 3 Pro"/></div>
+            <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={ASSET_CATEGORIES}/>
+            <F label="Purchase Date *" type="date" value={form.purchaseDate} onChange={v=>upd("purchaseDate",v)}/>
+            <F label="Vendor / Seller" value={form.vendor} onChange={v=>upd("vendor",v)} placeholder="Where was it bought?"/>
+            <F label="Amount (₹)" type="number" value={form.amount} onChange={v=>{ if(v!==""&&parseFloat(v)<0)return; upd("amount",v); }} placeholder="0.00"/>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Paid By</label>
+              <select value={form.paidBy} onChange={e=>upd("paidBy",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                <option value="">— Select recipient —</option>
+                <option value="__company__">{seller?.name||"Company"}</option>
+                {recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2"><F label="Description (optional)" value={form.description} onChange={v=>upd("description",v)} rows={2} placeholder="Notes about this asset…"/></div>
+          </div>
+
+          {/* Invoice upload */}
+          <div className="border-t pt-4 space-y-2">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Purchase Invoice</p>
+            {form.invoiceUrl ? (
+              <div className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3">
+                <span className="text-emerald-600 text-sm font-medium">Invoice uploaded</span>
+                <a href={form.invoiceUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 underline">View</a>
+                <button onClick={()=>{ upd("invoiceUrl",""); upd("invoicePublicId",""); }} className="ml-auto text-xs text-red-500 hover:underline">Remove</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button onClick={()=>fileRef.current?.click()} disabled={uploading||!cdnCloud||!cdnPreset}
+                  className="flex items-center gap-2 text-sm border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-4 py-2 rounded-lg font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                  {uploading ? "Uploading…" : "Upload Invoice (PDF / Image)"}
+                </button>
+                {(!cdnCloud||!cdnPreset) && <span className="text-xs text-amber-600">File upload not configured</span>}
+                <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileChange}/>
+              </div>
+            )}
+          </div>
+
+          {/* Auto-expense preview */}
+          {num(form.amount)>0 && form.paidBy && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 flex items-center gap-2">
+              <span className="text-blue-400 text-base">ℹ</span>
+              {editId && form.linkedExpenseId
+                ? <span>Saving will update the linked expense — <b>₹{fmt(num(form.amount))}</b> for <b>{resolveName(form.paidBy)}</b></span>
+                : <span>Saving will auto-create an expense of <b>₹{fmt(num(form.amount))}</b> for <b>{resolveName(form.paidBy)}</b></span>
+              }
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2 border-t">
+            <button onClick={handleSave} disabled={saving||uploading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50">
+              {saving ? "Saving…" : editId ? "Update Asset" : "Save Asset"}
+            </button>
+            <button onClick={()=>{ setShowForm(false); setEditId(null); setForm({...EMPTY_ASSET,purchaseDate:today()}); }}
+              className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-5 py-2.5 rounded-lg text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Summary card */}
+      <div className="bg-gradient-to-r from-slate-700 to-slate-900 rounded-2xl px-6 py-5 text-white flex items-center justify-between">
+        <div>
+          <p className="text-xs opacity-60 uppercase tracking-widest">Total Asset Value</p>
+          <p className="text-3xl font-black mt-1">₹{totalValue.toLocaleString("en-IN",{minimumFractionDigits:2})}</p>
+          <p className="text-xs opacity-50 mt-1">{filtered.length} asset{filtered.length!==1?"s":""} shown</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="space-y-2">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name or vendor…"
+          className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex gap-1.5 flex-wrap">
+          {["All",...ASSET_CATEGORIES].map(c=>(
+            <button key={c} onClick={()=>setCatFilter(c)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${catFilter===c?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300"}`}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* List */}
+      {filtered.length===0 && (
+        <p className="text-gray-400 text-sm text-center py-12">{assets.length===0?"No assets yet — add your first one!":"No assets match your filters."}</p>
+      )}
+      <div className="space-y-3">
+        {filtered.map(a=>(
+          <div key={a.id} className="bg-white border border-gray-100 rounded-xl px-4 py-4 hover:shadow-md transition-all">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800">{a.name}</span>
+                  <span className="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{a.id}</span>
+                  <span className="text-xs bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100 px-2 py-0.5 rounded-full">{a.category}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-0 mt-3 border border-gray-100 rounded-lg overflow-hidden">
+                  {[
+                    ["Date", a.purchaseDate||"—", "text-gray-700"],
+                    ["Amount", a.amount>0?`₹${fmt(num(a.amount))}`:"—", "text-emerald-700 font-bold"],
+                    ["Paid By", resolveName(a.paidBy)||"—", "text-gray-700"],
+                    ["Vendor", a.vendor||"—", "text-gray-700"],
+                  ].map(([lbl,val,cls],i)=>(
+                    <div key={i} className={`px-3 py-2 text-center ${i<3?"border-r border-gray-100":""}`}>
+                      <p className="text-xs text-gray-400 mb-0.5">{lbl}</p>
+                      <p className={`text-xs ${cls}`}>{val}</p>
+                    </div>
+                  ))}
+                </div>
+                {a.description && <p className="text-xs text-gray-500 mt-2">{a.description}</p>}
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {a.invoiceUrl && <a href={a.invoiceUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 border border-indigo-200 px-2.5 py-1 rounded-lg hover:bg-indigo-50 font-medium">View Invoice</a>}
+                  {a.linkedExpenseId && <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg font-medium">Expense linked</span>}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
+                <button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ─── Income View ──────────────────────────────────────────────────────────────
 function IncomeView({ orders, recipients, allRecipients=[], seller }) {
@@ -2287,6 +2542,9 @@ function App() {
   const ENV_KEY = getEnv("VITE_SUPABASE_KEY");
   const [sbUrl,setSbUrl]=useState(()=>localStorage.getItem("sb_url")||ENV_URL);
   const [sbKey,setSbKey]=useState(()=>localStorage.getItem("sb_key")||ENV_KEY);
+  const [assets,setAssets]=useState([]);
+  const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
+  const cdnPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
   const syncQueue = useRef([]);
   const syncing = useRef(false);
   const sbRef = useRef(null);
@@ -2365,6 +2623,7 @@ function App() {
       client.from("recipients").select(),
       client.from("expenses").select(),
       client.from("payments").select(),
+      client.from("assets").select(),
       client.from("settings").select(),
     ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,sets])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
@@ -2384,6 +2643,8 @@ function App() {
       if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
       if (cl?.length) setClients(cl.map(mapClient).filter(c=>!c.isDeleted));
       if (rc?.length) { const mapped=rc.map(r=>({id:r.id,name:r.name,isDeleted:r.is_deleted||false})); setRecipients(mapped.filter(r=>!r.isDeleted)); allRecipientsRef.current=mapped; }
+      const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
+      if (ass?.length) setAssets(ass.map(mapAsset).filter(a=>!a.isDeleted));
       if (ex?.length) setExpenses(ex.map(mapExpense).filter(e=>!e.isDeleted));
       if (sets?.length) {
         const s = {}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} });
@@ -2492,6 +2753,15 @@ function App() {
     shipping_state_code:c.shippingStateCode||""
   }});
   const upsertRecipient = (r) => enqueue({action:"upsert",table:"recipients",row:{id:r.id,name:r.name,is_deleted:r.isDeleted||false}});
+  const upsertAsset = (a) => enqueue({action:"upsert",table:"assets",row:{
+    id:a.id, name:a.name||"", category:a.category||"", purchase_date:a.purchaseDate||"",
+    amount:a.amount||0, paid_by:a.paidBy||"", vendor:a.vendor||"", description:a.description||"",
+    invoice_url:a.invoiceUrl||"", invoice_public_id:a.invoicePublicId||"",
+    linked_expense_id:a.linkedExpenseId||"", is_deleted:a.isDeleted||false
+  }});
+  const deleteAsset = (a) => upsertAsset({...a, isDeleted:true});
+  const syncSetAssets=(v)=>{ const n=typeof v==="function"?v(assets):v; setAssets(n); n.forEach(a=>{ const prev=assets.find(p=>p.id===a.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(a)) upsertAsset(a); }); };
+
   const upsertExpense = (e) => enqueue({action:"upsert",table:"expenses",row:{ is_deleted:e.isDeleted||false,
     id:e.id, date:e.date, paid_by:e.paidBy, amount:e.amount||0,
     category:e.category||"", comment:e.comment||""
@@ -2589,7 +2859,7 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
+  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -2629,6 +2899,7 @@ function App() {
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
+          {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
