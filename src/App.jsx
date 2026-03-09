@@ -358,7 +358,7 @@ function ItemTable({ items, setItems, needsGst }) {
               <td className="px-2 py-1.5 text-gray-400 w-6">{it.sl}</td>
               <td className="px-2 py-1.5"><input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/></td>
               <td className="px-2 py-1.5"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16"}/></td>
-              <td className="px-2 py-1.5"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none">{["Nos","Kg","Ltr","Mtr","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
+              <td className="px-2 py-1.5"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
               <td className="px-2 py-1.5"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-right"}/></td>
               <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-right"}/></td>
               <td className="px-2 py-1.5"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-right"}/></td>
@@ -772,11 +772,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
               <div className="border-t pt-4">
-                <div className="flex items-center justify-between mb-6">
-                  <p className="text-sm font-semibold text-gray-700">Order Items</p>
-                  <span className="text-xs text-gray-400">Edit items here to update quotation</span>
-                </div>
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst}/>
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} label="Order Items" sublabel="Edit items here to update quotation"/>
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
@@ -980,19 +976,22 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Invoice Editor ────────────────────────────────────────────────────────────
 
 // ─── Expandable Item Table ────────────────────────────────────────────────────
-function ExpandableItemTable({ items, setItems, needsGst }) {
+function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
   const [fullscreen, setFullscreen] = useState(false);
   return (
     <>
-      <div className="relative">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          {label && <p className="text-sm font-semibold text-gray-700">{label}</p>}
+          {sublabel && <span className="text-xs text-gray-400">{sublabel}</span>}
+          <button
+            onClick={()=>setFullscreen(true)}
+            className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
+          >
+            ⛶ Full Screen
+          </button>
+        </div>
         <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
-        <button
-          onClick={()=>setFullscreen(true)}
-          title="Expand to full screen"
-          className="absolute -top-7 right-0 text-xs text-indigo-500 hover:text-indigo-700 font-medium flex items-center gap-1"
-        >
-          ⛶ Expand
-        </button>
       </div>
       {fullscreen && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
@@ -1024,7 +1023,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
         {isNew&&<span className="text-xs text-emerald-600 font-medium">Items pre-filled from order — edit as needed</span>}
       </div>
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
-      <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst}/>
+      <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} label="Invoice Items"/>
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
         <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">✓ Save Invoice</button>
