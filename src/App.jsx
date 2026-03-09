@@ -298,22 +298,36 @@ ${(isProforma&&seller.pfTerms)||(!isProforma&&seller.tiTerms)?`<div style="margi
 }
 
 function printOrOpen(html) {
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.target = "_blank";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  const win = window.open("", "_blank");
+  if (win) {
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } else {
+    // Fallback if popup blocked — download as file
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.target = "_blank"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
 }
 
 function downloadHtml(html, filename) {
   // Inject auto-print script so browser PDF dialog opens immediately
   const printHtml = html.replace("</body>", `<script>window.onload=function(){window.print();}<\/script></body>`);
-  const blob = new Blob([printHtml], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  const win = window.open("", "_blank");
+  if (win) {
+    win.document.open();
+    win.document.write(printHtml);
+    win.document.close();
+  } else {
+    const blob = new Blob([printHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = (filename||"invoice") + ".html"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
 }
 
 // ─── Reusable UI ──────────────────────────────────────────────────────────────
@@ -1835,6 +1849,33 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
 const ASSET_CATEGORIES = ["Printer","Computer","Furniture","Vehicle","Equipment","Electronics","Machinery","Fixture","Miscellaneous"];
 const EMPTY_ASSET = { id:"", name:"", category:"Printer", purchaseDate:"", amount:"", paidBy:"", vendor:"", description:"", invoiceUrl:"", invoicePublicId:"", linkedExpenseId:"" };
 
+
+const downloadInvoice = async (url, assetName) => {
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const ext = url.match(/\.([a-z]+)($|\?)/i)?.[1] || (blob.type.includes("pdf") ? "pdf" : "jpg");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (assetName || "invoice").replace(/[^a-z0-9]/gi,"_") + "." + ext;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    window.open(url, "_blank"); // fallback: open directly
+  }
+};
+
+const openInvoice = (url) => {
+  if (!url) return;
+  // PDFs: open via Google Docs viewer so they always render
+  if (url.match(/\.pdf($|\?)/i) || url.includes("/raw/upload/")) {
+    window.open("https://docs.google.com/viewer?url=" + encodeURIComponent(url), "_blank");
+  } else {
+    window.open(url, "_blank");
+  }
+};
+
 async function uploadToCloudinary(file, cloudName, uploadPreset) {
   const fd = new FormData();
   fd.append("file", file);
@@ -1971,7 +2012,8 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
             {form.invoiceUrl ? (
               <div className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3">
                 <span className="text-emerald-600 text-sm font-medium">Invoice uploaded</span>
-                <a href={form.invoiceUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 underline">View</a>
+                <button onClick={()=>openInvoice(form.invoiceUrl)} className="text-xs text-indigo-600 underline hover:text-indigo-800">View</button>
+                <button onClick={()=>downloadInvoice(form.invoiceUrl, form.name)} className="text-xs text-gray-500 underline hover:text-gray-700">Download</button>
                 <button onClick={()=>{ upd("invoiceUrl",""); upd("invoicePublicId",""); }} className="ml-auto text-xs text-red-500 hover:underline">Remove</button>
               </div>
             ) : (
@@ -2060,7 +2102,8 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
                 </div>
                 {a.description && <p className="text-xs text-gray-500 mt-2">{a.description}</p>}
                 <div className="flex gap-2 mt-2 flex-wrap">
-                  {a.invoiceUrl && <a href={a.invoiceUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 border border-indigo-200 px-2.5 py-1 rounded-lg hover:bg-indigo-50 font-medium">View Invoice</a>}
+                  {a.invoiceUrl && <button onClick={()=>openInvoice(a.invoiceUrl)} className="text-xs text-indigo-500 border border-indigo-200 px-2.5 py-1 rounded-lg hover:bg-indigo-50 font-medium">View Invoice</button>}
+                  {a.invoiceUrl && <button onClick={()=>downloadInvoice(a.invoiceUrl, a.name)} className="text-xs text-gray-500 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 font-medium">Download</button>}
                   {a.linkedExpenseId && <span className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg font-medium">Expense linked</span>}
                 </div>
               </div>
