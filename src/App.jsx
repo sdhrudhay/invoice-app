@@ -1281,9 +1281,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             ["Advance", num(o.advance)>0?`₹${fmt(o.advance)}`:"—", "text-emerald-600"],
             ["Balance Due", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
           ].map(([lbl,val,cls],i)=>(
-            <div key={i} className={`px-3 py-2 text-center ${i<4?"border-r border-gray-100":""}`}>
-              <p className="text-xs text-gray-500 font-semibold leading-none mb-1 text-center uppercase tracking-wide" style={{fontSize:"10px"}}>{lbl}</p>
-              <p className={`text-xs font-semibold ${cls} text-center`}>{val}</p>
+            <div key={i} className={`py-2 flex flex-col items-center justify-center ${i<4?"border-r border-gray-100":""}`}>
+              <p className="leading-none mb-1 text-center text-gray-500 font-semibold uppercase tracking-wide" style={{fontSize:"9px"}}>{lbl}</p>
+              <p className={`text-xs font-semibold text-center ${cls}`}>{val}</p>
             </div>
           ))}
         </div>
@@ -2364,9 +2364,24 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="font-bold text-lg text-slate-800">Income</h2>
-        <p className="text-xs text-gray-400">All payments received across orders.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-bold text-lg text-slate-800">Income</h2>
+          <p className="text-xs text-gray-400">All payments received across orders.</p>
+        </div>
+        <ExcelBtn onClick={()=>{
+          exportToExcel(filtered.map(p=>({
+            "Date": p.date,
+            "Order No": p.orderNo,
+            "Customer": p.customerName,
+            "Type": p.type,
+            "Amount (₹)": p.amount,
+            "Mode": p.mode,
+            "Received By": p.receivedBy,
+            "Txn Ref": p.txnRef,
+            "Note": p.note,
+          })), "Income_Export");
+        }}/>
       </div>
       <div className="space-y-3">
         <input value={search} onChange={e=>setSearch(e.target.value)}
@@ -2395,24 +2410,9 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
         </div>
       </div>
 
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-5 text-white flex items-center justify-between">
-        <div>
-          <p className="text-sm opacity-80">Total Received ({filtered.length} entries)</p>
-          <p className="text-3xl font-black mt-1">&#x20B9;{total.toLocaleString("en-IN", {minimumFractionDigits:2})}</p>
-        </div>
-        <ExcelBtn onClick={()=>{
-          exportToExcel(filtered.map(p=>({
-            "Date": p.date,
-            "Order No": p.orderNo,
-            "Customer": p.customerName,
-            "Type": p.type,
-            "Amount (₹)": p.amount,
-            "Mode": p.mode,
-            "Received By": p.receivedBy,
-            "Txn Ref": p.txnRef,
-            "Note": p.note,
-          })), "Income_Export");
-        }}/>
+      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-5 text-white">
+        <p className="text-sm opacity-80">Total Received ({filtered.length} entries)</p>
+        <p className="text-3xl font-black mt-1">&#x20B9;{total.toLocaleString("en-IN", {minimumFractionDigits:2})}</p>
       </div>
 
       {filtered.length === 0 ? (
