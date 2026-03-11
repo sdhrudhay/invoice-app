@@ -386,8 +386,8 @@ function ItemTable({ items, setItems, needsGst }) {
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&<>
-                <td className="px-2 py-1.5 text-center"><select value={it.cgstRate} onChange={e=>upd(i,"cgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14 text-center">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
-                <td className="px-2 py-1.5 text-center"><select value={it.sgstRate} onChange={e=>upd(i,"sgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14 text-center">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
+                <td className="px-2 py-1.5 text-center"><input type="number" value={it.cgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"cgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td>
+                <td className="px-2 py-1.5 text-center"><input type="number" value={it.sgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"sgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td>
               </>}
               <td className="px-2 py-1.5 text-center text-gray-600">₹{fmt(it.grossAmt)}</td>
               {needsGst&&<><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.sgstAmt)}</td></>}
@@ -2460,17 +2460,20 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
   const companyName = seller?.name || "Company";
 
   // net > 0: recipient owes company.  net < 0: company owes recipient.
+  // Company can also pay any recipient directly regardless of direction.
   const dirOptions = net > 0
     ? [
         { value: "recipientPaysCompany",           label: `${fromName} pays ${companyName} directly` },
         { value: "recipientTransfersToRecipient",   label: `${fromName} transfers to another recipient` },
+        { value: "companyPaysRecipient",             label: `${companyName} pays ${fromName} directly` },
       ]
     : [
         { value: "companyPaysRecipient",             label: `${companyName} pays ${fromName} directly` },
         { value: "recipientPaysOnBehalfOfCompany",   label: `Another recipient pays ${fromName} on company's behalf` },
+        { value: "companyPaysAnyRecipient",          label: `${companyName} pays another recipient directly` },
       ];
 
-  const needsVia = direction === "recipientTransfersToRecipient" || direction === "recipientPaysOnBehalfOfCompany";
+  const needsVia = direction === "recipientTransfersToRecipient" || direction === "recipientPaysOnBehalfOfCompany" || direction === "companyPaysAnyRecipient";
 
   const handleSettle = () => {
     const amt = parseFloat(amount);
@@ -2503,7 +2506,7 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
       {needsVia && (
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-500">
-            {direction === "recipientTransfersToRecipient" ? "Transfer to…" : "Paying recipient…"}
+            {direction === "recipientTransfersToRecipient" ? "Transfer to…" : direction === "companyPaysAnyRecipient" ? "Pay to recipient…" : "Paying recipient…"}
           </label>
           <select value={via} onChange={e => setVia(e.target.value)}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
@@ -2598,6 +2601,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
 
   // Process settlements
   // st.direction: "recipientPaysCompany" | "companyPaysRecipient" | "recipientTransfersToRecipient" | "recipientPaysViaRecipient"
+  const companyName = seller?.name || "Company";
   settlements.forEach(st => {
     const amt = num(st.amount);
     if (!amt) return;
@@ -2632,6 +2636,16 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
       ledger[st.fromId].expenses.push({ amount: -amt, label: `Settled by ${viaName}`, date: st.date, ref: st.ref });
       ledger[viaId].expenses.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
       ledger[viaId].settlements.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
+
+    } else if (st.direction === "companyPaysAnyRecipient") {
+      // Company pays any recipient directly (e.g. paying a debt to a 3rd party on behalf of fromId)
+      // fromId's balance is reduced (expenses go down), viaId receives payment from company (their collected goes down since company paid them)
+      const viaId = st.via;
+      if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
+      ledger[st.fromId].settlements.push({ amount: amt, label: `${companyName} paid ${viaName} directly`, date: st.date, ref: st.ref });
+      ledger[st.fromId].expenses.push({ amount: -amt, label: `${companyName} paid ${viaName} on account`, date: st.date, ref: st.ref });
+      ledger[viaId].settlements.push({ amount: amt, label: `Received from ${companyName} (via ${fromName} account)`, date: st.date, ref: st.ref });
+      ledger[viaId].collected.push({ amount: -amt, label: `Paid by ${companyName} directly`, date: st.date, ref: st.ref });
     }
   });
 
@@ -2760,7 +2774,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-bold text-violet-700">₹{fmt(st.amount)}</span>
-                            <button onClick={()=>setSettlements(prev=>prev.filter((_,i)=>i!==settlements.indexOf(st)))} className="text-red-400 hover:text-red-600 text-sm font-bold leading-none">×</button>
+                            <button onClick={()=>setSettlements(prev=>prev.filter(x=>x.id!==st.id))} className="text-red-400 hover:text-red-600 text-sm font-bold leading-none">×</button>
                           </div>
                         </div>
                       ))}
