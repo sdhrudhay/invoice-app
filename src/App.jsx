@@ -374,24 +374,24 @@ function ItemTable({ items, setItems, needsGst }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
       <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?"1020px":"680px"}}>
-        <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+        <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
           {items.map((it,i)=>(
             <tr key={i} className="border-b border-gray-100 hover:bg-slate-50">
-              <td className="px-2 py-1.5 text-gray-400 w-6">{it.sl}</td>
+              <td className="px-2 py-1.5 text-gray-400 w-6 text-center">{it.sl}</td>
               <td className="px-2 py-1.5"><input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/></td>
-              <td className="px-2 py-1.5"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16"}/></td>
-              <td className="px-2 py-1.5"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-right"}/></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-right"}/></td>
-              <td className="px-2 py-1.5"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-right"}/></td>
+              <td className="px-2 py-1.5 text-center"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none text-center">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
+              <td className="px-2 py-1.5 text-center"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&<>
-                <td className="px-2 py-1.5"><select value={it.cgstRate} onChange={e=>upd(i,"cgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
-                <td className="px-2 py-1.5"><select value={it.sgstRate} onChange={e=>upd(i,"sgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
+                <td className="px-2 py-1.5 text-center"><select value={it.cgstRate} onChange={e=>upd(i,"cgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14 text-center">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
+                <td className="px-2 py-1.5 text-center"><select value={it.sgstRate} onChange={e=>upd(i,"sgstRate",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none w-14 text-center">{GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}</select></td>
               </>}
-              <td className="px-2 py-1.5 text-right text-gray-600">₹{fmt(it.grossAmt)}</td>
-              {needsGst&&<><td className="px-2 py-1.5 text-right text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-right text-gray-500">₹{fmt(it.sgstAmt)}</td></>}
-              <td className="px-2 py-1.5 text-right font-bold text-slate-800">₹{fmt(it.netAmt)}</td>
+              <td className="px-2 py-1.5 text-center text-gray-600">₹{fmt(it.grossAmt)}</td>
+              {needsGst&&<><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.sgstAmt)}</td></>}
+              <td className="px-2 py-1.5 text-center font-bold text-slate-800">₹{fmt(it.netAmt)}</td>
               <td className="px-2 py-1.5"><button onClick={()=>del(i)} className="text-red-400 hover:text-red-600 font-bold px-1 text-base leading-none">×</button></td>
             </tr>
           ))}
@@ -2448,7 +2448,106 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
+function SettlementForm({ fromId, fromName, net, recipients, allRecipients, seller, summaries, onSettle }) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(today());
+  const [direction, setDirection] = useState("");
+  const [via, setVia] = useState("");
+  const [ref, setRef] = useState("");
+
+  const others = summaries.filter(s => s.id !== fromId);
+  const companyName = seller?.name || "Company";
+
+  // net > 0: recipient owes company.  net < 0: company owes recipient.
+  const dirOptions = net > 0
+    ? [
+        { value: "recipientPaysCompany",           label: `${fromName} pays ${companyName} directly` },
+        { value: "recipientTransfersToRecipient",   label: `${fromName} transfers to another recipient` },
+      ]
+    : [
+        { value: "companyPaysRecipient",             label: `${companyName} pays ${fromName} directly` },
+        { value: "recipientPaysOnBehalfOfCompany",   label: `Another recipient pays ${fromName} on company's behalf` },
+      ];
+
+  const needsVia = direction === "recipientTransfersToRecipient" || direction === "recipientPaysOnBehalfOfCompany";
+
+  const handleSettle = () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0 || !direction) return;
+    if (needsVia && !via) return;
+    onSettle({ id: "STL-" + Date.now(), date, amount: amt, ref, fromId, via: needsVia ? via : "__company__", direction });
+    setAmount(""); setRef(""); setDirection(""); setVia(""); setOpen(false);
+  };
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="w-full mt-1 text-xs border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 py-2 rounded-lg font-semibold transition-all">
+      + Record Settlement
+    </button>
+  );
+
+  return (
+    <div className="border border-indigo-100 bg-indigo-50/60 rounded-xl p-3 space-y-3 mt-1">
+      <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Settlement</p>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-500">Settlement Type</label>
+        <select value={direction} onChange={e => { setDirection(e.target.value); setVia(""); }}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+          <option value="">— Select type —</option>
+          {dirOptions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </div>
+
+      {needsVia && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500">
+            {direction === "recipientTransfersToRecipient" ? "Transfer to…" : "Paying recipient…"}
+          </label>
+          <select value={via} onChange={e => setVia(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">— Select recipient —</option>
+            {others.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500">Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500">Amount (₹)</label>
+          <input type="number" value={amount} min="0" placeholder="0.00"
+            onChange={e => setAmount(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-500">Ref / Note (optional)</label>
+        <input value={ref} onChange={e => setRef(e.target.value)} placeholder="UPI ref, bank transfer…"
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={handleSettle}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">
+          Save
+        </button>
+        <button onClick={() => setOpen(false)}
+          className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg text-xs">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, settlements=[], setSettlements=()=>{} }) {
   // Build per-recipient ledger
   // Each recipient either:
   //   collected money (advance/payments) → recipient owes company (positive = recipient owes)
@@ -2494,6 +2593,45 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
   expenses.forEach(e => {
     if (e.paidBy && e.paidBy !== "__company__" && num(e.amount) > 0) {
       addEntry(e.paidBy, e.amount, "expenses", `${e.category}${e.comment ? " — " + e.comment : ""}`, e.date, "");
+    }
+  });
+
+  // Process settlements
+  // st.direction: "recipientPaysCompany" | "companyPaysRecipient" | "recipientTransfersToRecipient" | "recipientPaysViaRecipient"
+  settlements.forEach(st => {
+    const amt = num(st.amount);
+    if (!amt) return;
+    const fromName = resolveRecipientName(st.fromId);
+    const viaName = resolveRecipientName(st.via);
+    if (!ledger[st.fromId]) ledger[st.fromId] = { collected: [], expenses: [], settlements: [] };
+
+    if (st.direction === "recipientPaysCompany") {
+      // Recipient owes company → pays company directly → clears their debt
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Paid company directly`, date: st.date, ref: st.ref });
+      ledger[st.fromId].collected.push({ amount: -amt, label: `Settlement — paid company`, date: st.date, ref: st.ref });
+
+    } else if (st.direction === "companyPaysRecipient") {
+      // Company owes recipient → company pays them directly → clears company's debt
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Company paid directly`, date: st.date, ref: st.ref });
+      ledger[st.fromId].expenses.push({ amount: -amt, label: `Settlement — company paid`, date: st.date, ref: st.ref });
+
+    } else if (st.direction === "recipientTransfersToRecipient") {
+      // Recipient A owes company → transfers to Recipient B → B now owes company instead
+      const viaId = st.via;
+      if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Transferred to ${viaName}`, date: st.date, ref: st.ref });
+      ledger[st.fromId].collected.push({ amount: -amt, label: `Transfer to ${viaName}`, date: st.date, ref: st.ref });
+      ledger[viaId].collected.push({ amount: amt, label: `Transfer received from ${fromName}`, date: st.date, ref: st.ref });
+      ledger[viaId].settlements.push({ amount: amt, label: `Received from ${fromName} (owed company)`, date: st.date, ref: st.ref });
+
+    } else if (st.direction === "recipientPaysOnBehalfOfCompany") {
+      // Company owes Recipient A → Recipient B pays A on company's behalf → company now owes B instead
+      const viaId = st.via;
+      if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
+      ledger[st.fromId].settlements.push({ amount: amt, label: `${viaName} paid on company's behalf`, date: st.date, ref: st.ref });
+      ledger[st.fromId].expenses.push({ amount: -amt, label: `Settled by ${viaName}`, date: st.date, ref: st.ref });
+      ledger[viaId].expenses.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
+      ledger[viaId].settlements.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
     }
   });
 
@@ -2610,6 +2748,25 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
                     ))}
                   </div>
 
+                  {/* Settlements for this recipient */}
+                  {s.entries.settlements.length>0&&(
+                    <div className="space-y-1 pt-1">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Settlements</p>
+                      {s.entries.settlements.map((st,si)=>(
+                        <div key={si} className="flex items-center justify-between gap-2 bg-violet-50 rounded-lg px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-violet-800">{st.label}</p>
+                            <p className="text-xs text-gray-400">{st.date}{st.ref?` · ${st.ref}`:""}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs font-bold text-violet-700">₹{fmt(st.amount)}</span>
+                            <button onClick={()=>setSettlements(prev=>prev.filter((_,i)=>i!==settlements.indexOf(st)))} className="text-red-400 hover:text-red-600 text-sm font-bold leading-none">×</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
                       {s.net>0?`${s.name} owes company`:s.net<0?`Company owes ${s.name}`:"Settled"}
@@ -2618,6 +2775,20 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller }) {
                       {s.net===0?"✓ Settled":`₹${fmt(Math.abs(s.net))}`}
                     </span>
                   </div>
+
+                  {/* Record a settlement */}
+                  <SettlementForm
+                    fromId={s.id}
+                    fromName={s.name}
+                    net={s.net}
+                    recipients={recipients}
+                    allRecipients={allRecipients}
+                    seller={seller}
+                    summaries={summaries}
+                    onSettle={(settlement)=>{
+                      setSettlements(prev=>[...prev, settlement]);
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -2799,6 +2970,7 @@ function App() {
   const [sbUrl,setSbUrl]=useState(()=>localStorage.getItem("sb_url")||ENV_URL);
   const [sbKey,setSbKey]=useState(()=>localStorage.getItem("sb_key")||ENV_KEY);
   const [assets,setAssets]=useState([]);
+  const [settlements,setSettlements]=useState([]);
   const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
   const cdnPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
   const syncQueue = useRef([]);
@@ -2881,7 +3053,8 @@ function App() {
       client.from("payments").select(),
       client.from("assets").select(),
       client.from("settings").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets])=>{
+      client.from("settlements").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
@@ -2907,6 +3080,7 @@ function App() {
         if (s.seller) setSeller(s.seller);
         if (s.series) setSeries(s.series);
       }
+      if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via })).filter(r=>!r.isDeleted));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
@@ -3137,15 +3311,9 @@ function App() {
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
               {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
             </div>
-            {countdown!==null&&(
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
-                <span className="text-xs font-semibold text-amber-600">⏱ Session expires in</span>
-                <span className="text-sm font-black text-amber-700 tabular-nums min-w-[2.5rem] text-center">
-                  {`${String(Math.floor(countdown/60)).padStart(2,"0")}:${String(countdown%60).padStart(2,"0")}`}
-                </span>
-              </div>
-            )}
-            <button onClick={handleLogout} className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">Sign Out</button>
+            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
+              Sign Out{countdown!==null&&<span className="ml-1 text-xs font-black text-amber-600 tabular-nums bg-amber-100 px-1.5 py-0.5 rounded-md">{`${String(Math.floor(countdown/60)).padStart(2,"0")}:${String(countdown%60).padStart(2,"0")}`}</span>}
+            </button>
           </div>
         </div>
       </div>
@@ -3157,7 +3325,7 @@ function App() {
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
-          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
+          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
       </div>
