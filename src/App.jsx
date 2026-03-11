@@ -3227,6 +3227,9 @@ function App() {
   const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); n.forEach(c=>{ const prev=clients.find(p=>p.id===c.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(c)) upsertClient(c); }); };
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
+  const upsertSettlement=(st)=>enqueue({action:"upsert",table:"settlements",row:{id:st.id,date:st.date,amount:st.amount,ref:st.ref||"",from_id:st.fromId,via:st.via,direction:st.direction}});
+  const deleteSettlement=(id)=>enqueue({action:"delete",table:"settlements",id});
+  const syncSetSettlements=(v)=>{ const n=typeof v==="function"?v(settlements):v; const removed=settlements.filter(s=>!n.find(x=>x.id===s.id)); removed.forEach(s=>deleteSettlement(s.id)); n.forEach(st=>{ const prev=settlements.find(p=>p.id===st.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(st)) upsertSettlement(st); }); setSettlements(n); };
   const syncSetSeller=(v)=>{ setSeller(v); saveSettings({seller:v}); };
   const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
 
