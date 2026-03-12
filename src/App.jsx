@@ -2459,21 +2459,19 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
   const others = summaries.filter(s => s.id !== fromId);
   const companyName = seller?.name || "Company";
 
-  // net > 0: recipient owes company.  net < 0: company owes recipient.
-  // Company can also pay any recipient directly regardless of direction.
+  // net > 0: recipient owes company → they pay back
+  // net < 0: company owes recipient → company pays them
   const dirOptions = net > 0
     ? [
         { value: "recipientPaysCompany",           label: `${fromName} pays ${companyName} directly` },
         { value: "recipientTransfersToRecipient",   label: `${fromName} transfers to another recipient` },
-        { value: "companyPaysRecipient",             label: `${companyName} pays ${fromName} directly` },
       ]
     : [
         { value: "companyPaysRecipient",             label: `${companyName} pays ${fromName} directly` },
         { value: "recipientPaysOnBehalfOfCompany",   label: `Another recipient pays ${fromName} on company's behalf` },
-        { value: "companyPaysAnyRecipient",          label: `${companyName} pays another recipient directly` },
       ];
 
-  const needsVia = direction === "recipientTransfersToRecipient" || direction === "recipientPaysOnBehalfOfCompany" || direction === "companyPaysAnyRecipient";
+  const needsVia = direction === "recipientTransfersToRecipient" || direction === "recipientPaysOnBehalfOfCompany";
 
   const handleSettle = () => {
     const amt = parseFloat(amount);
@@ -2506,7 +2504,7 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
       {needsVia && (
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-500">
-            {direction === "recipientTransfersToRecipient" ? "Transfer to…" : direction === "companyPaysAnyRecipient" ? "Pay to recipient…" : "Paying recipient…"}
+            {direction === "recipientTransfersToRecipient" ? "Transfer to…" : "Paying recipient…"}
           </label>
           <select value={via} onChange={e => setVia(e.target.value)}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
@@ -2637,15 +2635,6 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
       ledger[viaId].expenses.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
       ledger[viaId].settlements.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
 
-    } else if (st.direction === "companyPaysAnyRecipient") {
-      // Company pays any recipient directly (e.g. paying a debt to a 3rd party on behalf of fromId)
-      // fromId's balance is reduced (expenses go down), viaId receives payment from company (their collected goes down since company paid them)
-      const viaId = st.via;
-      if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
-      ledger[st.fromId].settlements.push({ amount: amt, label: `${companyName} paid ${viaName} directly`, date: st.date, ref: st.ref });
-      ledger[st.fromId].expenses.push({ amount: -amt, label: `${companyName} paid ${viaName} on account`, date: st.date, ref: st.ref });
-      ledger[viaId].settlements.push({ amount: amt, label: `Received from ${companyName} (via ${fromName} account)`, date: st.date, ref: st.ref });
-      ledger[viaId].collected.push({ amount: -amt, label: `Paid by ${companyName} directly`, date: st.date, ref: st.ref });
     }
   });
 
@@ -3094,7 +3083,7 @@ function App() {
         if (s.seller) setSeller(s.seller);
         if (s.series) setSeries(s.series);
       }
-      if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via })).filter(r=>!r.isDeleted));
+      if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
@@ -3228,7 +3217,7 @@ function App() {
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const upsertSettlement=(st)=>enqueue({action:"upsert",table:"settlements",row:{id:st.id,date:st.date,amount:st.amount,ref:st.ref||"",from_id:st.fromId,via:st.via,direction:st.direction}});
-  const deleteSettlement=(id)=>enqueue({action:"delete",table:"settlements",id});
+  const deleteSettlement=(id)=>enqueue({action:"delete",table:"settlements",col:"id",val:id});
   const syncSetSettlements=(v)=>{ const n=typeof v==="function"?v(settlements):v; const removed=settlements.filter(s=>!n.find(x=>x.id===s.id)); removed.forEach(s=>deleteSettlement(s.id)); n.forEach(st=>{ const prev=settlements.find(p=>p.id===st.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(st)) upsertSettlement(st); }); setSettlements(n); };
   const syncSetSeller=(v)=>{ setSeller(v); saveSettings({seller:v}); };
   const syncSetSeries=(v)=>{ setSeries(v); saveSettings({series:v}); };
