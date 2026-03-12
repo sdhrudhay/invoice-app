@@ -2609,31 +2609,31 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
 
     if (st.direction === "recipientPaysCompany") {
       // Recipient owes company → pays company directly → clears their debt
-      ledger[st.fromId].settlements.push({ amount: amt, label: `Paid company directly`, date: st.date, ref: st.ref });
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Paid company directly`, date: st.date, ref: st.ref, stId: st.id });
       ledger[st.fromId].collected.push({ amount: -amt, label: `Settlement — paid company`, date: st.date, ref: st.ref });
 
     } else if (st.direction === "companyPaysRecipient") {
       // Company owes recipient → company pays them directly → clears company's debt
-      ledger[st.fromId].settlements.push({ amount: amt, label: `Company paid directly`, date: st.date, ref: st.ref });
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Company paid directly`, date: st.date, ref: st.ref, stId: st.id });
       ledger[st.fromId].expenses.push({ amount: -amt, label: `Settlement — company paid`, date: st.date, ref: st.ref });
 
     } else if (st.direction === "recipientTransfersToRecipient") {
       // Recipient A owes company → transfers to Recipient B → B now owes company instead
       const viaId = st.via;
       if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
-      ledger[st.fromId].settlements.push({ amount: amt, label: `Transferred to ${viaName}`, date: st.date, ref: st.ref });
+      ledger[st.fromId].settlements.push({ amount: amt, label: `Transferred to ${viaName}`, date: st.date, ref: st.ref, stId: st.id });
       ledger[st.fromId].collected.push({ amount: -amt, label: `Transfer to ${viaName}`, date: st.date, ref: st.ref });
       ledger[viaId].collected.push({ amount: amt, label: `Transfer received from ${fromName}`, date: st.date, ref: st.ref });
-      ledger[viaId].settlements.push({ amount: amt, label: `Received from ${fromName} (owed company)`, date: st.date, ref: st.ref });
+      ledger[viaId].settlements.push({ amount: amt, label: `Received from ${fromName} (owed company)`, date: st.date, ref: st.ref, stId: st.id });
 
     } else if (st.direction === "recipientPaysOnBehalfOfCompany") {
       // Company owes Recipient A → Recipient B pays A on company's behalf → company now owes B instead
       const viaId = st.via;
       if (!ledger[viaId]) ledger[viaId] = { collected: [], expenses: [], settlements: [] };
-      ledger[st.fromId].settlements.push({ amount: amt, label: `${viaName} paid on company's behalf`, date: st.date, ref: st.ref });
+      ledger[st.fromId].settlements.push({ amount: amt, label: `${viaName} paid on company's behalf`, date: st.date, ref: st.ref, stId: st.id });
       ledger[st.fromId].expenses.push({ amount: -amt, label: `Settled by ${viaName}`, date: st.date, ref: st.ref });
       ledger[viaId].expenses.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
-      ledger[viaId].settlements.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref });
+      ledger[viaId].settlements.push({ amount: amt, label: `Paid ${fromName} on company's behalf`, date: st.date, ref: st.ref, stId: st.id });
 
     }
   });
@@ -2763,7 +2763,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-bold text-violet-700">₹{fmt(st.amount)}</span>
-                            <button onClick={()=>setSettlements(prev=>prev.filter(x=>x.id!==st.id))} className="text-red-400 hover:text-red-600 text-sm font-bold leading-none">×</button>
+                            <button onClick={()=>setSettlements(prev=>prev.filter(x=>x.id!==st.stId))} className="text-red-400 hover:text-red-600 text-sm font-bold leading-none">×</button>
                           </div>
                         </div>
                       ))}
