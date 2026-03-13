@@ -1253,7 +1253,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[] }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
