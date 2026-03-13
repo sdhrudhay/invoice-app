@@ -716,29 +716,67 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add Entry</p>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-500">Filament Spool</label>
-          <select value={newUsage.inventoryId} onChange={e=>upd("inventoryId",e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-            <option value="">— Select spool —</option>
-            {inventory.map(i=>{
-              const rem = getRemainingG(i.id);
-              const pct = rem!==null ? Math.round(rem/Number(i.weightG||1)*100) : null;
-              return (
-                <option key={i.id} value={i.id}>
-                  {i.brand||"No brand"} · {i.material} · {i.color||"No colour"} — {rem!==null?`${rem.toFixed(0)}g left (${pct}%)`:((Number(i.weightG)/1000).toFixed(2))+" kg"}
-                </option>
-              );
-            })}
-          </select>
-          {selectedItem&&(()=>{
-            const rem = getRemainingG(selectedItem.id);
-            const pct = rem!==null?Math.round(rem/Number(selectedItem.weightG||1)*100):null;
-            const remColor = pct===null?"text-gray-400":pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+          {(()=>{
+            // Build groups same as inventory grouped view
+            const groups = {};
+            inventory.forEach(i=>{
+              const key = `${i.brand||""}||${i.material}||${i.color||""}`;
+              if (!groups[key]) groups[key] = { brand:i.brand, material:i.material, color:i.color, items:[], totalWeight:0, totalRemaining:0 };
+              groups[key].items.push(i);
+              groups[key].totalWeight += Number(i.weightG||0);
+              groups[key].totalRemaining += getRemainingG(i.id)??0;
+            });
+            const selectedGroup = newUsage.inventoryId
+              ? (()=>{ const si=inventory.find(i=>i.id===newUsage.inventoryId); if(!si) return null; return `${si.brand||""}||${si.material}||${si.color||""}`; })()
+              : null;
             return (
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[selectedItem.material]||"bg-gray-100 text-gray-600"}`}>{selectedItem.material}</span>
-                <span className="text-xs text-gray-400">{selectedItem.purchaseDate}</span>
-                {rem!==null&&<span className={`text-xs font-bold ${remColor}`}>{rem.toFixed(0)}g remaining ({pct}%)</span>}
-                {selectedItem.costTotal>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(selectedItem.costTotal)}</span>}
+              <div className="space-y-1.5">
+                {Object.entries(groups).map(([key,g])=>{
+                  const pct = g.totalWeight>0 ? Math.round(g.totalRemaining/g.totalWeight*100) : 100;
+                  const barC = pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
+                  const textC = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+                  const isSelected = selectedGroup===key;
+                  // When a group is selected and has multiple spools, show spool picker
+                  const showSpoolPicker = isSelected && g.items.length>1;
+                  return (
+                    <div key={key}>
+                      <button type="button"
+                        onClick={()=>{ upd("inventoryId", g.items.length===1 ? g.items[0].id : (isSelected?"":g.items[0].id)); }}
+                        className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all ${isSelected?"border-indigo-400 bg-indigo-50":"border-gray-200 bg-white hover:border-indigo-200 hover:bg-slate-50"}`}>
+                        <div className="flex items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</span>
+                            <span className="text-sm font-semibold text-slate-800 truncate">{g.brand||"No brand"}</span>
+                            <span className="text-sm text-gray-400 truncate">— {g.color||"No colour"}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-xs font-bold ${textC}`}>{g.totalRemaining.toFixed(0)}g left ({pct}%)</span>
+                            {g.items.length>1&&<span className="text-xs text-gray-400">{g.items.length} spools</span>}
+                          </div>
+                        </div>
+                        <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${barC}`} style={{width:`${pct}%`}}/>
+                        </div>
+                      </button>
+                      {showSpoolPicker&&(
+                        <div className="ml-3 mt-1 space-y-1">
+                          {g.items.map(i=>{
+                            const rem=getRemainingG(i.id)??0; const p2=Math.round(rem/Number(i.weightG||1)*100);
+                            const c2=p2>50?"text-emerald-600":p2>20?"text-amber-500":"text-red-500";
+                            return (
+                              <button key={i.id} type="button" onClick={()=>upd("inventoryId",i.id)}
+                                className={`w-full text-left flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border text-xs transition-all ${newUsage.inventoryId===i.id?"border-indigo-400 bg-indigo-50":"border-gray-200 bg-white hover:border-indigo-200"}`}>
+                                <span className="text-gray-500">{i.purchaseDate}</span>
+                                <span className="text-gray-500">{(Number(i.weightG)/1000).toFixed(2)} kg spool</span>
+                                <span className={`font-bold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
