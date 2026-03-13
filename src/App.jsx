@@ -657,13 +657,14 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
     const updated = [...filamentUsage, entry];
     setFilamentUsage(updated);
     setNewUsage({inventoryId:"", weightUsedG:"", isWaste:false, notes:""});
-    onSave();
+    onSave(updated);
     toast("Filament usage recorded");
   };
 
   const handleRemove = (id) => {
-    setFilamentUsage(prev=>prev.filter(u=>u.id!==id));
-    onSave();
+    const updated = filamentUsage.filter(u=>u.id!==id);
+    setFilamentUsage(updated);
+    onSave(updated);
   };
 
   const totalUsed = filamentUsage.filter(u=>!u.isWaste).reduce((s,u)=>s+Number(u.weightUsedG||0),0);
@@ -671,13 +672,17 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
 
   const resolveItem = (id) => inventory.find(i=>i.id===id);
 
-  // Compute total used per spool across ALL orders (excluding current order's usage, use filamentUsage for current)
+  // Compute total used per spool: other orders from saved data, current order from live local state
   const usedPerSpool = {};
   orders.forEach(o => {
-    const usages = o.orderNo === currentOrderNo ? filamentUsage : (o.filamentUsage||[]);
-    usages.forEach(u => {
+    if (o.orderNo === currentOrderNo) return; // current order handled separately below
+    (o.filamentUsage||[]).forEach(u => {
       usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
     });
+  });
+  // Add current order's live (unsaved) filamentUsage
+  filamentUsage.forEach(u => {
+    usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   });
   const getRemainingG = (id) => {
     const item = inventory.find(i=>i.id===id);
@@ -827,8 +832,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
-  const handleSaveOrder = () => {
-    const updated = {...o, items: orderItems, filamentUsage};
+  const handleSaveOrder = (updatedFilamentUsage) => {
+    const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
+    const updated = {...o, items: orderItems, filamentUsage: fu};
     const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const itemsChanged = origItems !== newItems;
