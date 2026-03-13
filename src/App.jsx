@@ -1085,6 +1085,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               setNewUsage={setNewUsage}
               onSave={handleSaveOrder}
               toast={toast}
+              orders={orders}
+              currentOrderNo={order.orderNo}
             />
           )}
 
