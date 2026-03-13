@@ -816,15 +816,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const prevOrderNo = useRef(order.orderNo);
   useEffect(() => {
     if (prevOrderNo.current !== order.orderNo) {
-      // Only reinit if a different order opened
+      // Different order opened — re-init everything from prop
       setOrderItems((order.items||[]).map(i=>({...i})));
       setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
       prevOrderNo.current = order.orderNo;
-    } else {
-      // Sync filamentUsage after saves (order prop updates but orderNo stays same)
-      setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
     }
-  }, [order.orderNo, order.filamentUsage]);
+    // Do NOT sync filamentUsage here on prop updates — it would overwrite
+    // live local edits before onSave completes
+  }, [order.orderNo]);
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
@@ -2639,7 +2638,7 @@ const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
-function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{} }) {
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[] }) {
   const [showForm, setShowForm] = useState(false);
   const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
   const [purchaseDate, setPurchaseDate] = useState(today());
@@ -2653,6 +2652,13 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
     const r = recipients.find(r=>r.id===id)||allRecipients.find(r=>r.id===id);
     return r?r.name:"";
   };
+
+  // Compute total grams used per spool across all orders
+  const usedPerSpool = {};
+  orders.forEach(o => (o.filamentUsage||[]).forEach(u => {
+    usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
+  }));
+  const getRemainingG = (item) => Math.max(0, Number(item.weightG||0) - (usedPerSpool[item.id]||0));
 
   const allBrands = ["All", ...new Set(inventory.map(i=>i.brand).filter(Boolean))];
 
@@ -2668,6 +2674,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   }).sort((a,b)=>(b.purchaseDate||"").localeCompare(a.purchaseDate||""));
 
   const totalWeight = filtered.reduce((s,i)=>s+Number(i.weightG||0),0);
+  const totalRemaining = filtered.reduce((s,i)=>s+getRemainingG(i),0);
 
   const updRow = (idx,k,v) => setRows(r=>r.map((row,i)=>i===idx?{...row,[k]:v}:row));
   const addRow = () => setRows(r=>[...r,{...EMPTY_FILAMENT}]);
@@ -2723,7 +2730,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   };
 
   const byMaterial = {};
-  filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,weight:0}; byMaterial[i.material].count++; byMaterial[i.material].weight+=Number(i.weightG||0); });
+  filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,weight:0,remaining:0}; byMaterial[i.material].count++; byMaterial[i.material].weight+=Number(i.weightG||0); byMaterial[i.material].remaining+=getRemainingG(i); });
 
   return (
     <div className="space-y-5">
@@ -2834,7 +2841,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             <div key={mat} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${matColors[mat]||"bg-gray-100 text-gray-600"}`}>
               <span>{mat}</span><span className="opacity-50">·</span>
               <span>{v.count} spool{v.count!==1?"s":""}</span><span className="opacity-50">·</span>
-              <span>{(v.weight/1000).toFixed(2)} kg</span>
+              <span>{(v.remaining/1000).toFixed(2)} kg left</span>
             </div>
           ))}
         </div>
@@ -2862,7 +2869,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           </div>
         )}
         <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-400">{filtered.length} spool{filtered.length!==1?"s":""} · {(totalWeight/1000).toFixed(2)} kg total</p>
+          <p className="text-xs text-gray-400">{filtered.length} spool{filtered.length!==1?"s":""} · {(totalRemaining/1000).toFixed(2)} kg remaining of {(totalWeight/1000).toFixed(2)} kg</p>
           <ExcelBtn onClick={()=>exportToExcel(filtered.map(i=>({
             "Brand":i.brand,"Material":i.material,"Colour":i.color,
             "Weight (g)":i.weightG,"Cost (₹)":i.costTotal||0,
@@ -2882,6 +2889,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                   <span className="text-xs text-gray-400">{item.purchaseDate}</span>
                   <span className="text-xs text-gray-500">{(Number(item.weightG)/1000).toFixed(2)} kg</span>
+                  {(()=>{ const rem=getRemainingG(item); const pct=Math.round(rem/Number(item.weightG||1)*100); const c=pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500"; return usedPerSpool[item.id]?<span className={`text-xs font-bold ${c}`}>{rem.toFixed(0)}g left ({pct}%)</span>:null; })()}
                   {item.costTotal>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(item.costTotal)}</span>}
                   {item.notes&&<span className="text-xs text-gray-400 italic truncate max-w-[160px]">{item.notes}</span>}
                 </div>
@@ -3785,7 +3793,7 @@ function App() {
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
-          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast}/>}
+          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
