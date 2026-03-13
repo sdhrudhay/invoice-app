@@ -751,7 +751,9 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
               if (!groups[key]) groups[key] = { brand:i.brand, material:i.material, color:i.color, items:[], totalWeight:0, totalRemaining:0 };
               groups[key].items.push(i);
               groups[key].totalWeight += Number(i.weightG||0);
-              groups[key].totalRemaining += getRemainingG(i.id)??0;
+              const rem = getRemainingG(i.id)??0;
+              groups[key].totalRemaining += rem;
+              if (rem>0) groups[key].spoolsLeft = (groups[key].spoolsLeft||0)+1;
             });
             return (
               <div className="space-y-1.5">
@@ -771,7 +773,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className={`text-xs font-bold ${textC}`}>{g.totalRemaining.toFixed(0)}g left</span>
-                          {g.items.length>1&&<span className="text-xs text-gray-400">{g.items.length} spools</span>}
+                          {(g.spoolsLeft||0)>1&&<span className="text-xs text-gray-400">{g.spoolsLeft} spools left</span>}
                         </div>
                       </div>
                       <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
@@ -2833,7 +2835,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   };
 
   const byMaterial = {};
-  filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,weight:0,remaining:0}; byMaterial[i.material].count++; byMaterial[i.material].weight+=Number(i.weightG||0); byMaterial[i.material].remaining+=getRemainingG(i); });
+  filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,nonEmpty:0,weight:0,remaining:0}; byMaterial[i.material].count++; const r=getRemainingG(i); byMaterial[i.material].weight+=Number(i.weightG||0); byMaterial[i.material].remaining+=r; if(r>0) byMaterial[i.material].nonEmpty++; });
 
   return (
     <div className="space-y-5">
@@ -2943,7 +2945,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           {Object.entries(byMaterial).map(([mat,v])=>(
             <div key={mat} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${matColors[mat]||"bg-gray-100 text-gray-600"}`}>
               <span>{mat}</span><span className="opacity-50">·</span>
-              <span>{v.count} spool{v.count!==1?"s":""}</span><span className="opacity-50">·</span>
+              <span>{v.nonEmpty} spool{v.nonEmpty!==1?"s":""} left</span><span className="opacity-50">·</span>
               <span>{(v.remaining/1000).toFixed(2)} kg left</span>
             </div>
           ))}
@@ -3019,7 +3021,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-slate-800">{g.brand||<span className="text-gray-400 font-normal">No brand</span>} <span className="font-normal text-gray-500">— {g.color||"No colour"}</span></p>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                          <span className="text-xs text-gray-500">{g.items.length} spool{g.items.length!==1?"s":""} · {(g.totalWeight/1000).toFixed(2)} kg total</span>
+                          <span className="text-xs text-gray-500">{g.spoolsLeft||0} of {g.items.length} spool{g.items.length!==1?"s":""} left · {(g.totalWeight/1000).toFixed(2)} kg total</span>
                           <span className={`text-xs font-bold ${c}`}>{g.totalRemaining.toFixed(0)}g left ({pct}%)</span>
                           {g.totalCost>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(g.totalCost)}</span>}
                         </div>
