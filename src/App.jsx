@@ -2654,6 +2654,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   const [search, setSearch] = useState("");
   const [matFilter, setMatFilter] = useState("All");
   const [brandFilter, setBrandFilter] = useState("All");
+  const [grouped, setGrouped] = useState(true);
 
   const resolveName = (id) => {
     if (!id || id==="__company__") return seller?.name||"Company";
@@ -2886,7 +2887,82 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         </div>
       </div>
 
+      {/* View toggle */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-500">View</span>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {[["grouped","Grouped"],["individual","Individual"]].map(([v,l])=>(
+            <button key={v} onClick={()=>setGrouped(v==="grouped")} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${(grouped&&v==="grouped")||(!grouped&&v==="individual")?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
       {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-12">No filaments found. Add some stock!</p>}
+
+      {/* Grouped view */}
+      {grouped&&filtered.length>0&&(()=>{
+        const groups = {};
+        filtered.forEach(item=>{
+          const key = `${item.brand||""}||${item.material}||${item.color||""}`;
+          if (!groups[key]) groups[key] = { brand:item.brand, material:item.material, color:item.color, items:[], totalWeight:0, totalRemaining:0, totalCost:0 };
+          const rem = getRemainingG(item);
+          groups[key].items.push(item);
+          groups[key].totalWeight += Number(item.weightG||0);
+          groups[key].totalRemaining += rem;
+          groups[key].totalCost += Number(item.costTotal||0);
+        });
+        return (
+          <div className="space-y-2">
+            {Object.values(groups).map((g,gi)=>{
+              const pct = g.totalWeight>0 ? Math.round(g.totalRemaining/g.totalWeight*100) : 100;
+              const c = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+              const barC = pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
+              return (
+                <div key={gi} className="bg-white border border-gray-100 rounded-xl px-4 py-3 hover:shadow-sm transition-all">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-800">{g.brand||<span className="text-gray-400 font-normal">No brand</span>} <span className="font-normal text-gray-500">— {g.color||"No colour"}</span></p>
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                          <span className="text-xs text-gray-500">{g.items.length} spool{g.items.length!==1?"s":""} · {(g.totalWeight/1000).toFixed(2)} kg total</span>
+                          <span className={`text-xs font-bold ${c}`}>{g.totalRemaining.toFixed(0)}g left ({pct}%)</span>
+                          {g.totalCost>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(g.totalCost)}</span>}
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden w-full max-w-xs">
+                          <div className={`h-full rounded-full transition-all ${barC}`} style={{width:`${pct}%`}}/>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Individual spools under group */}
+                  <div className="mt-2 space-y-1 pl-11">
+                    {g.items.map(item=>{
+                      const rem=getRemainingG(item); const p2=Math.round(rem/Number(item.weightG||1)*100);
+                      const c2=p2>50?"text-emerald-600":p2>20?"text-amber-500":"text-red-500";
+                      return (
+                        <div key={item.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-1.5">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xs text-gray-400">{item.purchaseDate}</span>
+                            <span className="text-xs text-gray-500">{(Number(item.weightG)/1000).toFixed(2)} kg</span>
+                            {usedPerSpool[item.id]&&<span className={`text-xs font-semibold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>}
+                            {item.notes&&<span className="text-xs text-gray-400 italic">{item.notes}</span>}
+                          </div>
+                          <button onClick={()=>handleDelete(item)} className="text-xs text-red-300 hover:text-red-500 font-bold leading-none shrink-0">×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Individual view */}
+      {!grouped&&(
       <div className="space-y-2">
         {filtered.map(item=>(
           <div key={item.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
@@ -2907,6 +2983,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
