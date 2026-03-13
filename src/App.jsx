@@ -629,7 +629,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
 
 // ─── Filament Usage Tab ───────────────────────────────────────────────────────
-function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{} }) {
+function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{}, orders=[], currentOrderNo="" }) {
   const upd = (k,v) => setNewUsage(p=>({...p,[k]:v}));
 
   const matColors = {
@@ -671,6 +671,20 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
 
   const resolveItem = (id) => inventory.find(i=>i.id===id);
 
+  // Compute total used per spool across ALL orders (excluding current order's usage, use filamentUsage for current)
+  const usedPerSpool = {};
+  orders.forEach(o => {
+    const usages = o.orderNo === currentOrderNo ? filamentUsage : (o.filamentUsage||[]);
+    usages.forEach(u => {
+      usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
+    });
+  });
+  const getRemainingG = (id) => {
+    const item = inventory.find(i=>i.id===id);
+    if (!item) return null;
+    return Math.max(0, Number(item.weightG||0) - (usedPerSpool[id]||0));
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -700,19 +714,29 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
           <select value={newUsage.inventoryId} onChange={e=>upd("inventoryId",e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
             <option value="">— Select spool —</option>
-            {inventory.map(i=>(
-              <option key={i.id} value={i.id}>
-                {i.brand||"No brand"} · {i.material} · {i.color||"No colour"} ({(Number(i.weightG)/1000).toFixed(2)} kg)
-              </option>
-            ))}
+            {inventory.map(i=>{
+              const rem = getRemainingG(i.id);
+              const pct = rem!==null ? Math.round(rem/Number(i.weightG||1)*100) : null;
+              return (
+                <option key={i.id} value={i.id}>
+                  {i.brand||"No brand"} · {i.material} · {i.color||"No colour"} — {rem!==null?`${rem.toFixed(0)}g left (${pct}%)`:((Number(i.weightG)/1000).toFixed(2))+" kg"}
+                </option>
+              );
+            })}
           </select>
-          {selectedItem&&(
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[selectedItem.material]||"bg-gray-100 text-gray-600"}`}>{selectedItem.material}</span>
-              <span className="text-xs text-gray-400">{selectedItem.purchaseDate}</span>
-              {selectedItem.costTotal>0&&<span className="text-xs text-emerald-600">₹{fmt(selectedItem.costTotal)}</span>}
-            </div>
-          )}
+          {selectedItem&&(()=>{
+            const rem = getRemainingG(selectedItem.id);
+            const pct = rem!==null?Math.round(rem/Number(selectedItem.weightG||1)*100):null;
+            const remColor = pct===null?"text-gray-400":pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+            return (
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[selectedItem.material]||"bg-gray-100 text-gray-600"}`}>{selectedItem.material}</span>
+                <span className="text-xs text-gray-400">{selectedItem.purchaseDate}</span>
+                {rem!==null&&<span className={`text-xs font-bold ${remColor}`}>{rem.toFixed(0)}g remaining ({pct}%)</span>}
+                {selectedItem.costTotal>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(selectedItem.costTotal)}</span>}
+              </div>
+            );
+          })()}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
@@ -769,7 +793,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[] }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[] }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -794,9 +818,13 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     if (prevOrderNo.current !== order.orderNo) {
       // Only reinit if a different order opened
       setOrderItems((order.items||[]).map(i=>({...i})));
+      setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
       prevOrderNo.current = order.orderNo;
+    } else {
+      // Sync filamentUsage after saves (order prop updates but orderNo stays same)
+      setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
     }
-  }, [order.orderNo, order.items]);
+  }, [order.orderNo, order.filamentUsage]);
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
@@ -1566,6 +1594,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           toast={toast}
           recipients={recipients}
           inventory={inventory}
+          orders={orders}
         />
       )}
     </div>
