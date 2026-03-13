@@ -627,13 +627,157 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 }
 
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{} }) {
+
+// ─── Filament Usage Tab ───────────────────────────────────────────────────────
+function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{} }) {
+  const upd = (k,v) => setNewUsage(p=>({...p,[k]:v}));
+
+  const matColors = {
+    PLA:"bg-green-100 text-green-700", PETG:"bg-blue-100 text-blue-700",
+    ABS:"bg-orange-100 text-orange-700", ASA:"bg-amber-100 text-amber-700",
+    TPU:"bg-purple-100 text-purple-700", Nylon:"bg-cyan-100 text-cyan-700",
+    PC:"bg-slate-100 text-slate-700", "PLA+":"bg-emerald-100 text-emerald-700",
+    "PLA-CF":"bg-gray-100 text-gray-700","PETG-CF":"bg-indigo-100 text-indigo-700",
+    "ABS-CF":"bg-red-100 text-red-700", Resin:"bg-pink-100 text-pink-700",
+    Other:"bg-gray-100 text-gray-500",
+  };
+
+  const selectedItem = inventory.find(i=>i.id===newUsage.inventoryId);
+
+  const handleAdd = () => {
+    if (!newUsage.inventoryId) { toast("Select a filament spool","error"); return; }
+    if (!newUsage.weightUsedG || isNaN(Number(newUsage.weightUsedG)) || Number(newUsage.weightUsedG)<=0) { toast("Enter weight used","error"); return; }
+    const entry = {
+      id:"FU-"+Date.now(),
+      inventoryId: newUsage.inventoryId,
+      weightUsedG: Number(newUsage.weightUsedG),
+      isWaste: newUsage.isWaste,
+      notes: newUsage.notes||"",
+    };
+    const updated = [...filamentUsage, entry];
+    setFilamentUsage(updated);
+    setNewUsage({inventoryId:"", weightUsedG:"", isWaste:false, notes:""});
+    onSave();
+    toast("Filament usage recorded");
+  };
+
+  const handleRemove = (id) => {
+    setFilamentUsage(prev=>prev.filter(u=>u.id!==id));
+    onSave();
+  };
+
+  const totalUsed = filamentUsage.filter(u=>!u.isWaste).reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+  const totalWaste = filamentUsage.filter(u=>u.isWaste).reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+
+  const resolveItem = (id) => inventory.find(i=>i.id===id);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-bold text-slate-700">Filament Usage</p>
+        <p className="text-xs text-gray-400">Log filament used and waste for this order.</p>
+      </div>
+
+      {/* Summary */}
+      {filamentUsage.length>0&&(
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-indigo-400 mb-0.5">Total Used</p>
+            <p className="text-sm font-bold text-indigo-700">{totalUsed.toFixed(1)} g</p>
+          </div>
+          <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-orange-400 mb-0.5">Waste</p>
+            <p className="text-sm font-bold text-orange-600">{totalWaste.toFixed(1)} g</p>
+          </div>
+        </div>
+      )}
+
+      {/* Add entry form */}
+      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add Entry</p>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500">Filament Spool</label>
+          <select value={newUsage.inventoryId} onChange={e=>upd("inventoryId",e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">— Select spool —</option>
+            {inventory.map(i=>(
+              <option key={i.id} value={i.id}>
+                {i.brand||"No brand"} · {i.material} · {i.color||"No colour"} ({(Number(i.weightG)/1000).toFixed(2)} kg)
+              </option>
+            ))}
+          </select>
+          {selectedItem&&(
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[selectedItem.material]||"bg-gray-100 text-gray-600"}`}>{selectedItem.material}</span>
+              <span className="text-xs text-gray-400">{selectedItem.purchaseDate}</span>
+              {selectedItem.costTotal>0&&<span className="text-xs text-emerald-600">₹{fmt(selectedItem.costTotal)}</span>}
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
+            <input type="number" value={newUsage.weightUsedG} min="0" step="0.1"
+              onChange={e=>upd("weightUsedG",e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.0"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Notes</label>
+            <input value={newUsage.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Optional…"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" checked={newUsage.isWaste} onChange={e=>upd("isWaste",e.target.checked)}
+            className="w-4 h-4 rounded accent-orange-500"/>
+          <span className="text-sm text-gray-600">Mark as waste / support material</span>
+        </label>
+        <button onClick={handleAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+          + Add
+        </button>
+      </div>
+
+      {/* Usage list */}
+      {filamentUsage.length===0&&(
+        <p className="text-xs text-gray-400 text-center py-6">No filament usage logged yet.</p>
+      )}
+      <div className="space-y-2">
+        {filamentUsage.map((u,i)=>{
+          const item = resolveItem(u.inventoryId);
+          return (
+            <div key={u.id||i} className={`flex items-start justify-between gap-3 rounded-xl px-4 py-3 border ${u.isWaste?"border-orange-100 bg-orange-50/40":"border-gray-100 bg-white"}`}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {item
+                    ? <><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</span>
+                       <span className="text-sm font-semibold text-slate-700">{item.brand||"No brand"} — {item.color||"No colour"}</span></>
+                    : <span className="text-xs text-gray-400 italic">Spool not found</span>
+                  }
+                  {u.isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-sm font-bold text-indigo-700">{Number(u.weightUsedG).toFixed(1)} g</span>
+                  {u.notes&&<span className="text-xs text-gray-400 italic">{u.notes}</span>}
+                </div>
+              </div>
+              <button onClick={()=>handleRemove(u.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[] }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
   const [payments, setPayments] = useState(order.payments||[]);
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
   const [statusPrompt, setStatusPrompt] = useState(null); // {updated} waiting for user decision
+  const [filamentUsage, setFilamentUsage] = useState((order.filamentUsage||[]).map(u=>({...u})));
+  const [newUsage, setNewUsage] = useState({inventoryId:"", weightUsedG:"", isWaste:false, notes:""});
 
   // Keep payments in sync with parent order prop (so reopening shows saved payments)
   useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
@@ -657,7 +801,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = () => {
-    const updated = {...o, items: orderItems};
+    const updated = {...o, items: orderItems, filamentUsage};
     const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const itemsChanged = origItems !== newItems;
@@ -740,7 +884,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
       {/* Tabs */}
         <div className="flex border-b shrink-0 bg-gray-50">
-          {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"]].map(([id,label])=>(
+          {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"],["filament","Filament"]].map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setCreating(null);}}
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {label}
@@ -898,6 +1042,18 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           )}
 
 
+
+          {tab==="filament" && (
+            <FilamentUsageTab
+              filamentUsage={filamentUsage}
+              setFilamentUsage={setFilamentUsage}
+              inventory={inventory}
+              newUsage={newUsage}
+              setNewUsage={setNewUsage}
+              onSave={handleSaveOrder}
+              toast={toast}
+            />
+          )}
 
           {tab==="payments" && (() => {
             const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
@@ -1409,6 +1565,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           onDeleteOrder={handleDeleteOrder}
           toast={toast}
           recipients={recipients}
+          inventory={inventory}
         />
       )}
     </div>
@@ -2447,6 +2604,268 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
   );
 }
 
+
+// ─── Inventory ───────────────────────────────────────────────────────────────
+const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin","Other"];
+const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
+const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
+
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{} }) {
+  const [showForm, setShowForm] = useState(false);
+  const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
+  const [purchaseDate, setPurchaseDate] = useState(today());
+  const [costSplits, setCostSplits] = useState(EMPTY_COST_SPLIT());
+  const [search, setSearch] = useState("");
+  const [matFilter, setMatFilter] = useState("All");
+  const [brandFilter, setBrandFilter] = useState("All");
+
+  const resolveName = (id) => {
+    if (!id || id==="__company__") return seller?.name||"Company";
+    const r = recipients.find(r=>r.id===id)||allRecipients.find(r=>r.id===id);
+    return r?r.name:"";
+  };
+
+  const allBrands = ["All", ...new Set(inventory.map(i=>i.brand).filter(Boolean))];
+
+  const filtered = inventory.filter(i=>{
+    const matchMat = matFilter==="All" || i.material===matFilter;
+    const matchBrand = brandFilter==="All" || i.brand===brandFilter;
+    const matchSearch = !search ||
+      i.brand.toLowerCase().includes(search.toLowerCase()) ||
+      i.color.toLowerCase().includes(search.toLowerCase()) ||
+      i.material.toLowerCase().includes(search.toLowerCase()) ||
+      (i.notes||"").toLowerCase().includes(search.toLowerCase());
+    return matchMat && matchBrand && matchSearch;
+  }).sort((a,b)=>(b.purchaseDate||"").localeCompare(a.purchaseDate||""));
+
+  const totalWeight = filtered.reduce((s,i)=>s+Number(i.weightG||0),0);
+
+  const updRow = (idx,k,v) => setRows(r=>r.map((row,i)=>i===idx?{...row,[k]:v}:row));
+  const addRow = () => setRows(r=>[...r,{...EMPTY_FILAMENT}]);
+  const removeRow = (idx) => setRows(r=>r.filter((_,i)=>i!==idx));
+  const updSplit = (idx,k,v) => setCostSplits(s=>s.map((sp,i)=>i===idx?{...sp,[k]:v}:sp));
+  const addSplit = () => setCostSplits(s=>[...s,{paidBy:"",amount:""}]);
+  const removeSplit = (idx) => setCostSplits(s=>s.filter((_,i)=>i!==idx));
+  const totalSplit = costSplits.reduce((s,sp)=>s+Number(sp.amount||0),0);
+
+  const matColors = {
+    PLA:"bg-green-100 text-green-700", PETG:"bg-blue-100 text-blue-700",
+    ABS:"bg-orange-100 text-orange-700", ASA:"bg-amber-100 text-amber-700",
+    TPU:"bg-purple-100 text-purple-700", Nylon:"bg-cyan-100 text-cyan-700",
+    PC:"bg-slate-100 text-slate-700", "PLA+":"bg-emerald-100 text-emerald-700",
+    "PLA-CF":"bg-gray-100 text-gray-700","PETG-CF":"bg-indigo-100 text-indigo-700",
+    "ABS-CF":"bg-red-100 text-red-700", Resin:"bg-pink-100 text-pink-700",
+    Other:"bg-gray-100 text-gray-500",
+  };
+
+  const handleSave = () => {
+    const validRows = rows.filter(r=>r.brand||r.color||r.material);
+    if (!validRows.length) { toast("Add at least one filament","error"); return; }
+    if (!purchaseDate) { toast("Purchase date is required","error"); return; }
+    const newItems = validRows.map(r=>({
+      id:"FIL-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),
+      brand:r.brand, material:r.material, color:r.color,
+      weightG:Number(r.weightG)||1000, notes:r.notes||"",
+      purchaseDate, costTotal:Number(r.costTotal)||0, linkedExpenseIds:[],
+    }));
+    const newExpenses = [];
+    if (totalSplit>0) {
+      const desc = validRows.map(r=>`${r.brand||"?"} ${r.material} ${r.color||""}`.trim()).join(", ");
+      costSplits.forEach(sp=>{
+        if (!sp.paidBy || !Number(sp.amount)) return;
+        const expId = "EXP-INV-"+Date.now()+"-"+Math.random().toString(36).slice(2,6);
+        newExpenses.push({ id:expId, date:purchaseDate, paidBy:sp.paidBy, amount:Number(sp.amount), category:"Filament", comment:`Filament purchase: ${desc}` });
+      });
+      newItems.forEach(item=>{ item.linkedExpenseIds = newExpenses.map(e=>e.id); });
+    }
+    setInventory(prev=>[...prev,...newItems]);
+    if (newExpenses.length) setExpenses(prev=>[...prev,...newExpenses]);
+    setRows([{...EMPTY_FILAMENT}]);
+    setCostSplits(EMPTY_COST_SPLIT());
+    setPurchaseDate(today());
+    setShowForm(false);
+    toast(`Added ${newItems.length} filament${newItems.length>1?"s":""}${newExpenses.length?" + "+newExpenses.length+" expense"+(newExpenses.length>1?"s":""):""}`);
+  };
+
+  const handleDelete = (item) => {
+    if (!window.confirm("Delete this filament entry?")) return;
+    setInventory(prev=>prev.filter(i=>i.id!==item.id));
+    deleteInventoryItem(item);
+  };
+
+  const byMaterial = {};
+  filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,weight:0}; byMaterial[i.material].count++; byMaterial[i.material].weight+=Number(i.weightG||0); });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
+          <p className="text-xs text-gray-400">Track filament stock by brand, material and colour.</p>
+        </div>
+        <button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
+          {showForm?"Cancel":"+ Add Stock"}
+        </button>
+      </div>
+
+      {showForm&&(
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h3 className="font-bold text-slate-700 text-sm">New Filament Purchase</h3>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Purchase Date <span className="text-red-400">*</span></label>
+              <input type="date" value={purchaseDate} onChange={e=>setPurchaseDate(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filaments</p>
+            {rows.map((row,idx)=>(
+              <div key={idx} className="bg-white border border-gray-100 rounded-xl p-3 relative">
+                {rows.length>1&&<button onClick={()=>removeRow(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
+                <div className="grid grid-cols-2 gap-3 pr-5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brand</label>
+                    <input value={row.brand} onChange={e=>updRow(idx,"brand",e.target.value)} placeholder="e.g. Bambu, eSUN, Sunlu…"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Material</label>
+                    <select value={row.material} onChange={e=>updRow(idx,"material",e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                      {FILAMENT_MATERIALS.map(m=><option key={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Colour</label>
+                    <input value={row.color} onChange={e=>updRow(idx,"color",e.target.value)} placeholder="e.g. Black, Galaxy Silver…"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight (g)</label>
+                    <input type="number" value={row.weightG} min="0" onChange={e=>updRow(idx,"weightG",e.target.value)} onWheel={e=>e.target.blur()}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost (₹) <span className="text-gray-300 font-normal normal-case">per spool</span></label>
+                    <input type="number" value={row.costTotal} min="0" onChange={e=>updRow(idx,"costTotal",e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                    <input value={row.notes} onChange={e=>updRow(idx,"notes",e.target.value)} placeholder="Optional…"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button onClick={addRow} className="w-full text-xs border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 py-2 rounded-lg font-semibold transition-all">
+              + Add Another Filament
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Split <span className="text-gray-400 font-normal normal-case text-xs">auto-adds to Expenses tab</span></p>
+            {costSplits.map((sp,idx)=>(
+              <div key={idx} className="flex items-end gap-2">
+                <div className="flex-1 flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-gray-500">Paid By</label>
+                  <select value={sp.paidBy} onChange={e=>updSplit(idx,"paidBy",e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">— Select —</option>
+                    <option value="__company__">{seller?.name||"Company"}</option>
+                    {recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1 w-36">
+                  <label className="text-xs font-semibold text-gray-500">Amount (₹)</label>
+                  <input type="number" value={sp.amount} min="0" onChange={e=>updSplit(idx,"amount",e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                </div>
+                {costSplits.length>1&&<button onClick={()=>removeSplit(idx)} className="text-red-400 hover:text-red-600 font-bold text-xl pb-1.5 leading-none">×</button>}
+              </div>
+            ))}
+            <div className="flex items-center justify-between">
+              <button onClick={addSplit} className="text-xs text-indigo-500 hover:underline font-semibold">+ Add split</button>
+              {totalSplit>0&&<span className="text-xs font-bold text-gray-600">Total: ₹{fmt(totalSplit)}</span>}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1 border-t border-gray-100">
+            <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">Save Stock</button>
+            <button onClick={()=>{setShowForm(false);setRows([{...EMPTY_FILAMENT}]);setCostSplits(EMPTY_COST_SPLIT());}} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {Object.keys(byMaterial).length>0&&(
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(byMaterial).map(([mat,v])=>(
+            <div key={mat} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${matColors[mat]||"bg-gray-100 text-gray-600"}`}>
+              <span>{mat}</span><span className="opacity-50">·</span>
+              <span>{v.count} spool{v.count!==1?"s":""}</span><span className="opacity-50">·</span>
+              <span>{(v.weight/1000).toFixed(2)} kg</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
+          className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs font-semibold text-gray-500">Material</span>
+          <div className="flex flex-wrap gap-1">
+            {["All",...FILAMENT_MATERIALS].map(m=>(
+              <button key={m} onClick={()=>setMatFilter(m)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${matFilter===m?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"}`}>{m}</button>
+            ))}
+          </div>
+        </div>
+        {allBrands.length>2&&(
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-semibold text-gray-500">Brand</span>
+            <div className="flex flex-wrap gap-1">
+              {allBrands.map(b=>(
+                <button key={b} onClick={()=>setBrandFilter(b)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${brandFilter===b?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"}`}>{b}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-400">{filtered.length} spool{filtered.length!==1?"s":""} · {(totalWeight/1000).toFixed(2)} kg total</p>
+          <ExcelBtn onClick={()=>exportToExcel(filtered.map(i=>({
+            "Brand":i.brand,"Material":i.material,"Colour":i.color,
+            "Weight (g)":i.weightG,"Cost (₹)":i.costTotal||0,
+            "Purchase Date":i.purchaseDate,"Notes":i.notes||"",
+          })),"Inventory_Export")}/>
+        </div>
+      </div>
+
+      {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-12">No filaments found. Add some stock!</p>}
+      <div className="space-y-2">
+        {filtered.map(item=>(
+          <div key={item.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800">{item.brand||<span className="text-gray-400 font-normal">No brand</span>} <span className="font-normal text-gray-500">— {item.color||"No colour"}</span></p>
+                <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                  <span className="text-xs text-gray-400">{item.purchaseDate}</span>
+                  <span className="text-xs text-gray-500">{(Number(item.weightG)/1000).toFixed(2)} kg</span>
+                  {item.costTotal>0&&<span className="text-xs text-emerald-600 font-semibold">₹{fmt(item.costTotal)}</span>}
+                  {item.notes&&<span className="text-xs text-gray-400 italic truncate max-w-[160px]">{item.notes}</span>}
+                </div>
+              </div>
+            </div>
+            <button onClick={()=>handleDelete(item)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg shrink-0 transition-all">×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function SettlementForm({ fromId, fromName, net, recipients, allRecipients, seller, summaries, onSettle }) {
   const [open, setOpen] = useState(false);
@@ -2973,6 +3392,7 @@ function App() {
   const [sbUrl,setSbUrl]=useState(()=>localStorage.getItem("sb_url")||ENV_URL);
   const [sbKey,setSbKey]=useState(()=>localStorage.getItem("sb_key")||ENV_KEY);
   const [assets,setAssets]=useState([]);
+  const [inventory,setInventory]=useState([]);
   const [settlements,setSettlements]=useState([]);
   const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
   const cdnPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
@@ -3057,12 +3477,13 @@ function App() {
       client.from("assets").select(),
       client.from("settings").select(),
       client.from("settlements").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl])=>{
+      client.from("inventory").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:parseJson(r.filament_usage)||[], items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -3084,6 +3505,7 @@ function App() {
         if (s.series) setSeries(s.series);
       }
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
+      if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
@@ -3149,7 +3571,8 @@ function App() {
       advance:o.advance||0, advance_recipient:o.advanceRecipient||"", advance_txn_ref:o.advanceTxnRef||"",
       status:o.status||"Pending", comments:o.comments||"", needs_gst:o.needsGst!==false,
       quotation_no:o.quotationNo||"", proforma_ids:JSON.stringify(o.proformaIds||[]),
-      tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[])
+      tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[]),
+      filament_usage:JSON.stringify(o.filamentUsage||[])
     }});
     syncItems("order", o.orderNo, o.items);
   };
@@ -3216,6 +3639,9 @@ function App() {
   const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); n.forEach(c=>{ const prev=clients.find(p=>p.id===c.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(c)) upsertClient(c); }); };
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
+  const upsertInventoryItem=(i)=>enqueue({action:"upsert",table:"inventory",row:{id:i.id,brand:i.brand,material:i.material,color:i.color,weight_g:i.weightG,cost_total:i.costTotal||0,purchase_date:i.purchaseDate,notes:i.notes||"",linked_expense_ids:i.linkedExpenseIds||[]}});
+  const deleteInventoryItem=(i)=>enqueue({action:"delete",table:"inventory",col:"id",val:i.id});
+  const syncSetInventory=(v)=>{ const n=typeof v==="function"?v(inventory):v; const removed=inventory.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteInventoryItem(x)); n.forEach(item=>{ const prev=inventory.find(p=>p.id===item.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(item)) upsertInventoryItem(item); }); setInventory(n); };
   const upsertSettlement=(st)=>enqueue({action:"upsert",table:"settlements",row:{id:st.id,date:st.date,amount:st.amount,ref:st.ref||"",from_id:st.fromId,via:st.via,direction:st.direction}});
   const deleteSettlement=(id)=>enqueue({action:"delete",table:"settlements",col:"id",val:id});
   const syncSetSettlements=(v)=>{ const n=typeof v==="function"?v(settlements):v; const removed=settlements.filter(s=>!n.find(x=>x.id===s.id)); removed.forEach(s=>deleteSettlement(s.id)); n.forEach(st=>{ const prev=settlements.find(p=>p.id===st.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(st)) upsertSettlement(st); }); setSettlements(n); };
@@ -3295,7 +3721,7 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
+  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -3326,10 +3752,11 @@ function App() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
+          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
