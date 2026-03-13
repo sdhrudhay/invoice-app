@@ -645,24 +645,52 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   const selectedItem = inventory.find(i=>i.id===newUsage.inventoryId);
 
   const handleAdd = () => {
-    if (!newUsage.inventoryId) { toast("Select a filament spool","error"); return; }
+    if (!newUsage.groupKey) { toast("Select a filament","error"); return; }
     if (!newUsage.weightUsedG || isNaN(Number(newUsage.weightUsedG)) || Number(newUsage.weightUsedG)<=0) { toast("Enter weight used","error"); return; }
-    const entry = {
-      id:"FU-"+Date.now(),
-      inventoryId: newUsage.inventoryId,
-      weightUsedG: Number(newUsage.weightUsedG),
-      isWaste: newUsage.isWaste,
-      notes: newUsage.notes||"",
-    };
-    const updated = [...filamentUsage, entry];
+    // Find all spools in this group sorted by purchase date (oldest first)
+    const groupSpools = inventory
+      .filter(i=>{ const k=`${i.brand||""}||${i.material}||${i.color||""}`; return k===newUsage.groupKey; })
+      .sort((a,b)=>a.purchaseDate<b.purchaseDate?-1:1);
+    // Auto-split weight across spools: drain oldest spool first
+    let remaining = Number(newUsage.weightUsedG);
+    const newEntries = [];
+    for (const spool of groupSpools) {
+      if (remaining<=0) break;
+      const alreadyUsed = [...filamentUsage, ...newEntries]
+        .filter(u=>u.inventoryId===spool.id)
+        .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+      // also account for usage from other orders
+      const otherOrdersUsed = orders
+        .filter(o=>o.orderNo!==currentOrderNo)
+        .flatMap(o=>o.filamentUsage||[])
+        .filter(u=>u.inventoryId===spool.id)
+        .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+      const spoolRemaining = Math.max(0, Number(spool.weightG||0) - alreadyUsed - otherOrdersUsed);
+      if (spoolRemaining<=0) continue;
+      const take = Math.min(remaining, spoolRemaining);
+      newEntries.push({
+        id:"FU-"+Date.now()+"-"+spool.id,
+        inventoryId: spool.id,
+        weightUsedG: Math.round(take*10)/10,
+        isWaste: newUsage.isWaste,
+        notes: newUsage.notes||"",
+        groupKey: newUsage.groupKey,
+      });
+      remaining -= take;
+    }
+    if (remaining>0.05) toast(`Only ${(Number(newUsage.weightUsedG)-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
+    if (newEntries.length===0) { toast("No stock remaining in this filament group","error"); return; }
+    const updated = [...filamentUsage, ...newEntries];
     setFilamentUsage(updated);
-    setNewUsage({inventoryId:"", weightUsedG:"", isWaste:false, notes:""});
+    setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
     onSave(updated);
     toast("Filament usage recorded");
   };
 
-  const handleRemove = (id) => {
-    const updated = filamentUsage.filter(u=>u.id!==id);
+  const handleRemove = (removeId) => {
+    // If the entry has a groupKey, remove all entries from that group that were added together
+    // (identified by groupKey + same isWaste combo) — but only the batch: use the entry's own id for single removal
+    const updated = filamentUsage.filter(u=>u.id!==removeId);
     setFilamentUsage(updated);
     onSave(updated);
   };
@@ -715,9 +743,8 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add Entry</p>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-500">Filament Spool</label>
+          <label className="text-xs font-semibold text-gray-500">Filament</label>
           {(()=>{
-            // Build groups same as inventory grouped view
             const groups = {};
             inventory.forEach(i=>{
               const key = `${i.brand||""}||${i.material}||${i.color||""}`;
@@ -726,55 +753,31 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
               groups[key].totalWeight += Number(i.weightG||0);
               groups[key].totalRemaining += getRemainingG(i.id)??0;
             });
-            const selectedGroup = newUsage.inventoryId
-              ? (()=>{ const si=inventory.find(i=>i.id===newUsage.inventoryId); if(!si) return null; return `${si.brand||""}||${si.material}||${si.color||""}`; })()
-              : null;
             return (
               <div className="space-y-1.5">
                 {Object.entries(groups).map(([key,g])=>{
                   const pct = g.totalWeight>0 ? Math.round(g.totalRemaining/g.totalWeight*100) : 100;
                   const barC = pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
                   const textC = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
-                  const isSelected = selectedGroup===key;
-                  // When a group is selected and has multiple spools, show spool picker
-                  const showSpoolPicker = isSelected && g.items.length>1;
+                  const isSelected = newUsage.groupKey===key;
                   return (
-                    <div key={key}>
-                      <button type="button"
-                        onClick={()=>{ upd("inventoryId", g.items.length===1 ? g.items[0].id : (isSelected?"":g.items[0].id)); }}
-                        className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all ${isSelected?"border-indigo-400 bg-indigo-50":"border-gray-200 bg-white hover:border-indigo-200 hover:bg-slate-50"}`}>
-                        <div className="flex items-center gap-2 justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</span>
-                            <span className="text-sm font-semibold text-slate-800 truncate">{g.brand||"No brand"}</span>
-                            <span className="text-sm text-gray-400 truncate">— {g.color||"No colour"}</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={`text-xs font-bold ${textC}`}>{g.totalRemaining.toFixed(0)}g left ({pct}%)</span>
-                            {g.items.length>1&&<span className="text-xs text-gray-400">{g.items.length} spools</span>}
-                          </div>
+                    <button key={key} type="button" onClick={()=>upd("groupKey", isSelected?"":key)}
+                      className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all ${isSelected?"border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300":"border-gray-200 bg-white hover:border-indigo-200 hover:bg-slate-50"}`}>
+                      <div className="flex items-center gap-2 justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</span>
+                          <span className="text-sm font-semibold text-slate-800 truncate">{g.brand||"No brand"}</span>
+                          <span className="text-sm text-gray-400 truncate">— {g.color||"No colour"}</span>
                         </div>
-                        <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${barC}`} style={{width:`${pct}%`}}/>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-xs font-bold ${textC}`}>{g.totalRemaining.toFixed(0)}g left</span>
+                          {g.items.length>1&&<span className="text-xs text-gray-400">{g.items.length} spools</span>}
                         </div>
-                      </button>
-                      {showSpoolPicker&&(
-                        <div className="ml-3 mt-1 space-y-1">
-                          {g.items.map(i=>{
-                            const rem=getRemainingG(i.id)??0; const p2=Math.round(rem/Number(i.weightG||1)*100);
-                            const c2=p2>50?"text-emerald-600":p2>20?"text-amber-500":"text-red-500";
-                            return (
-                              <button key={i.id} type="button" onClick={()=>upd("inventoryId",i.id)}
-                                className={`w-full text-left flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border text-xs transition-all ${newUsage.inventoryId===i.id?"border-indigo-400 bg-indigo-50":"border-gray-200 bg-white hover:border-indigo-200"}`}>
-                                <span className="text-gray-500">{i.purchaseDate}</span>
-                                <span className="text-gray-500">{(Number(i.weightG)/1000).toFixed(2)} kg spool</span>
-                                <span className={`font-bold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                      <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${barC}`} style={{width:`${pct}%`}}/>
+                      </div>
+                    </button>
                   );
                 })}
               </div>
@@ -808,30 +811,83 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       {filamentUsage.length===0&&(
         <p className="text-xs text-gray-400 text-center py-6">No filament usage logged yet.</p>
       )}
-      <div className="space-y-2">
-        {filamentUsage.map((u,i)=>{
-          const item = resolveItem(u.inventoryId);
-          return (
-            <div key={u.id||i} className={`flex items-start justify-between gap-3 rounded-xl px-4 py-3 border ${u.isWaste?"border-orange-100 bg-orange-50/40":"border-gray-100 bg-white"}`}>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {item
-                    ? <><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</span>
-                       <span className="text-sm font-semibold text-slate-700">{item.brand||"No brand"} — {item.color||"No colour"}</span></>
-                    : <span className="text-xs text-gray-400 italic">Spool not found</span>
-                  }
-                  {u.isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
-                </div>
-                <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  <span className="text-sm font-bold text-indigo-700">{Number(u.weightUsedG).toFixed(1)} g</span>
-                  {u.notes&&<span className="text-xs text-gray-400 italic">{u.notes}</span>}
-                </div>
-              </div>
-              <button onClick={()=>handleRemove(u.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
-            </div>
-          );
-        })}
-      </div>
+      {(()=>{
+        // Group entries by groupKey (for multi-spool splits) or by id for singles
+        const displayed = [];
+        const seen = new Set();
+        filamentUsage.forEach(u=>{
+          const gk = u.groupKey;
+          if (gk) {
+            if (seen.has(gk)) return;
+            seen.add(gk);
+            const grouped = filamentUsage.filter(x=>x.groupKey===gk);
+            const totalG = grouped.reduce((s,x)=>s+Number(x.weightUsedG||0),0);
+            const firstItem = resolveItem(grouped[0].inventoryId);
+            displayed.push({ type:"group", gk, entries:grouped, totalG, firstItem, isWaste:grouped[0].isWaste, notes:grouped[0].notes });
+          } else {
+            const item = resolveItem(u.inventoryId);
+            displayed.push({ type:"single", entry:u, item, isWaste:u.isWaste, notes:u.notes });
+          }
+        });
+        return (
+          <div className="space-y-2">
+            {displayed.map((d,di)=>{
+              const isWaste = d.isWaste;
+              const borderCls = isWaste?"border-orange-100 bg-orange-50/40":"border-gray-100 bg-white";
+              if (d.type==="group") {
+                const fi = d.firstItem;
+                return (
+                  <div key={d.gk} className={`rounded-xl px-4 py-3 border ${borderCls}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {fi&&<span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[fi.material]||"bg-gray-100 text-gray-600"}`}>{fi.material}</span>}
+                          <span className="text-sm font-semibold text-slate-700">{fi?`${fi.brand||"No brand"} — ${fi.color||"No colour"}`:"Unknown"}</span>
+                          {isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-sm font-bold text-indigo-700">{d.totalG.toFixed(1)} g total</span>
+                          {d.notes&&<span className="text-xs text-gray-400 italic">{d.notes}</span>}
+                        </div>
+                        {d.entries.length>1&&(
+                          <div className="mt-1.5 space-y-0.5">
+                            {d.entries.map(e=>{
+                              const si=resolveItem(e.inventoryId);
+                              return <p key={e.id} className="text-xs text-gray-400">{si?.purchaseDate||"?"} spool · {Number(e.weightUsedG).toFixed(1)}g</p>;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={()=>{ const updated=filamentUsage.filter(u=>u.groupKey!==d.gk); setFilamentUsage(updated); onSave(updated); }} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
+                    </div>
+                  </div>
+                );
+              } else {
+                const {entry:u, item} = d;
+                return (
+                  <div key={u.id||di} className={`flex items-start justify-between gap-3 rounded-xl px-4 py-3 border ${borderCls}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {item
+                          ? <><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</span>
+                             <span className="text-sm font-semibold text-slate-700">{item.brand||"No brand"} — {item.color||"No colour"}</span></>
+                          : <span className="text-xs text-gray-400 italic">Spool not found</span>
+                        }
+                        {isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        <span className="text-sm font-bold text-indigo-700">{Number(u.weightUsedG).toFixed(1)} g</span>
+                        {u.notes&&<span className="text-xs text-gray-400 italic">{u.notes}</span>}
+                      </div>
+                    </div>
+                    <button onClick={()=>handleRemove(u.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
+                  </div>
+                );
+              }
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -844,7 +900,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
   const [statusPrompt, setStatusPrompt] = useState(null); // {updated} waiting for user decision
   const [filamentUsage, setFilamentUsage] = useState((order.filamentUsage||[]).map(u=>({...u})));
-  const [newUsage, setNewUsage] = useState({inventoryId:"", weightUsedG:"", isWaste:false, notes:""});
+  const [newUsage, setNewUsage] = useState({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
 
   // Keep payments in sync with parent order prop (so reopening shows saved payments)
   useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
