@@ -2757,7 +2757,7 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 
 
 // ─── Inventory ───────────────────────────────────────────────────────────────
-const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin","Other"];
+const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
@@ -2770,6 +2770,14 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   const [matFilter, setMatFilter] = useState("All");
   const [brandFilter, setBrandFilter] = useState("All");
   const [grouped, setGrouped] = useState(true);
+  const [materialList, setMaterialList] = useState(()=>{
+    const custom = inventory.map(i=>i.material).filter(m=>m&&!FILAMENT_MATERIALS.includes(m));
+    return [...FILAMENT_MATERIALS, ...[...new Set(custom)]];
+  });
+  const addCustomMaterial = (mat) => {
+    const trimmed = mat.trim();
+    if (trimmed && !materialList.includes(trimmed)) setMaterialList(prev=>[...prev, trimmed]);
+  };
 
   const resolveName = (id) => {
     if (!id || id==="__company__") return seller?.name||"Company";
@@ -2892,14 +2900,16 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Material</label>
-                    <select value={FILAMENT_MATERIALS.includes(row.material)?row.material:"__custom__"}
+                    <select value={materialList.includes(row.material)?row.material:"__custom__"}
                       onChange={e=>{ if(e.target.value==="__custom__") updRow(idx,"material",""); else updRow(idx,"material",e.target.value); }}
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-                      {FILAMENT_MATERIALS.map(m=><option key={m} value={m}>{m}</option>)}
+                      {materialList.map(m=><option key={m} value={m}>{m}</option>)}
                       <option value="__custom__">Other (custom)…</option>
                     </select>
-                    {!FILAMENT_MATERIALS.includes(row.material)&&(
+                    {!materialList.includes(row.material)&&(
                       <input value={row.material} onChange={e=>updRow(idx,"material",e.target.value)}
+                        onBlur={e=>{ if(e.target.value.trim()) addCustomMaterial(e.target.value); }}
+                        onKeyDown={e=>{ if(e.key==="Enter"&&e.target.value.trim()){ addCustomMaterial(e.target.value); updRow(idx,"material",e.target.value.trim()); e.target.blur(); } }}
                         placeholder="Type material name…" autoFocus
                         className="mt-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                     )}
@@ -2984,10 +2994,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs font-semibold text-gray-500">Material</span>
           <div className="flex flex-wrap gap-1">
-            {["All",...FILAMENT_MATERIALS,
-              ...inventory.map(i=>i.material).filter(m=>m&&!FILAMENT_MATERIALS.includes(m))
-                .filter((m,i,a)=>a.indexOf(m)===i)
-            ].map(m=>(
+            {["All",...materialList].map(m=>(
               <button key={m} onClick={()=>setMatFilter(m)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${matFilter===m?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"}`}>{m}</button>
             ))}
           </div>
