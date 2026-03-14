@@ -647,36 +647,56 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   const handleAdd = () => {
     if (!newUsage.groupKey) { toast("Select a filament","error"); return; }
     if (!newUsage.weightUsedG || isNaN(Number(newUsage.weightUsedG)) || Number(newUsage.weightUsedG)<=0) { toast("Enter weight used","error"); return; }
-    // Find all spools in this group sorted by purchase date (oldest first)
+    // Find all spools in this group, compute each one's remaining stock
+    const need = Number(newUsage.weightUsedG);
     const groupSpools = inventory
       .filter(i=>{ const k=`${i.brand||""}||${i.material}||${i.color||""}`; return k===newUsage.groupKey; })
-      .sort((a,b)=>a.purchaseDate<b.purchaseDate?-1:1);
-    // Auto-split weight across spools: drain oldest spool first
-    let remaining = Number(newUsage.weightUsedG);
+      .map(spool=>{
+        const alreadyUsed = filamentUsage
+          .filter(u=>u.inventoryId===spool.id)
+          .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+        const otherOrdersUsed = orders
+          .filter(o=>o.orderNo!==currentOrderNo)
+          .flatMap(o=>o.filamentUsage||[])
+          .filter(u=>u.inventoryId===spool.id)
+          .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
+        const spoolRemaining = Math.max(0, Number(spool.weightG||0) - alreadyUsed - otherOrdersUsed);
+        return { ...spool, spoolRemaining };
+      })
+      .filter(s=>s.spoolRemaining>0);
+
+    // Strategy: find the smallest single spool that can satisfy the full amount.
+    // If none can, split across spools largest-first to minimise number of spools used.
     const newEntries = [];
-    for (const spool of groupSpools) {
-      if (remaining<=0) break;
-      const alreadyUsed = [...filamentUsage, ...newEntries]
-        .filter(u=>u.inventoryId===spool.id)
-        .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
-      // also account for usage from other orders
-      const otherOrdersUsed = orders
-        .filter(o=>o.orderNo!==currentOrderNo)
-        .flatMap(o=>o.filamentUsage||[])
-        .filter(u=>u.inventoryId===spool.id)
-        .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
-      const spoolRemaining = Math.max(0, Number(spool.weightG||0) - alreadyUsed - otherOrdersUsed);
-      if (spoolRemaining<=0) continue;
-      const take = Math.min(remaining, spoolRemaining);
+    const spoolsThatFit = groupSpools.filter(s=>s.spoolRemaining>=need);
+    if (spoolsThatFit.length>0) {
+      // Pick smallest spool that fits (least waste)
+      const best = spoolsThatFit.sort((a,b)=>a.spoolRemaining-b.spoolRemaining)[0];
       newEntries.push({
-        id:"FU-"+Date.now()+"-"+spool.id,
-        inventoryId: spool.id,
-        weightUsedG: Math.round(take*10)/10,
+        id:"FU-"+Date.now()+"-"+best.id,
+        inventoryId: best.id,
+        weightUsedG: Math.round(need*10)/10,
         isWaste: newUsage.isWaste,
         notes: newUsage.notes||"",
         groupKey: newUsage.groupKey,
       });
-      remaining -= take;
+    } else {
+      // No single spool fits — split, draining largest spools first
+      let remaining = need;
+      for (const spool of [...groupSpools].sort((a,b)=>b.spoolRemaining-a.spoolRemaining)) {
+        if (remaining<=0) break;
+        const take = Math.min(remaining, spool.spoolRemaining);
+        newEntries.push({
+          id:"FU-"+Date.now()+"-"+spool.id,
+          inventoryId: spool.id,
+          weightUsedG: Math.round(take*10)/10,
+          isWaste: newUsage.isWaste,
+          notes: newUsage.notes||"",
+          groupKey: newUsage.groupKey,
+        });
+        remaining -= take;
+      }
+      if (remaining>0.05) toast(`Only ${(need-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
     }
     if (remaining>0.05) toast(`Only ${(Number(newUsage.weightUsedG)-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
     if (newEntries.length===0) { toast("No stock remaining in this filament group","error"); return; }
@@ -3034,7 +3054,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   </div>
                   {/* Individual spools under group */}
                   <div className="mt-2 space-y-1 pl-11">
-                    {g.items.map(item=>{
+                    {g.items.filter(item=>getRemainingG(item)>0).map(item=>{
                       const rem=getRemainingG(item); const p2=Math.round(rem/Number(item.weightG||1)*100);
                       const c2=p2>50?"text-emerald-600":p2>20?"text-amber-500":"text-red-500";
                       return (
