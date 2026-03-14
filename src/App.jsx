@@ -698,7 +698,6 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       }
       if (remaining>0.05) toast(`Only ${(need-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
     }
-    if (remaining>0.05) toast(`Only ${(Number(newUsage.weightUsedG)-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
     if (newEntries.length===0) { toast("No stock remaining in this filament group","error"); return; }
     const updated = [...filamentUsage, ...newEntries];
     setFilamentUsage(updated);
