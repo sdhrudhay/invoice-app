@@ -1165,6 +1165,24 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
+              {/* Other Charges — saved on order, carried into Tax Invoice */}
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling — included in Tax Invoice)</span></p>
+                  <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
+                </div>
+                {charges.map((c,i)=>(
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <span className="text-gray-400 text-sm shrink-0">₹</span>
+                    <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
+                      placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                  </div>
+                ))}
+                {charges.length>0&&<p className="text-xs text-gray-400 text-right">Total: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>}
+              </div>
 
               <div className="border-t pt-4">
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} label="Order Items" sublabel="Edit items here to update quotation"/>
@@ -1260,27 +1278,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
           {tab==="invoices" && creating && (
 <div className="space-y-4">
-              {creating==="tax"&&(
-                <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling, misc…)</span></p>
-                    <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
-                  </div>
-                  {charges.map((c,i)=>(
-                    <div key={i} className="flex items-center gap-2">
-                      <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
-                      <span className="text-gray-400 text-sm shrink-0">₹</span>
-                      <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
-                        placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
-                      <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
-                    </div>
-                  ))}
-                  {charges.length>0&&<p className="text-xs text-gray-400 text-right">Total: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>}
-                </div>
-              )}
               <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? charges.map(c=>({...c})) : [] }}
+              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -1633,12 +1632,22 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo = openOrder?.orderNo;
     if (type==="proforma") {
       setProformas(prev => prev.filter(p => p.invNo !== invNo));
-      setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, proformaIds:(o.proformaIds||[]).filter(id=>id!==invNo)} : o));
+      setOrders(prev => {
+        const updated = prev.map(o => o.orderNo===orderNo ? {...o, proformaIds:(o.proformaIds||[]).filter(id=>id!==invNo)} : o);
+        const changedOrder = updated.find(o=>o.orderNo===orderNo);
+        if (changedOrder) enqueue([{action:"upsert",table:"orders",row:{order_no:changedOrder.orderNo,proforma_ids:JSON.stringify(changedOrder.proformaIds||[])}}]);
+        return updated;
+      });
       enqueue({action:"delete", table:"proformas", col:"inv_no", val:invNo});
       enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
     } else {
       setTaxInvoices(prev => prev.filter(t => t.invNo !== invNo));
-      setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, taxInvoiceIds:(o.taxInvoiceIds||[]).filter(id=>id!==invNo)} : o));
+      setOrders(prev => {
+        const updated = prev.map(o => o.orderNo===orderNo ? {...o, taxInvoiceIds:(o.taxInvoiceIds||[]).filter(id=>id!==invNo)} : o);
+        const changedOrder = updated.find(o=>o.orderNo===orderNo);
+        if (changedOrder) enqueue([{action:"upsert",table:"orders",row:{order_no:changedOrder.orderNo,tax_invoice_ids:JSON.stringify(changedOrder.taxInvoiceIds||[])}}]);
+        return updated;
+      });
       enqueue({action:"delete", table:"tax_invoices", col:"inv_no", val:invNo});
       enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
     }
