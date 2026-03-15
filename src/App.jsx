@@ -2761,7 +2761,7 @@ const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
-function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[] }) {
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
   const [showForm, setShowForm] = useState(false);
   const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
   const [purchaseDate, setPurchaseDate] = useState(today());
@@ -2779,6 +2779,35 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
     if (trimmed && !materialList.includes(trimmed)) setMaterialList(prev=>[...prev, trimmed]);
   };
 
+  const WASTE_REASONS = ["Sample / Testing","Product Prototype","Jammed / Broken","Moisture Damage","Calibration","Other"];
+  const [showWasteForm, setShowWasteForm] = useState(false);
+  const [wasteEntry, setWasteEntry] = useState({groupKey:"",weightG:"",reason:"Sample / Testing",orderNo:"",notes:"",date:today()});
+  const updW = (k,v) => setWasteEntry(p=>({...p,[k]:v}));
+
+  const pendingOrders = orders.filter(o=>o.status!=="Completed"&&o.status!=="Cancelled");
+
+  const handleAddWaste = () => {
+    if (!wasteEntry.groupKey) { toast("Select a filament","error"); return; }
+    if (!wasteEntry.weightG||isNaN(Number(wasteEntry.weightG))||Number(wasteEntry.weightG)<=0) { toast("Enter weight","error"); return; }
+    const parts = wasteEntry.groupKey.split("||");
+    const entry = {
+      id:"WL-"+Date.now(),
+      date: wasteEntry.date||today(),
+      brand: parts[0]||"",
+      material: parts[1]||"",
+      color: parts[2]||"",
+      groupKey: wasteEntry.groupKey,
+      weightG: Number(wasteEntry.weightG),
+      reason: wasteEntry.reason,
+      orderNo: wasteEntry.orderNo||"",
+      notes: wasteEntry.notes||"",
+    };
+    setWastageLog(prev=>[...prev,entry]);
+    setWasteEntry({groupKey:"",weightG:"",reason:"Sample / Testing",orderNo:"",notes:"",date:today()});
+    setShowWasteForm(false);
+    toast("Wastage recorded");
+  };
+
   const resolveName = (id) => {
     if (!id || id==="__company__") return seller?.name||"Company";
     const r = recipients.find(r=>r.id===id)||allRecipients.find(r=>r.id===id);
@@ -2790,6 +2819,29 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   orders.forEach(o => (o.filamentUsage||[]).forEach(u => {
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   }));
+  // Also deduct standalone wastage entries by matching groupKey to inventory items
+  wastageLog.forEach(w => {
+    inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).forEach(i=>{
+      usedPerSpool[i.id] = (usedPerSpool[i.id]||0); // mark as touched; actual deduction spread below
+    });
+  });
+  // Spread wastage across spools in the group (largest remaining first, same logic as order usage)
+  const _tmpRemaining = {};
+  inventory.forEach(i=>{ _tmpRemaining[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
+  wastageLog.forEach(w => {
+    let wLeft = Number(w.weightG||0);
+    const spools = inventory
+      .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
+      .sort((a,b)=>(_tmpRemaining[b.id]||0)-(_tmpRemaining[a.id]||0));
+    for (const s of spools) {
+      if (wLeft<=0) break;
+      const avail = Math.max(0, _tmpRemaining[s.id]||0);
+      const take = Math.min(wLeft, avail);
+      usedPerSpool[s.id] = (usedPerSpool[s.id]||0) + take;
+      _tmpRemaining[s.id] = (_tmpRemaining[s.id]||0) - take;
+      wLeft -= take;
+    }
+  });
   const getRemainingG = (item) => Math.max(0, Number(item.weightG||0) - (usedPerSpool[item.id]||0));
 
   const allBrands = ["All", ...new Set(inventory.map(i=>i.brand).filter(Boolean))];
@@ -3115,6 +3167,140 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           </div>
         ))}
       </div>
+
+      {/* ── Wastage Log Section ───────────────────────────────────────── */}
+      <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-700">Wastage Log</p>
+            <p className="text-xs text-gray-400">Record filament lost to testing, prototypes, jams, etc.</p>
+          </div>
+          <button onClick={()=>setShowWasteForm(p=>!p)}
+            className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 border border-orange-200 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-all">
+            {showWasteForm?"✕ Cancel":"+ Record Wastage"}
+          </button>
+        </div>
+
+        {showWasteForm&&(
+          <div className="bg-orange-50/60 border border-orange-100 rounded-xl p-3 space-y-3">
+            <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">New Wastage Entry</p>
+
+            {/* Date + Reason row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">Date</label>
+                <input type="date" value={wasteEntry.date} onChange={e=>updW("date",e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"/>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">Reason</label>
+                <select value={wasteEntry.reason} onChange={e=>updW("reason",e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white">
+                  {WASTE_REASONS.map(r=><option key={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Filament picker */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Filament</label>
+              {(()=>{
+                const groups = {};
+                inventory.forEach(i=>{
+                  const key=`${i.brand||""}||${i.material}||${i.color||""}`;
+                  if(!groups[key]) groups[key]={brand:i.brand,material:i.material,color:i.color,totalWeight:0,totalRemaining:0};
+                  groups[key].totalWeight+=Number(i.weightG||0);
+                  groups[key].totalRemaining+=getRemainingG(i);
+                });
+                const matC = {PLA:"bg-green-100 text-green-700",PETG:"bg-blue-100 text-blue-700",ABS:"bg-orange-100 text-orange-700",ASA:"bg-amber-100 text-amber-700",TPU:"bg-purple-100 text-purple-700",Nylon:"bg-cyan-100 text-cyan-700",PC:"bg-slate-100 text-slate-700","PLA+":"bg-emerald-100 text-emerald-700","PLA-CF":"bg-gray-100 text-gray-700","PETG-CF":"bg-indigo-100 text-indigo-700","ABS-CF":"bg-red-100 text-red-700",Resin:"bg-pink-100 text-pink-700",Other:"bg-gray-100 text-gray-500"};
+                return (
+                  <div className="space-y-1.5">
+                    {Object.entries(groups).map(([key,g])=>{
+                      const pct=g.totalWeight>0?Math.round(g.totalRemaining/g.totalWeight*100):100;
+                      const barC=pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
+                      const textC=pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+                      const isSel=wasteEntry.groupKey===key;
+                      return (
+                        <button key={key} type="button" onClick={()=>updW("groupKey",isSel?"":key)}
+                          className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all ${isSel?"border-orange-400 bg-orange-50 ring-1 ring-orange-300":"border-gray-200 bg-white hover:border-orange-200 hover:bg-orange-50/30"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold shrink-0 ${matC[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</span>
+                              <span className="text-sm font-semibold text-slate-800 truncate">{g.brand||"No brand"}</span>
+                              <span className="text-sm text-gray-400 truncate">— {g.color||"No colour"}</span>
+                            </div>
+                            <span className={`text-xs font-bold shrink-0 ${textC}`}>{g.totalRemaining.toFixed(0)}g left</span>
+                          </div>
+                          <div className="mt-1.5 h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${barC}`} style={{width:`${pct}%`}}/>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Weight + Order row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">Weight Wasted (g)</label>
+                <input type="number" value={wasteEntry.weightG} min="0" step="0.1" placeholder="0.0"
+                  onChange={e=>updW("weightG",e.target.value)} onWheel={e=>e.target.blur()}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"/>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500">Linked Order <span className="text-gray-400 font-normal">(optional)</span></label>
+                <select value={wasteEntry.orderNo} onChange={e=>updW("orderNo",e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white">
+                  <option value="">— None —</option>
+                  {pendingOrders.map(o=>(
+                    <option key={o.orderNo} value={o.orderNo}>{o.orderNo} — {o.customerName}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input value={wasteEntry.notes} onChange={e=>updW("notes",e.target.value)} placeholder="e.g. nozzle clog, stringing test…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"/>
+            </div>
+
+            <button onClick={handleAddWaste}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+              Record Wastage
+            </button>
+          </div>
+        )}
+
+        {/* Wastage list */}
+        {wastageLog.length===0&&!showWasteForm&&(
+          <p className="text-xs text-gray-400 text-center py-4">No wastage recorded yet.</p>
+        )}
+        <div className="space-y-2">
+          {[...wastageLog].reverse().map(w=>(
+            <div key={w.id} className="bg-white border border-orange-100 rounded-xl px-4 py-3 flex items-start justify-between gap-3 hover:shadow-sm transition-all">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs bg-orange-100 text-orange-600 font-bold px-2 py-0.5 rounded-full">{w.reason}</span>
+                  <span className="text-sm font-semibold text-slate-700">{w.brand||"No brand"} · {w.material} · {w.color||"No colour"}</span>
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-sm font-bold text-orange-600">{Number(w.weightG).toFixed(1)} g</span>
+                  <span className="text-xs text-gray-400">{w.date}</span>
+                  {w.orderNo&&<span className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{w.orderNo}</span>}
+                  {w.notes&&<span className="text-xs text-gray-400 italic">{w.notes}</span>}
+                </div>
+              </div>
+              <button onClick={()=>setWastageLog(prev=>prev.filter(x=>x.id!==w.id))}
+                className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       )}
     </div>
   );
@@ -3648,6 +3834,7 @@ function App() {
   const [assets,setAssets]=useState([]);
   const [inventory,setInventory]=useState([]);
   const [settlements,setSettlements]=useState([]);
+  const [wastageLog,setWastageLog]=useState([]);
   const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
   const cdnPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
   const syncQueue = useRef([]);
@@ -3732,7 +3919,8 @@ function App() {
       client.from("settings").select(),
       client.from("settlements").select(),
       client.from("inventory").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv])=>{
+      client.from("wastage_log").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
@@ -3760,6 +3948,7 @@ function App() {
       }
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
+      if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
 
@@ -3894,6 +4083,9 @@ function App() {
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const upsertInventoryItem=(i)=>enqueue({action:"upsert",table:"inventory",row:{id:i.id,brand:i.brand,material:i.material,color:i.color,weight_g:i.weightG,cost_total:i.costTotal||0,purchase_date:i.purchaseDate,notes:i.notes||"",linked_expense_ids:i.linkedExpenseIds||[]}});
+  const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
+  const deleteWastage=(id)=>enqueue({action:"delete",table:"wastage_log",col:"id",val:id});
+  const syncSetWastageLog=(v)=>{ const n=typeof v==="function"?v(wastageLog):v; const removed=wastageLog.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteWastage(x.id)); n.forEach(w=>{ const prev=wastageLog.find(p=>p.id===w.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(w)) upsertWastage(w); }); setWastageLog(n); };
   const deleteInventoryItem=(i)=>enqueue({action:"delete",table:"inventory",col:"id",val:i.id});
   const syncSetInventory=(v)=>{ const n=typeof v==="function"?v(inventory):v; const removed=inventory.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteInventoryItem(x)); n.forEach(item=>{ const prev=inventory.find(p=>p.id===item.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(item)) upsertInventoryItem(item); }); setInventory(n); };
   const upsertSettlement=(st)=>enqueue({action:"upsert",table:"settlements",row:{id:st.id,date:st.date,amount:st.amount,ref:st.ref||"",from_id:st.fromId,via:st.via,direction:st.direction}});
@@ -4010,7 +4202,7 @@ function App() {
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
-          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders}/>}
+          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
