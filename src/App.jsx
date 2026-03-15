@@ -629,7 +629,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
 
 // ─── Filament Usage Tab ───────────────────────────────────────────────────────
-function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{}, orders=[], currentOrderNo="" }) {
+function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{}, orders=[], currentOrderNo="", wastageLog=[] }) {
   const upd = (k,v) => setNewUsage(p=>({...p,[k]:v}));
 
   const matColors = {
@@ -730,6 +730,23 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   // Add current order's live (unsaved) filamentUsage
   filamentUsage.forEach(u => {
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
+  });
+  // Add wastage deductions — spread across spools largest-first same as inventory view
+  const _wTmpRem = {};
+  inventory.forEach(i=>{ _wTmpRem[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
+  wastageLog.forEach(w => {
+    let wLeft = Number(w.weightG||0);
+    const spools = inventory
+      .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
+      .sort((a,b)=>(_wTmpRem[b.id]||0)-(_wTmpRem[a.id]||0));
+    for (const s of spools) {
+      if (wLeft<=0) break;
+      const avail = Math.max(0, _wTmpRem[s.id]||0);
+      const take = Math.min(wLeft, avail);
+      usedPerSpool[s.id] = (usedPerSpool[s.id]||0) + take;
+      _wTmpRem[s.id] = (_wTmpRem[s.id]||0) - take;
+      wLeft -= take;
+    }
   });
   const getRemainingG = (id) => {
     const item = inventory.find(i=>i.id===id);
@@ -832,6 +849,28 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       {filamentUsage.length===0&&(
         <p className="text-xs text-gray-400 text-center py-6">No filament usage logged yet.</p>
       )}
+      {/* Wastage linked to this order */}
+      {wastageLog.filter(w=>w.orderNo===currentOrderNo).length>0&&(
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide">Linked Wastage</p>
+          {wastageLog.filter(w=>w.orderNo===currentOrderNo).map(w=>(
+            <div key={w.id} className="flex items-start gap-3 rounded-xl px-4 py-3 border border-orange-100 bg-orange-50/40">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs bg-orange-100 text-orange-600 font-bold px-2 py-0.5 rounded-full">{w.reason}</span>
+                  <span className="text-sm font-semibold text-slate-700">{w.brand||"No brand"} · {w.material} · {w.color||"No colour"}</span>
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  <span className="text-sm font-bold text-orange-600">{Number(w.weightG).toFixed(1)} g</span>
+                  <span className="text-xs text-gray-400">{w.date}</span>
+                  {w.notes&&<span className="text-xs text-gray-400 italic">{w.notes}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {(()=>{
         // Group entries by groupKey (for multi-spool splits) or by id for singles
         const displayed = [];
@@ -913,7 +952,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[] }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[] }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -1202,6 +1241,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               toast={toast}
               orders={orders}
               currentOrderNo={order.orderNo}
+              wastageLog={wastageLog}
             />
           )}
 
@@ -1403,7 +1443,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[] }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[] }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -1717,6 +1757,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           recipients={recipients}
           inventory={inventory}
           orders={orders}
+          wastageLog={wastageLog}
         />
       )}
     </div>
@@ -4197,7 +4238,7 @@ function App() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
