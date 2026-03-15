@@ -3167,6 +3167,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           </div>
         ))}
       </div>
+      )}
 
       {/* ── Wastage Log Section ───────────────────────────────────────── */}
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
@@ -3300,8 +3301,6 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           ))}
         </div>
       </div>
-
-      )}
     </div>
   );
 }
