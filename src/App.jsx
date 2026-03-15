@@ -110,7 +110,7 @@ create table if not exists proformas (
 -- Tax Invoices
 create table if not exists tax_invoices (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text,
   created_at timestamptz default now()
 );
 -- Normalized Items (covers all document types)
@@ -214,12 +214,12 @@ function buildQuotationHtml(order, inv, seller) {
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
-  <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
+  <th>Unit Price</th><th>Qty</th><th>Disc%</th><th>Gross</th>
   ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
   <th>Net Amount</th>
 </tr></thead><tbody>
 ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
-  <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
+  <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
@@ -279,12 +279,12 @@ function buildInvoiceHtml(order, inv, type, seller) {
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
-  <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
+  <th>Unit Price</th><th>Qty</th><th>Disc%</th><th>Gross</th>
   ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
   <th>Net Amount</th>
 </tr></thead><tbody>
 ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
-  <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
+  <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
@@ -1023,7 +1023,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     toast("Order changes saved");
   };
   const handleSaveInv = (updatedInv, type) => {
-    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)};
+    // Preserve the original sellerSnapshot — never overwrite with current seller
+    const origInv = type==="proforma"
+      ? proformas.find(p=>p.invNo===updatedInv.invNo)
+      : taxInvoices.find(t=>t.invNo===updatedInv.invNo);
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot};
     onSaveInvoice(saved, type);
   };
   const handleCreate = (type) => setCreating(type);
@@ -1563,9 +1567,13 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     toast(type==="proforma"?"Proforma saved":"Tax invoice saved");
     const orderNo2 = orderNo;
     if(type==="proforma"){
-      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+      const orig = proformas.find(p=>p.invNo===updatedInv.invNo);
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      setProformas(proformas.map(p=>p.invNo===saved.invNo?saved:p));
     } else {
-      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+      const orig = taxInvoices.find(t=>t.invNo===updatedInv.invNo);
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      setTaxInvoices(taxInvoices.map(t=>t.invNo===saved.invNo?saved:t));
     }
   };
 
