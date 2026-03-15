@@ -67,6 +67,7 @@ const DEFAULT_SELLER = {
   accountNo: "XXXXXXXXXXXX", ifsc: "HDFC0001234", logo: "",
   pfTerms: "1. This proforma invoice is valid for 15 days from the date of issue.\n2. 50% advance payment required to confirm the order.\n3. Prices are subject to change without prior notice.\n4. Delivery timelines will be confirmed upon order confirmation.",
   tiTerms: "1. Payment due within 30 days from invoice date.\n2. Goods once sold will not be taken back or exchanged.\n3. Interest @18% p.a. will be charged on overdue payments.\n4. Subject to local jurisdiction only.",
+  signatory: "",
 };
 
 const DEFAULT_SERIES = {
@@ -182,19 +183,20 @@ function buildQuotationHtml(order, inv, seller) {
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
   .page{max-width:900px;margin:0 auto}
-  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a2e;padding-bottom:14px;margin-bottom:14px}
-  .co-name{font-size:19px;font-weight:800;color:#1a1a2e;margin:4px 0 2px}.sd{font-size:11px;color:#444;line-height:1.6}
-  .inv-title{font-size:17px;font-weight:800;color:#0369a1;letter-spacing:1px;text-align:right}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #000;padding-bottom:14px;margin-bottom:14px}
+  .co-name{font-size:19px;font-weight:800;color:#000;margin:4px 0 2px}.sd{font-size:11px;color:#333;line-height:1.6}
+  .inv-title{font-size:17px;font-weight:800;color:#000;letter-spacing:1px;text-align:right}
   .inv-meta{font-size:11px;margin-top:6px;line-height:1.9;text-align:right}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
-  .box{border:1px solid #ddd;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
-  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px}
+  .box{border:1px solid #999;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
+  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px}
   table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
-  th{background:#1a1a2e;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
-  td{padding:5px 8px;border-bottom:1px solid #eee;text-align:center}
-  .sr td{background:#f7f7f7;font-weight:600}.gr td{background:#1a1a2e;color:#fff;font-weight:700;font-size:13px}
-  .foot{margin-top:16px;text-align:right;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
-  .validity{margin-top:12px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;font-size:11px;color:#1e40af}
+  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
+  td{padding:5px 8px;border-bottom:1px solid #ccc;text-align:center}
+  .sr td{background:#eee;font-weight:600}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px}
+  .foot{margin-top:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:8px}
+  .sig-block{text-align:center;font-size:10px;color:#333}
+  .validity{margin-top:12px;padding:10px 12px;background:#f5f5f5;border:1px solid #ccc;border-radius:5px;font-size:11px;color:#000}
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
@@ -226,7 +228,7 @@ ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</t
 </tfoot></table>
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 <div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
-<div class="foot">Computer-generated — no signature required.</div>
+<div class="foot"><span>This is a computer-generated document.</span>${seller.signatory?'<div class="sig-block"><img src="'+seller.signatory+'" style="max-height:70px;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/><div>Authorised Signatory</div></div>':'<div class="sig-block"><div style="height:50px"></div><div>Authorised Signatory</div></div>'}</div>
 </div></body></html>`;
 }
 
@@ -247,19 +249,20 @@ function buildInvoiceHtml(order, inv, type, seller) {
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
   .page{max-width:900px;margin:0 auto}
-  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a2e;padding-bottom:14px;margin-bottom:14px}
-  .co-name{font-size:19px;font-weight:800;color:#1a1a2e;margin:4px 0 2px}.sd{font-size:11px;color:#444;line-height:1.6}
-  .inv-title{font-size:17px;font-weight:800;color:#c0392b;letter-spacing:1px;text-align:right}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #000;padding-bottom:14px;margin-bottom:14px}
+  .co-name{font-size:19px;font-weight:800;color:#000;margin:4px 0 2px}.sd{font-size:11px;color:#333;line-height:1.6}
+  .inv-title{font-size:17px;font-weight:800;color:#000;letter-spacing:1px;text-align:right}
   .inv-meta{font-size:11px;margin-top:6px;line-height:1.9;text-align:right}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
-  .box{border:1px solid #ddd;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
-  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px}
+  .box{border:1px solid #999;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
+  .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px}
   table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
-  th{background:#1a1a2e;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
-  td{padding:5px 8px;border-bottom:1px solid #eee;text-align:center}
-  .sr td{background:#f7f7f7;font-weight:600}.gr td{background:#1a1a2e;color:#fff;font-weight:700;font-size:13px}
-  .bank{margin-top:14px;padding:10px 12px;background:#f4f4f4;border-radius:5px;font-size:11px;line-height:1.8}
-  .foot{margin-top:16px;text-align:right;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px}
+  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
+  td{padding:5px 8px;border-bottom:1px solid #ccc;text-align:center}
+  .sr td{background:#eee;font-weight:600}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px}
+  .bank{margin-top:14px;padding:10px 12px;background:#f5f5f5;border:1px solid #ccc;border-radius:5px;font-size:11px;line-height:1.8}
+  .foot{margin-top:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:8px}
+  .sig-block{text-align:center;font-size:10px;color:#333}
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
@@ -293,7 +296,7 @@ ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</t
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 ${!isProforma?`<div class="bank"><b>Bank Details:</b> ${seller.bank} | A/C No: ${seller.accountNo} | IFSC: ${seller.ifsc}</div>`:""}
 ${(isProforma&&seller.pfTerms)||(!isProforma&&seller.tiTerms)?`<div style="margin-top:12px;padding:10px 12px;background:#f9f9f9;border:1px solid #eee;border-radius:5px;font-size:10px;color:#444;line-height:1.8"><b style="font-size:11px">Terms & Conditions</b><br>${isProforma?(seller.pfTerms||"").replace(/\n/g,"<br>"):(seller.tiTerms||"").replace(/\n/g,"<br>")}</div>`:""}
-<div class="foot">Computer-generated — no signature required.${isProforma?" This is a Proforma Invoice and not a Tax Invoice.":""}</div>
+<div class="foot"><span>Computer-generated.${isProforma?" This is a Proforma Invoice and not a Tax Invoice.":""}</span>${seller.signatory?'<div class="sig-block"><img src="'+seller.signatory+'" style="max-height:70px;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/><div>Authorised Signatory</div></div>':'<div class="sig-block"><div style="height:50px"></div><div>Authorised Signatory</div></div>'}</div>
 </div></body></html>`;
 }
 
@@ -1792,8 +1795,10 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
   const logoRef=useRef();
+  const sigRef=useRef();
 
   const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
+  const handleSig = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,signatory:ev.target.result})); r.readAsDataURL(f); };
   const save = () => { setSeller(s); setSeries(sr); toast("Settings saved"); };
   const cancel = () => { setS({...seller}); setSr({...series}); };
 
@@ -1838,6 +1843,23 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
           }
           <button onClick={()=>logoRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.logo?"Change":"Upload"} logo</button>
           <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>
+        </div>
+      </section>
+
+      {/* Authorised Signatory */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-2">Authorised Signatory</h3>
+        <p className="text-xs text-gray-400 mb-4">Upload a stamp/signature image shown bottom-right on every invoice. PNG with transparent background works best.</p>
+        <div className="flex items-center gap-4">
+          {s.signatory
+            ? <div className="relative group"><img src={s.signatory} alt="signatory" className="h-20 max-w-[200px] object-contain border rounded-xl p-2 bg-white shadow-sm"/>
+                <button onClick={()=>setS({...s,signatory:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button></div>
+            : <div onClick={()=>sigRef.current.click()} className="h-20 w-44 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
+                <span className="text-2xl">🖋</span><span className="text-xs text-gray-400">Upload stamp / signature</span>
+              </div>
+          }
+          <button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>
+          <input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>
         </div>
       </section>
 
