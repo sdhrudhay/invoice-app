@@ -178,7 +178,7 @@ function buildQuotationHtml(order, inv, seller) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const cols = ng ? 13 : 9;
+  const cols = ng ? 12 : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
@@ -213,22 +213,21 @@ function buildQuotationHtml(order, inv, seller) {
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
-  <th>#</th><th>Item / Description</th><th>HSN</th><th>Unit</th>
+  <th>#</th><th>Item / Description</th><th>HSN</th>
   <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
   ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td><td>${it.unit}</td>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
   <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
-  <tr class="sr"><td colspan="${ng?7:7}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
+  <tr class="sr"><td colspan="${ng?6:6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
   <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
 </tfoot></table>
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 <div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
-<div class="foot"><span>This is a computer-generated document.</span>${seller.signatory?'<div class="sig-block"><img src="'+seller.signatory+'" style="max-height:70px;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/><div>Authorised Signatory</div></div>':'<div class="sig-block"><div style="height:50px"></div><div>Authorised Signatory</div></div>'}</div>
 </div></body></html>`;
 }
 
@@ -243,7 +242,7 @@ function buildInvoiceHtml(order, inv, type, seller) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const cols = ng ? 13 : 9;
+  const cols = ng ? 12 : 8;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -279,24 +278,24 @@ function buildInvoiceHtml(order, inv, type, seller) {
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
-  <th>#</th><th>Item / Description</th><th>HSN</th><th>Unit</th>
+  <th>#</th><th>Item / Description</th><th>HSN</th>
   <th>Qty</th><th>Unit Price</th><th>Disc%</th><th>Gross</th>
   ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td><td>${it.unit}</td>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
   <td>${it.qty}</td><td>₹${fmt(it.unitPrice)}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
-  <tr class="sr"><td colspan="${ng?7:7}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
+  <tr class="sr"><td colspan="${ng?6:6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
   <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
 </tfoot></table>
 
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 ${!isProforma?`<div class="bank"><b>Bank Details:</b> ${seller.bank} | A/C No: ${seller.accountNo} | IFSC: ${seller.ifsc}</div>`:""}
 ${(isProforma&&seller.pfTerms)||(!isProforma&&seller.tiTerms)?`<div style="margin-top:12px;padding:10px 12px;background:#f9f9f9;border:1px solid #eee;border-radius:5px;font-size:10px;color:#444;line-height:1.8"><b style="font-size:11px">Terms & Conditions</b><br>${isProforma?(seller.pfTerms||"").replace(/\n/g,"<br>"):(seller.tiTerms||"").replace(/\n/g,"<br>")}</div>`:""}
-<div class="foot"><span>Computer-generated.${isProforma?" This is a Proforma Invoice and not a Tax Invoice.":""}</span>${seller.signatory?'<div class="sig-block"><img src="'+seller.signatory+'" style="max-height:70px;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/><div>Authorised Signatory</div></div>':'<div class="sig-block"><div style="height:50px"></div><div>Authorised Signatory</div></div>'}</div>
+${isProforma?'<div style="margin-top:8px;font-size:10px;color:#555;text-align:left">This is a Proforma Invoice and not a Tax Invoice.</div>':''}<div class="foot"><span></span>${seller.signatory?'<div class="sig-block"><img src="'+seller.signatory+'" style="max-height:70px;max-width:180px;object-fit:contain;display:block;margin:0 auto 4px"/><div>Authorised Signatory</div></div>':'<div class="sig-block"><div style="height:50px;border-bottom:1px solid #999;width:160px;margin:0 auto"></div><div style="margin-top:4px">Authorised Signatory</div></div>'}</div>
 </div></body></html>`;
 }
 
