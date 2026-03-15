@@ -202,12 +202,10 @@ function buildQuotationHtml(order, inv, seller) {
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
-  <div>
-    <div class="co-name">${seller.name}</div>
+  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:6px;display:block"/>`:""}<div class="co-name">${seller.name}</div>
     <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone}</div>
   </div>
-  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-    ${seller.logo?`<img src="${seller.logo}" style="max-height:100px;max-width:220px;object-fit:contain;margin-bottom:6px"/>`:""}<div class="inv-title">QUOTATION</div>
+  <div><div class="inv-title">QUOTATION</div>
     <div class="inv-meta"><b>Quotation #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
@@ -270,12 +268,10 @@ function buildInvoiceHtml(order, inv, type, seller) {
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
-  <div>
-    <div class="co-name">${seller.name}</div>
+  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:6px;display:block"/>`:""}<div class="co-name">${seller.name}</div>
     <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone}</div>
   </div>
-  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-    ${seller.logo?`<img src="${seller.logo}" style="max-height:100px;max-width:220px;object-fit:contain;margin-bottom:6px"/>`:""}<div class="inv-title">${title}</div>
+  <div><div class="inv-title">${title}</div>
     <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
@@ -1187,7 +1183,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
-                  onClick={handleSaveOrder}
+                  onClick={()=>handleSaveOrder()}
                   className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
                 >
                   Save Changes
@@ -1439,9 +1435,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
   const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
   const [d, setD] = useState({...inv, items: inv.items.map(i=>({...i})), invNo: isNew ? autoNo : inv.invNo, invNoBase: isNew ? autoBase : inv.invNoBase, charges: inv.charges||[] });
   const upd = (k,v) => setD(p=>({...p,[k]:v}));
-  const addCharge = () => setD(p=>({...p, charges:[...(p.charges||[]),{label:"",amount:""}]}));
-  const updCharge = (i,k,v) => setD(p=>({...p, charges:p.charges.map((c,ci)=>ci===i?{...c,[k]:v}:c)}));
-  const delCharge = (i) => setD(p=>({...p, charges:p.charges.filter((_,ci)=>ci!==i)}));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -1462,23 +1456,6 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
           </div>
         )
       }
-      {/* Other Charges */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400 ml-1">(shipping, handling, etc.)</span></p>
-          <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add Charge</button>
-        </div>
-        {(d.charges||[]).map((c,i)=>(
-          <div key={i} className="flex items-center gap-2">
-            <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping, Handling…)"
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-            <span className="text-gray-400 text-sm">₹</span>
-            <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
-              placeholder="0.00" className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-            <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
-          </div>
-        ))}
-      </div>
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
         <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save</button>
@@ -4069,7 +4046,7 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:parseJson(r.filament_usage)||[], charges:parseJson(r.charges)||[], items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -4107,6 +4084,7 @@ function App() {
       for (const job of batch) {
         if (job.action==="upsert") await sb().from(job.table).upsert(job.row);  // row can be single obj or array
         else if (job.action==="delete") await sb().from(job.table).delete(job.col, job.val);
+        else if (job.action==="deleteMany") await sb().from(job.table).deleteMany(job.col, [job.val]);
         else if (job.action==="saveSettings") {
           for (const [k,v] of Object.entries(job.data)) {
             await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
