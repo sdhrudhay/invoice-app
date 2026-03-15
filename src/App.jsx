@@ -84,7 +84,9 @@ const DEFAULT_SERIES = {
 
 const SUPABASE_SQL = `
 -- Orders
--- add: alter table orders add column if not exists charges text default '[]';
+-- Migration: run in Supabase SQL editor:
+-- alter table orders add column if not exists filament_usage text default '[]';
+-- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
   phone text, email text, gstin text, billing_name text, billing_address text,
@@ -94,6 +96,7 @@ create table if not exists orders (
   advance numeric default 0, advance_recipient text, advance_txn_ref text,
   status text, comments text, needs_gst boolean default true,
   quotation_no text, proforma_ids text, tax_invoice_ids text,
+  filament_usage text default '[]', charges text default '[]',
   created_at timestamptz default now()
 );
 -- Quotations
@@ -225,8 +228,7 @@ ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</t
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
   <tr class="sr"><td colspan="${ng?(isIgst?5:6):6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?(isIgst?`<td></td><td>₹${fmt(tC+tS)}</td>`:`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`):""}<td>₹${fmt(tN)}</td></tr>
-  ${(inv.charges||[]).filter(c=>c.label&&Number(c.amount)).map(c=>`<tr><td colspan="${cols-1}" style="text-align:right;font-style:italic;color:#555">${c.label}</td><td>₹${fmt(Number(c.amount))}</td></tr>`).join("")}
-  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN+(inv.charges||[]).reduce((s,c)=>s+Number(c.amount||0),0))}</td></tr>
+  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
 </tfoot></table>
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 <div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
@@ -369,16 +371,16 @@ function S({ label, value, onChange, options, className="" }) {
 }
 
 // ─── Item Table ───────────────────────────────────────────────────────────────
-function ItemTable({ items, setItems, needsGst }) {
+function ItemTable({ items, setItems, needsGst, isIgst=false }) {
   const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
   const del = (i) => setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
   const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
-  const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?["CGST%","SGST%"]:[]),"Gross",...(needsGst?["CGST","SGST"]:[]),"Net Amt",""];
+  const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
-      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?"1020px":"680px"}}>
+      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
         <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
           {items.map((it,i)=>(
@@ -390,12 +392,14 @@ function ItemTable({ items, setItems, needsGst }) {
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
-              {needsGst&&<>
-                <td className="px-2 py-1.5 text-center"><input type="number" value={it.cgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"cgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td>
-                <td className="px-2 py-1.5 text-center"><input type="number" value={it.sgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"sgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td>
-              </>}
+              {needsGst&&(isIgst
+                ? <td className="px-2 py-1.5 text-center text-xs text-gray-500">{Number(it.cgstRate)+Number(it.sgstRate)}%</td>
+                : <><td className="px-2 py-1.5 text-center"><input type="number" value={it.cgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"cgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td>
+                  <td className="px-2 py-1.5 text-center"><input type="number" value={it.sgstRate} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"sgstRate",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max="100" placeholder="%" className="border-0 bg-transparent text-xs focus:outline-none w-12 text-center focus:bg-indigo-50 rounded"/></td></>)}
               <td className="px-2 py-1.5 text-center text-gray-600">₹{fmt(it.grossAmt)}</td>
-              {needsGst&&<><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.sgstAmt)}</td></>}
+              {needsGst&&(isIgst
+                ? <td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(num(it.cgstAmt)+num(it.sgstAmt))}</td>
+                : <><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.cgstAmt)}</td><td className="px-2 py-1.5 text-center text-gray-500">₹{fmt(it.sgstAmt)}</td></>)}
               <td className="px-2 py-1.5 text-center font-bold text-slate-800">₹{fmt(it.netAmt)}</td>
               <td className="px-2 py-1.5"><button onClick={()=>del(i)} className="text-red-400 hover:text-red-600 font-bold px-1 text-base leading-none">×</button></td>
             </tr>
@@ -403,9 +407,11 @@ function ItemTable({ items, setItems, needsGst }) {
         </tbody>
         <tfoot>
           <tr className="bg-slate-50 font-semibold">
-            <td colSpan={needsGst?9:7} className="px-2 py-2 text-right text-gray-400 text-xs">Totals →</td>
+            <td colSpan={needsGst?(isIgst?8:9):7} className="px-2 py-2 text-right text-gray-400 text-xs">Totals →</td>
             <td className="px-2 py-2 text-right text-xs">₹{fmt(tG)}</td>
-            {needsGst&&<><td className="px-2 py-2 text-right text-xs">₹{fmt(tC)}</td><td className="px-2 py-2 text-right text-xs">₹{fmt(tS)}</td></>}
+            {needsGst&&(isIgst
+              ? <td className="px-2 py-2 text-right text-xs">₹{fmt(tC+tS)}</td>
+              : <><td className="px-2 py-2 text-right text-xs">₹{fmt(tC)}</td><td className="px-2 py-2 text-right text-xs">₹{fmt(tS)}</td></>)}
             <td className="px-2 py-2 text-right text-sm font-bold text-slate-800">₹{fmt(tN)}</td>
             <td/>
           </tr>
@@ -618,7 +624,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst}/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -978,7 +984,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{} }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -998,6 +1004,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   useEffect(() => { setO(prev=>({...order, ...prev, payments: order.payments||[] })); }, [order.orderNo]);
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
+  const isIgst = o.needsGst && seller?.stateCode && o.billingStateCode && String(o.billingStateCode).trim() !== String(seller.stateCode).trim();
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
@@ -1158,28 +1165,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
-              {/* Other Charges */}
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling, misc…)</span></p>
-                  <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
-                </div>
-                {charges.map((c,i)=>(
-                  <div key={i} className="flex items-center gap-2">
-                    <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <span className="text-gray-400 text-sm shrink-0">₹</span>
-                    <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
-                      placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
-                  </div>
-                ))}
-                {charges.length>0&&(
-                  <p className="text-xs text-gray-400 text-right">Total charges: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>
-                )}
-              </div>
+
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} label="Order Items" sublabel="Edit items here to update quotation"/>
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} label="Order Items" sublabel="Edit items here to update quotation"/>
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
@@ -1211,7 +1199,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     </div>
                     <div className="border-t pt-4">
                       <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
-                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={qt.items.map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst}/></div>
+                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={qt.items.map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst} isIgst={isIgst}/></div>
                     </div>
                   </>
                 : <p className="text-gray-400 text-sm text-center py-8">No quotation found for this order.</p>
@@ -1239,7 +1227,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>handleDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                            <button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -1258,7 +1246,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>handleDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                            <button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -1271,8 +1259,28 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           )}
 
           {tab==="invoices" && creating && (
-            <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges:(order.charges||[]).map(c=>({...c})) }}
+<div className="space-y-4">
+              {creating==="tax"&&(
+                <div className="border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling, misc…)</span></p>
+                    <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
+                  </div>
+                  {charges.map((c,i)=>(
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
+                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+                      <span className="text-gray-400 text-sm shrink-0">₹</span>
+                      <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
+                        placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+                      <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                    </div>
+                  ))}
+                  {charges.length>0&&<p className="text-xs text-gray-400 text-right">Total: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>}
+                </div>
+              )}
+              <InvoiceEditor
+              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? charges.map(c=>({...c})) : [] }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -1280,7 +1288,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               existingList={creating==="proforma" ? proformas : taxInvoices}
               onSave={(inv)=>handleSaveNew(inv, creating)}
               onCancel={()=>setCreating(null)}
-            />
+            /></div>
           )}
 
 
@@ -1391,7 +1399,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Invoice Editor ────────────────────────────────────────────────────────────
 
 // ─── Expandable Item Table ────────────────────────────────────────────────────
-function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
+function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fsItems, setFsItems] = useState(null); // local copy for fullscreen edits
   const openFullscreen = () => { setFsItems(items.map(i=>({...i}))); setFullscreen(true); };
@@ -1409,7 +1417,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
           </div>
           {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
-        <ItemTable items={items} setItems={setItems} needsGst={needsGst}/>
+        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst}/>
       </div>
       {fullscreen && fsItems !== null && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
@@ -1421,7 +1429,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel }) {
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
-            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst}/>
+            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst}/>
           </div>
         </div>
       )}
@@ -1456,6 +1464,19 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
           </div>
         )
       }
+      {(d.charges||[]).filter(c=>c.label&&Number(c.amount)).length>0&&(
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Other Charges (from order)</p>
+          {(d.charges||[]).filter(c=>c.label&&Number(c.amount)).map((c,i)=>(
+            <div key={i} className="flex justify-between text-sm text-gray-700">
+              <span>{c.label}</span><span className="font-semibold">₹{fmt(Number(c.amount))}</span>
+            </div>
+          ))}
+          <div className="flex justify-between text-sm font-bold text-slate-800 border-t border-slate-200 pt-1 mt-1">
+            <span>Total charges</span><span>₹{fmt((d.charges||[]).reduce((s,c)=>s+Number(c.amount||0),0))}</span>
+          </div>
+        </div>
+      )}
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
         <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save</button>
@@ -1814,6 +1835,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           onSaveInvoice={handleSaveInvoice}
           onCreateInvoice={handleCreateInvoice}
           onDeleteOrder={handleDeleteOrder}
+          onDeleteInvoice={handleDeleteInvoice}
           toast={toast}
           recipients={recipients}
           inventory={inventory}
