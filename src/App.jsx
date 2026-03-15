@@ -84,6 +84,7 @@ const DEFAULT_SERIES = {
 
 const SUPABASE_SQL = `
 -- Orders
+-- add: alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
   phone text, email text, gstin text, billing_name text, billing_address text,
@@ -98,13 +99,13 @@ create table if not exists orders (
 -- Quotations
 create table if not exists quotations (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text, seller_snapshot text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text, charges text,
   created_at timestamptz default now()
 );
 -- Proformas
 create table if not exists proformas (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text, seller_snapshot text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text, charges text,
   created_at timestamptz default now()
 );
 -- Tax Invoices
@@ -178,7 +179,8 @@ function buildQuotationHtml(order, inv, seller) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const cols = ng ? 12 : 8;
+  const isIgst = ng && seller.stateCode && order.billingStateCode && String(order.billingStateCode).trim() !== String(seller.stateCode).trim();
+  const cols = ng ? (isIgst ? 10 : 12) : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
   *{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1a1a1a;margin:0;padding:24px;background:#fff}
@@ -200,31 +202,33 @@ function buildQuotationHtml(order, inv, seller) {
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
-  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}
+  <div>
     <div class="co-name">${seller.name}</div>
-    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone} | ${seller.email}</div>
+    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone}</div>
   </div>
-  <div><div class="inv-title">QUOTATION</div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    ${seller.logo?`<img src="${seller.logo}" style="max-height:100px;max-width:220px;object-fit:contain;margin-bottom:6px"/>`:""}<div class="inv-title">QUOTATION</div>
     <div class="inv-meta"><b>Quotation #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
 <div class="two-col">
-  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}${order.email?`<br>${order.email}`:""}</div>
+  <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
   <th>Unit Price</th><th>Qty</th><th>Disc%</th><th>Gross</th>
-  ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
+  ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
 ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
-  ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
+  ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
-  <tr class="sr"><td colspan="${ng?6:6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
-  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
+  <tr class="sr"><td colspan="${ng?(isIgst?5:6):6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?(isIgst?`<td></td><td>₹${fmt(tC+tS)}</td>`:`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`):""}<td>₹${fmt(tN)}</td></tr>
+  ${(inv.charges||[]).filter(c=>c.label&&Number(c.amount)).map(c=>`<tr><td colspan="${cols-1}" style="text-align:right;font-style:italic;color:#555">${c.label}</td><td>₹${fmt(Number(c.amount))}</td></tr>`).join("")}
+  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN+(inv.charges||[]).reduce((s,c)=>s+Number(c.amount||0),0))}</td></tr>
 </tfoot></table>
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
 <div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
@@ -242,7 +246,8 @@ function buildInvoiceHtml(order, inv, type, seller) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const cols = ng ? 12 : 8;
+  const isIgst = ng && seller.stateCode && order.billingStateCode && String(order.billingStateCode).trim() !== String(seller.stateCode).trim();
+  const cols = ng ? (isIgst ? 10 : 12) : 8;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -265,31 +270,33 @@ function buildInvoiceHtml(order, inv, type, seller) {
   @media print{body{padding:8px}}
 </style></head><body><div class="page">
 <div class="hdr">
-  <div>${seller.logo?`<img src="${seller.logo}" style="max-height:60px;max-width:160px;object-fit:contain;margin-bottom:4px;display:block"/>`:""}
+  <div>
     <div class="co-name">${seller.name}</div>
-    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone} | ${seller.email}</div>
+    <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone}</div>
   </div>
-  <div><div class="inv-title">${title}</div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    ${seller.logo?`<img src="${seller.logo}" style="max-height:100px;max-width:220px;object-fit:contain;margin-bottom:6px"/>`:""}<div class="inv-title">${title}</div>
     <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
 <div class="two-col">
-  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}${order.email?`<br>${order.email}`:""}</div>
+  <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
   <th>Unit Price</th><th>Qty</th><th>Disc%</th><th>Gross</th>
-  ${ng?`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`:""}
+  ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
 ${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
-  ${ng?`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`:""}
+  ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
-  <tr class="sr"><td colspan="${ng?6:6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`:""}<td>₹${fmt(tN)}</td></tr>
-  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
+  <tr class="sr"><td colspan="${ng?(isIgst?5:6):6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?(isIgst?`<td></td><td>₹${fmt(tC+tS)}</td>`:`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`):""}<td>₹${fmt(tN)}</td></tr>
+  ${(inv.charges||[]).filter(c=>c.label&&Number(c.amount)).map(c=>`<tr><td colspan="${cols-1}" style="text-align:right;font-style:italic;color:#555">${c.label}</td><td>₹${fmt(Number(c.amount))}</td></tr>`).join("")}
+  <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN+(inv.charges||[]).reduce((s,c)=>s+Number(c.amount||0),0))}</td></tr>
 </tfoot></table>
 
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
@@ -509,7 +516,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[] };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
@@ -984,6 +991,10 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const [statusPrompt, setStatusPrompt] = useState(null); // {updated} waiting for user decision
   const [filamentUsage, setFilamentUsage] = useState((order.filamentUsage||[]).map(u=>({...u})));
   const [newUsage, setNewUsage] = useState({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
+  const [charges, setCharges] = useState((order.charges||[]).map(c=>({...c})));
+  const addCharge = () => setCharges(p=>[...p,{label:"",amount:""}]);
+  const updCharge = (i,k,v) => setCharges(p=>p.map((c,ci)=>ci===i?{...c,[k]:v}:c));
+  const delCharge = (i) => setCharges(p=>p.filter((_,ci)=>ci!==i));
 
   // Keep payments in sync with parent order prop (so reopening shows saved payments)
   useEffect(() => { setPayments(order.payments||[]); }, [order.payments]);
@@ -1001,6 +1012,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       // Different order opened — re-init everything from prop
       setOrderItems((order.items||[]).map(i=>({...i})));
       setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
+      setCharges((order.charges||[]).map(c=>({...c})));
       prevOrderNo.current = order.orderNo;
     }
     // Do NOT sync filamentUsage here on prop updates — it would overwrite
@@ -1011,7 +1023,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const handleSaveOrder = (updatedFilamentUsage) => {
     const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
-    const updated = {...o, items: orderItems, filamentUsage: fu};
+    const updated = {...o, items: orderItems, filamentUsage: fu, charges};
     const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const itemsChanged = origItems !== newItems;
@@ -1150,6 +1162,26 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
+              {/* Other Charges */}
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling, misc…)</span></p>
+                  <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
+                </div>
+                {charges.map((c,i)=>(
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <span className="text-gray-400 text-sm shrink-0">₹</span>
+                    <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
+                      placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                  </div>
+                ))}
+                {charges.length>0&&(
+                  <p className="text-xs text-gray-400 text-right">Total charges: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>
+                )}
+              </div>
               <div className="border-t pt-4">
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} label="Order Items" sublabel="Edit items here to update quotation"/>
               </div>
@@ -1244,7 +1276,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
           {tab==="invoices" && creating && (
             <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"" }}
+              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges:(order.charges||[]).map(c=>({...c})) }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -1405,8 +1437,11 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
   const prefix = isNew ? (type==="proforma"?(series?.pfPrefix||"PF"):(series?.tiPrefix||"TAX")) : null;
   const period = isNew ? (type==="proforma"?(series?.pfFormat==="YYYYMM"?yyyymm():series?.pfFormat==="YYYY"?yyyy():series?.pfFormat==="YYYYMMDD"?yyyymmdd():""):(series?.tiFormat==="YYYYMM"?yyyymm():series?.tiFormat==="YYYY"?yyyy():series?.tiFormat==="YYYYMMDD"?yyyymmdd():"")) : null;
   const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
-  const [d, setD] = useState({...inv, items: inv.items.map(i=>({...i})), invNo: isNew ? autoNo : inv.invNo, invNoBase: isNew ? autoBase : inv.invNoBase });
+  const [d, setD] = useState({...inv, items: inv.items.map(i=>({...i})), invNo: isNew ? autoNo : inv.invNo, invNoBase: isNew ? autoBase : inv.invNoBase, charges: inv.charges||[] });
   const upd = (k,v) => setD(p=>({...p,[k]:v}));
+  const addCharge = () => setD(p=>({...p, charges:[...(p.charges||[]),{label:"",amount:""}]}));
+  const updCharge = (i,k,v) => setD(p=>({...p, charges:p.charges.map((c,ci)=>ci===i?{...c,[k]:v}:c)}));
+  const delCharge = (i) => setD(p=>({...p, charges:p.charges.filter((_,ci)=>ci!==i)}));
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -1427,6 +1462,23 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
           </div>
         )
       }
+      {/* Other Charges */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400 ml-1">(shipping, handling, etc.)</span></p>
+          <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add Charge</button>
+        </div>
+        {(d.charges||[]).map((c,i)=>(
+          <div key={i} className="flex items-center gap-2">
+            <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping, Handling…)"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <span className="text-gray-400 text-sm">₹</span>
+            <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
+              placeholder="0.00" className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+          </div>
+        ))}
+      </div>
       <F label="Notes" value={d.notes||""} onChange={v=>upd("notes",v)} rows={2}/>
       <div className="flex gap-3 pt-2 border-t">
         <button onClick={()=>{ onSave(d); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm">Save</button>
@@ -4017,8 +4069,8 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:parseJson(r.filament_usage)||[], items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:parseJson(r.filament_usage)||[], charges:parseJson(r.charges)||[], items:getItems("order",r.order_no), payments:[] });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
@@ -4107,7 +4159,8 @@ function App() {
       status:o.status||"Pending", comments:o.comments||"", needs_gst:o.needsGst!==false,
       quotation_no:o.quotationNo||"", proforma_ids:JSON.stringify(o.proformaIds||[]),
       tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[]),
-      filament_usage:JSON.stringify(o.filamentUsage||[])
+      filament_usage:JSON.stringify(o.filamentUsage||[]),
+      charges:JSON.stringify(o.charges||[])
     }});
     syncItems("order", o.orderNo, o.items);
   };
@@ -4115,7 +4168,8 @@ function App() {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
       order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
-      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null
+      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null,
+      charges: q.charges?.length ? JSON.stringify(q.charges) : null
     }});
     syncItems("quotation", q.invNo, q.items);
   };
@@ -4123,7 +4177,8 @@ function App() {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
       order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
-      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null
+      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null,
+      charges: p.charges?.length ? JSON.stringify(p.charges) : null
     }});
     syncItems("proforma", p.invNo, p.items);
   };
@@ -4131,7 +4186,8 @@ function App() {
     enqueue({action:"upsert",table:"tax_invoices",row:{
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
       order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
-      seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null
+      seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null,
+      charges: t.charges?.length ? JSON.stringify(t.charges) : null
     }});
     syncItems("tax_invoice", t.invNo, t.items);
   };
