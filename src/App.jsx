@@ -624,7 +624,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&seller?.stateCode&&billingStateCode&&String(billingStateCode).trim()!==String(seller.stateCode).trim()}/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -1288,6 +1288,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               existingList={creating==="proforma" ? proformas : taxInvoices}
               onSave={(inv)=>handleSaveNew(inv, creating)}
               onCancel={()=>setCreating(null)}
+              isIgst={isIgst}
             /></div>
           )}
 
@@ -1437,7 +1438,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
   );
 }
 
-function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList }) {
+function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList, isIgst=false }) {
   const prefix = isNew ? (type==="proforma"?(series?.pfPrefix||"PF"):(series?.tiPrefix||"TAX")) : null;
   const period = isNew ? (type==="proforma"?(series?.pfFormat==="YYYYMM"?yyyymm():series?.pfFormat==="YYYY"?yyyy():series?.pfFormat==="YYYYMMDD"?yyyymmdd():""):(series?.tiFormat==="YYYYMM"?yyyymm():series?.tiFormat==="YYYY"?yyyy():series?.tiFormat==="YYYYMMDD"?yyyymmdd():"")) : null;
   const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
@@ -1454,12 +1455,12 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
       </div>
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
       {isNew
-        ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} label="Invoice Items"/>
+        ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} isIgst={isIgst} label="Invoice Items"/>
         : (
           <div className="space-y-2">
             <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">(locked — delete and recreate to change items)</span></p>
             <div className="opacity-60 pointer-events-none select-none rounded-xl border border-gray-100 overflow-hidden">
-              <ItemTable items={d.items} setItems={()=>{}} needsGst={needsGst}/>
+              <ItemTable items={d.items} setItems={()=>{}} needsGst={needsGst} isIgst={isIgst}/>
             </div>
           </div>
         )
