@@ -105,13 +105,13 @@ create table if not exists orders (
 -- Quotations
 create table if not exists quotations (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text, seller_snapshot text, charges text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text,
   created_at timestamptz default now()
 );
 -- Proformas
 create table if not exists proformas (
   inv_no text primary key, inv_no_base text, inv_date text,
-  order_id text, amount numeric default 0, notes text, seller_snapshot text, charges text,
+  order_id text, amount numeric default 0, notes text, seller_snapshot text,
   created_at timestamptz default now()
 );
 -- Tax Invoices
@@ -1903,7 +1903,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 // ─── Product Manager ──────────────────────────────────────────────────────────
-function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{} }) {
+function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[] }) {
   const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", cgstRate:9, sgstRate:9, notes:"" };
   const [form, setForm] = useState({...EMPTY_P});
   const [editId, setEditId] = useState(null);
@@ -1917,9 +1917,12 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
     return ppg && weightG ? (Number(ppg) * Number(weightG)).toFixed(2) : "";
   };
 
-  const allMaterials = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin",
-    ...products.map(p=>p.material).filter(m=>m&&!["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"].includes(m))
-      .filter((m,i,a)=>a.indexOf(m)===i)];
+  const baseMats = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
+  const allMaterials = [...new Set([
+    ...baseMats,
+    ...products.map(p=>p.material).filter(m=>m&&!baseMats.includes(m)),
+    ...inventory.map(i=>i.material).filter(m=>m&&!baseMats.includes(m)),
+  ].filter(Boolean))];
   const allBrands = [...new Set(products.map(p=>p.brand).filter(Boolean))];
 
   const handleSave = () => {
@@ -1987,7 +1990,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Calculated Unit Price</label>
             <div className={`border rounded-lg px-3 py-2 text-sm font-semibold ${unitPrice?"border-emerald-300 bg-emerald-50 text-emerald-700":"border-gray-200 bg-gray-50 text-gray-400"}`}>
-              {unitPrice ? `₹${unitPrice}` : "— set filament price in Settings"}
+              {unitPrice ? `₹${unitPrice}` : "— set filament price in Inventory tab"}
             </div>
           </div>
           <div className="flex flex-col gap-1">
@@ -2115,62 +2118,6 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
           }
           <button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>
           <input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>
-        </div>
-      </section>
-
-      {/* Filament Price Per Gram */}
-      <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-2">Filament Price Per Gram</h3>
-        <p className="text-xs text-gray-400 mb-4">Set cost per gram for each brand + material combination. Used to auto-calculate product unit prices.</p>
-        <div className="space-y-2">
-          {(()=>{
-            const fps = s.filamentPrices || {};
-            const entries = Object.entries(fps);
-            return (
-              <>
-                {entries.map(([key,ppg],idx)=>{
-                  const [brand,mat] = key.split("||");
-                  return (
-                    <div key={key} className="flex items-center gap-2">
-                      <input value={brand} readOnly placeholder="Brand" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600"/>
-                      <input value={mat} readOnly placeholder="Material" className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600"/>
-                      <span className="text-gray-400 text-sm shrink-0">₹/g</span>
-                      <input type="number" value={ppg} min="0" step="0.01"
-                        onChange={e=>{ const nfp={...fps}; nfp[key]=e.target.value; setS(p=>({...p,filamentPrices:nfp})); }}
-                        onWheel={e=>e.target.blur()} placeholder="0.00"
-                        className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                      <button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setS(p=>({...p,filamentPrices:nfp})); }}
-                        className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
-                    </div>
-                  );
-                })}
-                {(()=>{
-                  const [nb,setNb] = useState(""); const [nm,setNm] = useState("PLA"); const [np,setNp] = useState("");
-                  const mats = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
-                  return (
-                    <div className="flex items-center gap-2 mt-1">
-                      <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
-                        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                      <select value={nm} onChange={e=>setNm(e.target.value)}
-                        className="w-28 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-                        {mats.map(m=><option key={m}>{m}</option>)}
-                      </select>
-                      <span className="text-gray-400 text-sm shrink-0">₹/g</span>
-                      <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
-                        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                      <button onClick={()=>{
-                        if (!np||isNaN(Number(np))) return;
-                        const k=`${nb.trim()}||${nm}`;
-                        const nfp={...fps,[k]:np};
-                        setS(p=>({...p,filamentPrices:nfp}));
-                        setNb(""); setNp("");
-                      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
-                    </div>
-                  );
-                })()}
-              </>
-            );
-          })()}
         </div>
       </section>
 
@@ -3158,7 +3105,7 @@ const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
-function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
   const [showForm, setShowForm] = useState(false);
   const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
   const [purchaseDate, setPurchaseDate] = useState(today());
@@ -3565,6 +3512,63 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         ))}
       </div>
       )}
+
+      {/* ── Filament Price Per Gram ────────────────────────────────────────── */}
+      <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-700">Price Per Gram</p>
+            <p className="text-xs text-gray-400">Set ₹/g for each brand + material. Used to auto-calculate product prices.</p>
+          </div>
+        </div>
+        {(()=>{
+          const fps = seller?.filamentPrices || {};
+          const entries = Object.entries(fps);
+          return (
+            <div className="space-y-2">
+              {entries.map(([key,ppg])=>{
+                const [brand,mat] = key.split("||");
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <input value={brand} readOnly placeholder="Brand" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
+                    <input value={mat} readOnly placeholder="Material" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
+                    <span className="text-gray-400 text-xs shrink-0">₹/g</span>
+                    <input type="number" value={ppg} min="0" step="0.01"
+                      onChange={e=>{ const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp}); }}
+                      onWheel={e=>e.target.blur()} placeholder="0.00"
+                      className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
+                      className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                  </div>
+                );
+              })}
+              {(()=>{
+                const [nb,setNb]=useState(""); const [nm,setNm]=useState(materialList[0]||"PLA"); const [np,setNp]=useState("");
+                return (
+                  <div className="flex items-center gap-2 mt-1">
+                    <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
+                      className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
+                    <select value={nm} onChange={e=>setNm(e.target.value)}
+                      className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
+                      {materialList.map(m=><option key={m}>{m}</option>)}
+                    </select>
+                    <span className="text-gray-400 text-xs shrink-0">₹/g</span>
+                    <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+                      className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <button onClick={()=>{
+                      if (!np||isNaN(Number(np))) return;
+                      const k=`${nb.trim()}||${nm}`;
+                      const nfp={...fps,[k]:np};
+                      setSeller({...seller,filamentPrices:nfp});
+                      setNb(""); setNp("");
+                    }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+      </div>
 
       {/* ── Wastage Log Section ───────────────────────────────────────── */}
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
@@ -4324,7 +4328,7 @@ function App() {
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
@@ -4425,8 +4429,7 @@ function App() {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
       order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
-      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null,
-      charges: q.charges?.length ? JSON.stringify(q.charges) : null
+      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null
     }});
     syncItems("quotation", q.invNo, q.items);
   };
@@ -4434,8 +4437,7 @@ function App() {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
       order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
-      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null,
-      charges: p.charges?.length ? JSON.stringify(p.charges) : null
+      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null
     }});
     syncItems("proforma", p.invNo, p.items);
   };
@@ -4610,8 +4612,8 @@ function App() {
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
-          {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast}/>}
-          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
+          {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
+          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
