@@ -3431,8 +3431,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         </div>
       )}
 
-      <div className="space-y-2">
-        {invTab==="stock"&&<div className="space-y-3">
+      {invTab==="stock"&&(
+      <div className="space-y-3">
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex flex-wrap gap-2 items-center">
@@ -3461,7 +3461,6 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             "Purchase Date":i.purchaseDate,"Notes":i.notes||"",
           })),"Inventory_Export")}/>
         </div>
-      </div>
 
       {/* View toggle */}
       <div className="flex items-center gap-2">
@@ -3561,7 +3560,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       </div>
       )}
 
-      </div>}
+      </div>
+      )}
 
       {/* Pricing tab */}
       {invTab==="pricing"&&<div className="space-y-3">
