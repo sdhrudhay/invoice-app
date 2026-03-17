@@ -1495,11 +1495,11 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
         {isNew&&<span className="text-xs text-emerald-600 font-medium">Items pre-filled from order — edit as needed</span>}
       </div>
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
-      {isNew
+      {isNew && type==="proforma"
         ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} label="Invoice Items"/>
         : (
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">(locked — delete and recreate to change items)</span></p>
+            <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">{type==="tax" ? "(locked — tax invoice items cannot be changed)" : "(locked — delete and recreate to change items)"}</span></p>
             <div className="opacity-60 pointer-events-none select-none rounded-xl border border-gray-100 overflow-hidden">
               <ItemTable items={d.items} setItems={()=>{}} needsGst={needsGst} isIgst={isIgst}/>
             </div>
