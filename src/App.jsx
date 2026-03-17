@@ -132,6 +132,9 @@ create table if not exists items (
   brand text default '', material text default '', product_id text default '',
   created_at timestamptz default now()
 );
+-- Migration: alter table quotations add column if not exists order_snapshot text;
+-- Migration: alter table proformas add column if not exists order_snapshot text;
+-- Migration: alter table tax_invoices add column if not exists order_snapshot text;
 -- Migration: alter table items add column if not exists brand text default '';
 -- Migration: alter table items add column if not exists material text default '';
 -- Migration: alter table items add column if not exists product_id text default '';
@@ -183,6 +186,7 @@ create table if not exists settings (
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
 function buildQuotationHtml(order, inv, seller) {
   seller = inv.sellerSnapshot || seller;
+  order = inv.orderSnapshot ? {...order, ...inv.orderSnapshot} : order;
   const items = inv.items || [];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
@@ -245,6 +249,7 @@ ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> $
 // ─── Invoice HTML Builder ─────────────────────────────────────────────────────
 function buildInvoiceHtml(order, inv, type, seller) {
   seller = inv.sellerSnapshot || seller;
+  order = inv.orderSnapshot ? {...order, ...inv.orderSnapshot} : order;
   const isProforma = type === "proforma";
   const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
   const items = inv.items || [];
@@ -559,7 +564,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
     const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller} };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{ customerName:order.customerName, billingName:order.billingName, billingAddress:order.billingAddress, billingStateCode:order.billingStateCode, gstin:order.gstin, phone:order.phone||order.contact, shippingName:order.shippingName, shippingAddress:order.shippingAddress, shippingContact:order.shippingContact, shippingGstin:order.shippingGstin, shippingStateCode:order.shippingStateCode, type:order.type, needsGst:order.needsGst, placeOfSupply:order.placeOfSupply } };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -1106,7 +1111,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}};
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{ customerName:order.customerName, billingName:order.billingName, billingAddress:order.billingAddress, billingStateCode:order.billingStateCode, gstin:order.gstin, phone:order.phone||order.contact, shippingName:order.shippingName, shippingAddress:order.shippingAddress, shippingContact:order.shippingContact, shippingGstin:order.shippingGstin, shippingStateCode:order.shippingStateCode, type:order.type, needsGst:order.needsGst, placeOfSupply:order.placeOfSupply }};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1660,11 +1665,11 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo2 = orderNo;
     if(type==="proforma"){
       const orig = proformas.find(p=>p.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
       setProformas(proformas.map(p=>p.invNo===saved.invNo?saved:p));
     } else {
       const orig = taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
       setTaxInvoices(taxInvoices.map(t=>t.invNo===saved.invNo?saved:t));
     }
   };
@@ -3101,6 +3106,33 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 
 
 // ─── Inventory ───────────────────────────────────────────────────────────────
+
+function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
+  const [nb, setNb] = useState("");
+  const [nm, setNm] = useState(materialList[0]||"PLA");
+  const [np, setNp] = useState("");
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
+        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
+      <select value={nm} onChange={e=>setNm(e.target.value)}
+        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
+        {materialList.map(m=><option key={m}>{m}</option>)}
+      </select>
+      <span className="text-gray-400 text-xs shrink-0">₹/g</span>
+      <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+        className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+      <button onClick={()=>{
+        if (!np||isNaN(Number(np))) return;
+        const k=`${nb.trim()}||${nm}`;
+        const nfp={...fps,[k]:np};
+        setSeller({...seller,filamentPrices:nfp});
+        setNb(""); setNp("");
+      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+    </div>
+  );
+}
+
 const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
@@ -3125,6 +3157,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
 
   const WASTE_REASONS = ["Sample / Testing","Product Prototype","Jammed / Broken","Moisture Damage","Calibration","Other"];
   const [showWasteForm, setShowWasteForm] = useState(false);
+  const [invTab, setInvTab] = useState("stock");
   const [wasteEntry, setWasteEntry] = useState({groupKey:"",weightG:"",reason:"Sample / Testing",orderNo:"",notes:"",date:today()});
   const updW = (k,v) => setWasteEntry(p=>({...p,[k]:v}));
 
@@ -3261,18 +3294,28 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,nonEmpty:0,weight:0,remaining:0}; byMaterial[i.material].count++; const r=getRemainingG(i); byMaterial[i.material].weight+=Number(i.weightG||0); byMaterial[i.material].remaining+=r; if(r>0) byMaterial[i.material].nonEmpty++; });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
-          <p className="text-xs text-gray-400">Track filament stock by brand, material and colour.</p>
+          <p className="text-xs text-gray-400">Track filament stock, wastage and pricing.</p>
         </div>
         <button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
           {showForm?"Cancel":"+ Add Stock"}
         </button>
       </div>
 
-      {showForm&&(
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[["stock","📦 Stock"],["wastage","🗑 Wastage"],["pricing","₹ Pricing"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setInvTab(id)}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${invTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {invTab==="stock"&&showForm&&(
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h3 className="font-bold text-slate-700 text-sm">New Filament Purchase</h3>
@@ -3385,7 +3428,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       )}
 
       <div className="space-y-2">
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
+      {invTab==="stock"&&<><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs font-semibold text-gray-500">Material</span>
@@ -3513,7 +3556,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       </div>
       )}
 
-      {/* ── Filament Price Per Gram ────────────────────────────────────────── */}
+      </>}
+      {invTab==="pricing"&&<>
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -3542,35 +3586,14 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   </div>
                 );
               })}
-              {(()=>{
-                const [nb,setNb]=useState(""); const [nm,setNm]=useState(materialList[0]||"PLA"); const [np,setNp]=useState("");
-                return (
-                  <div className="flex items-center gap-2 mt-1">
-                    <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
-                      className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
-                    <select value={nm} onChange={e=>setNm(e.target.value)}
-                      className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
-                      {materialList.map(m=><option key={m}>{m}</option>)}
-                    </select>
-                    <span className="text-gray-400 text-xs shrink-0">₹/g</span>
-                    <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
-                      className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <button onClick={()=>{
-                      if (!np||isNaN(Number(np))) return;
-                      const k=`${nb.trim()}||${nm}`;
-                      const nfp={...fps,[k]:np};
-                      setSeller({...seller,filamentPrices:nfp});
-                      setNb(""); setNp("");
-                    }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
-                  </div>
-                );
-              })()}
+              <AddPriceRow materialList={materialList} fps={fps} seller={seller} setSeller={setSeller}/>
             </div>
           );
         })()}
       </div>
 
-      {/* ── Wastage Log Section ───────────────────────────────────────── */}
+      </>}
+      {invTab==="wastage"&&<>
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -3702,6 +3725,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           ))}
         </div>
       </div>
+      </>}
     </div>
   );
 }
@@ -4328,7 +4352,7 @@ function App() {
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
@@ -4446,6 +4470,7 @@ function App() {
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
       order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
       seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null,
+      order_snapshot: t.orderSnapshot ? JSON.stringify(t.orderSnapshot) : null,
       charges: t.charges?.length ? JSON.stringify(t.charges) : null
     }});
     syncItems("tax_invoice", t.invNo, t.items);
@@ -4577,7 +4602,12 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"products",label:"Products"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
+  const tabGroups=[
+    { label:"Orders", tabs:[{id:"new",label:"+ New",icon:"✏️"},{id:"orders",label:"Orders",icon:"📋"},{id:"clients",label:"Clients",icon:"👥"}] },
+    { label:"Finance", tabs:[{id:"expenses",label:"Expenses",icon:"💸"},{id:"income",label:"Income",icon:"📈"},{id:"dashboard",label:"Splitwise",icon:"⚖️"}] },
+    { label:"Operations", tabs:[{id:"inventory",label:"Inventory",icon:"🧵"},{id:"products",label:"Products",icon:"📦"},{id:"assets",label:"Assets",icon:"🏗️"}] },
+    { label:"", tabs:[{id:"settings",label:"Settings",icon:"⚙️"}] },
+  ];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -4586,25 +4616,7 @@ function App() {
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
-      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {seller.logo
-              ? <img src={seller.logo} alt="logo" className="h-9 max-w-[120px] object-contain"/>
-              : <span className="text-base font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
-            }
-            {syncStatus==="error"&&<span className="text-xs text-red-400">Failed to save — check connection</span>}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
-            </div>
-            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
-              Sign Out{countdown!==null&&<span className="ml-1 text-xs font-black text-amber-600 tabular-nums bg-amber-100 px-1.5 py-0.5 rounded-md">{`${String(Math.floor(countdown/60)).padStart(2,"0")}:${String(countdown%60).padStart(2,"0")}`}</span>}
-            </button>
-          </div>
-        </div>
-      </div>
+
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
