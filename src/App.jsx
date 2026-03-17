@@ -68,6 +68,7 @@ const DEFAULT_SELLER = {
   pfTerms: "1. This proforma invoice is valid for 15 days from the date of issue.\n2. 50% advance payment required to confirm the order.\n3. Prices are subject to change without prior notice.\n4. Delivery timelines will be confirmed upon order confirmation.",
   tiTerms: "1. Payment due within 30 days from invoice date.\n2. Goods once sold will not be taken back or exchanged.\n3. Interest @18% p.a. will be charged on overdue payments.\n4. Subject to local jurisdiction only.",
   signatory: "",
+  filamentPrices: {},
 };
 
 const DEFAULT_SERIES = {
@@ -85,6 +86,8 @@ const DEFAULT_SERIES = {
 const SUPABASE_SQL = `
 -- Orders
 -- Migration: run in Supabase SQL editor:
+-- create table if not exists products (id text primary key, name text, hsn text default '', brand text default '', material text default '', weight_g numeric default 0, cgst_rate numeric default 9, sgst_rate numeric default 9, notes text default '', created_at timestamptz default now());
+-- 
 -- alter table orders add column if not exists filament_usage text default '[]';
 -- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
@@ -126,8 +129,12 @@ create table if not exists items (
   unit_price numeric default 0, qty numeric default 0, discount numeric default 0,
   gross_amt numeric default 0, cgst_rate numeric default 0, cgst_amt numeric default 0,
   sgst_rate numeric default 0, sgst_amt numeric default 0, net_amt numeric default 0,
+  brand text default '', material text default '', product_id text default '',
   created_at timestamptz default now()
 );
+-- Migration: alter table items add column if not exists brand text default '';
+-- Migration: alter table items add column if not exists material text default '';
+-- Migration: alter table items add column if not exists product_id text default '';
 create index if not exists items_doc_idx on items(document_type, document_id);
 -- Clients
 create table if not exists clients (
@@ -371,11 +378,33 @@ function S({ label, value, onChange, options, className="" }) {
 }
 
 // ─── Item Table ───────────────────────────────────────────────────────────────
-function ItemTable({ items, setItems, needsGst, isIgst=false }) {
+function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={} }) {
   const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
   const del = (i) => setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
   const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
+  const filamentPrices = seller.filamentPrices || {};
+  const getUnitPrice = (p) => {
+    const key = `${p.brand||""}||${p.material||""}`;
+    const ppg = filamentPrices[key] || filamentPrices[`||${p.material||""}`] || 0;
+    return ppg && p.weightG ? Math.round(Number(ppg)*Number(p.weightG)*100)/100 : p.unitPrice||"";
+  };
+  const applyProduct = (rowIdx, prod) => {
+    const up = getUnitPrice(prod);
+    const newItem = calcItem({
+      ...items[rowIdx],
+      item: prod.name,
+      hsn: prod.hsn||"",
+      unit: "Nos",
+      unitPrice: up,
+      cgstRate: prod.cgstRate||9,
+      sgstRate: prod.sgstRate||9,
+      _brand: prod.brand||"",
+      _material: prod.material||"",
+      _productId: prod.id,
+    }, needsGst);
+    setItems(items.map((it,idx)=>idx===rowIdx?newItem:it));
+  };
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
   const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
@@ -386,7 +415,18 @@ function ItemTable({ items, setItems, needsGst, isIgst=false }) {
           {items.map((it,i)=>(
             <tr key={i} className="border-b border-gray-100 hover:bg-slate-50">
               <td className="px-2 py-1.5 text-gray-400 w-6 text-center">{it.sl}</td>
-              <td className="px-2 py-1.5"><input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/></td>
+              <td className="px-2 py-1.5">
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/>
+                    {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer" title="Fill from product">
+                      <option value="">📦</option>
+                      {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>}
+                  </div>
+                  {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
+                </div>
+              </td>
               <td className="px-2 py-1.5 text-center"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none text-center">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-center"}/></td>
@@ -473,7 +513,7 @@ function ClientSearch({ clients, onSelect, value }) {
 }
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{} }) {
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{}, products=[] }) {
   const topRef = useRef(null);
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
@@ -624,7 +664,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&seller?.stateCode&&billingStateCode&&String(billingStateCode).trim()!==String(seller.stateCode).trim()}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&seller?.stateCode&&billingStateCode&&String(billingStateCode).trim()!==String(seller.stateCode).trim()} products={products} seller={seller}/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -984,7 +1024,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{} }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[] }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -1185,7 +1225,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} label="Order Items" sublabel="Edit items here to update quotation"/>
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} label="Order Items" sublabel="Edit items here to update quotation"/>
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
@@ -1288,6 +1328,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               onSave={(inv)=>handleSaveNew(inv, creating)}
               onCancel={()=>setCreating(null)}
               isIgst={isIgst}
+              products={products}
+              seller={seller}
             /></div>
           )}
 
@@ -1399,7 +1441,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Invoice Editor ────────────────────────────────────────────────────────────
 
 // ─── Expandable Item Table ────────────────────────────────────────────────────
-function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false }) {
+function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false, products=[], seller={} }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fsItems, setFsItems] = useState(null); // local copy for fullscreen edits
   const openFullscreen = () => { setFsItems(items.map(i=>({...i}))); setFullscreen(true); };
@@ -1417,7 +1459,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
           </div>
           {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
-        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst}/>
+        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller}/>
       </div>
       {fullscreen && fsItems !== null && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
@@ -1429,7 +1471,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
-            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst}/>
+            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller}/>
           </div>
         </div>
       )}
@@ -1437,7 +1479,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
   );
 }
 
-function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList, isIgst=false }) {
+function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList, isIgst=false, products=[], seller={} }) {
   const prefix = isNew ? (type==="proforma"?(series?.pfPrefix||"PF"):(series?.tiPrefix||"TAX")) : null;
   const period = isNew ? (type==="proforma"?(series?.pfFormat==="YYYYMM"?yyyymm():series?.pfFormat==="YYYY"?yyyy():series?.pfFormat==="YYYYMMDD"?yyyymmdd():""):(series?.tiFormat==="YYYYMM"?yyyymm():series?.tiFormat==="YYYY"?yyyy():series?.tiFormat==="YYYYMMDD"?yyyymmdd():"")) : null;
   const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
@@ -1454,7 +1496,7 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
       </div>
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
       {isNew
-        ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} isIgst={isIgst} label="Invoice Items"/>
+        ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} label="Invoice Items"/>
         : (
           <div className="space-y-2">
             <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">(locked — delete and recreate to change items)</span></p>
@@ -1521,7 +1563,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[] }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -1852,6 +1894,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           orders={orders}
           wastageLog={wastageLog}
           setWastageLog={setWastageLog}
+          products={products}
         />
       )}
     </div>
@@ -1859,6 +1902,150 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// ─── Product Manager ──────────────────────────────────────────────────────────
+function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{} }) {
+  const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", cgstRate:9, sgstRate:9, notes:"" };
+  const [form, setForm] = useState({...EMPTY_P});
+  const [editId, setEditId] = useState(null);
+  const [search, setSearch] = useState("");
+  const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const filamentPrices = seller.filamentPrices || {};
+  const priceKey = (brand, material) => `${brand||""}||${material||""}`;
+  const computedPrice = (brand, material, weightG) => {
+    const ppg = filamentPrices[priceKey(brand, material)] || filamentPrices[priceKey("", material)] || 0;
+    return ppg && weightG ? (Number(ppg) * Number(weightG)).toFixed(2) : "";
+  };
+
+  const allMaterials = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin",
+    ...products.map(p=>p.material).filter(m=>m&&!["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"].includes(m))
+      .filter((m,i,a)=>a.indexOf(m)===i)];
+  const allBrands = [...new Set(products.map(p=>p.brand).filter(Boolean))];
+
+  const handleSave = () => {
+    if (!form.name.trim()) { toast("Product name required","error"); return; }
+    const entry = {
+      ...form,
+      id: editId || ("PROD-"+Date.now()),
+      weightG: Number(form.weightG)||0,
+      cgstRate: Number(form.cgstRate)||9,
+      sgstRate: Number(form.sgstRate)||9,
+    };
+    setProducts(prev => editId ? prev.map(p=>p.id===editId?entry:p) : [...prev,entry]);
+    setForm({...EMPTY_P}); setEditId(null);
+    toast(editId?"Product updated":"Product added");
+  };
+  const handleEdit = (p) => { setForm({...p, weightG:String(p.weightG||"")}); setEditId(p.id); };
+  const handleDelete = (id) => { if(window.confirm("Delete this product?")) setProducts(prev=>prev.filter(p=>p.id!==id)); };
+
+  const filtered = products.filter(p =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.brand.toLowerCase().includes(search.toLowerCase()) || p.material.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const unitPrice = computedPrice(form.brand, form.material, form.weightG);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div><p className="text-sm font-bold text-slate-700">Products</p><p className="text-xs text-gray-400">Define your 3D printed products. Unit price is auto-calculated from filament price per gram.</p></div>
+      </div>
+
+      {/* Form */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{editId?"Edit Product":"New Product"}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Product Name</label>
+            <input value={form.name} onChange={e=>upd("name",e.target.value)} placeholder="e.g. Phone Stand - Black PLA"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">HSN Code</label>
+            <input value={form.hsn} onChange={e=>upd("hsn",e.target.value)} placeholder="e.g. 3926"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Brand</label>
+            <input value={form.brand} onChange={e=>upd("brand",e.target.value)} placeholder="e.g. Bambu, eSUN…"
+              list="prod-brands"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <datalist id="prod-brands">{allBrands.map(b=><option key={b} value={b}/>)}</datalist>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Material</label>
+            <select value={form.material} onChange={e=>upd("material",e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+              {allMaterials.map(m=><option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
+            <input type="number" value={form.weightG} min="0" step="0.1" onChange={e=>upd("weightG",e.target.value)} onWheel={e=>e.target.blur()}
+              placeholder="0.0"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Calculated Unit Price</label>
+            <div className={`border rounded-lg px-3 py-2 text-sm font-semibold ${unitPrice?"border-emerald-300 bg-emerald-50 text-emerald-700":"border-gray-200 bg-gray-50 text-gray-400"}`}>
+              {unitPrice ? `₹${unitPrice}` : "— set filament price in Settings"}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">CGST %</label>
+            <input type="number" value={form.cgstRate} min="0" max="100" onChange={e=>upd("cgstRate",e.target.value)} onWheel={e=>e.target.blur()}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">SGST %</label>
+            <input type="number" value={form.sgstRate} min="0" max="100" onChange={e=>upd("sgstRate",e.target.value)} onWheel={e=>e.target.blur()}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="col-span-2 flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Notes</label>
+            <input value={form.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Optional notes"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">{editId?"Update":"Add Product"}</button>
+          {editId&&<button onClick={()=>{setForm({...EMPTY_P});setEditId(null);}} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
+        </div>
+      </div>
+
+      {/* Search + list */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products…"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+      {filtered.length===0&&<p className="text-sm text-gray-400 text-center py-8">No products yet. Add one above.</p>}
+      <div className="space-y-2">
+        {filtered.map(p=>{
+          const up = computedPrice(p.brand, p.material, p.weightG);
+          return (
+            <div key={p.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-bold text-slate-800">{p.name}</p>
+                  {p.brand&&<span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{p.brand}</span>}
+                  {p.material&&<span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">{p.material}</span>}
+                </div>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  {p.hsn&&<span className="text-xs text-gray-400">HSN {p.hsn}</span>}
+                  {p.weightG>0&&<span className="text-xs text-gray-500">{p.weightG}g</span>}
+                  {up&&<span className="text-xs text-emerald-600 font-semibold">₹{up}</span>}
+                  <span className="text-xs text-gray-400">CGST {p.cgstRate}% SGST {p.sgstRate}%</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={()=>handleEdit(p)} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg">Edit</button>
+                <button onClick={()=>handleDelete(p.id)} className="text-xs text-red-400 border border-red-100 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="" }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
@@ -1928,6 +2115,62 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
           }
           <button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>
           <input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>
+        </div>
+      </section>
+
+      {/* Filament Price Per Gram */}
+      <section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-2">Filament Price Per Gram</h3>
+        <p className="text-xs text-gray-400 mb-4">Set cost per gram for each brand + material combination. Used to auto-calculate product unit prices.</p>
+        <div className="space-y-2">
+          {(()=>{
+            const fps = s.filamentPrices || {};
+            const entries = Object.entries(fps);
+            return (
+              <>
+                {entries.map(([key,ppg],idx)=>{
+                  const [brand,mat] = key.split("||");
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <input value={brand} readOnly placeholder="Brand" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600"/>
+                      <input value={mat} readOnly placeholder="Material" className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600"/>
+                      <span className="text-gray-400 text-sm shrink-0">₹/g</span>
+                      <input type="number" value={ppg} min="0" step="0.01"
+                        onChange={e=>{ const nfp={...fps}; nfp[key]=e.target.value; setS(p=>({...p,filamentPrices:nfp})); }}
+                        onWheel={e=>e.target.blur()} placeholder="0.00"
+                        className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                      <button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setS(p=>({...p,filamentPrices:nfp})); }}
+                        className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                    </div>
+                  );
+                })}
+                {(()=>{
+                  const [nb,setNb] = useState(""); const [nm,setNm] = useState("PLA"); const [np,setNp] = useState("");
+                  const mats = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
+                  return (
+                    <div className="flex items-center gap-2 mt-1">
+                      <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
+                        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                      <select value={nm} onChange={e=>setNm(e.target.value)}
+                        className="w-28 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                        {mats.map(m=><option key={m}>{m}</option>)}
+                      </select>
+                      <span className="text-gray-400 text-sm shrink-0">₹/g</span>
+                      <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+                        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                      <button onClick={()=>{
+                        if (!np||isNaN(Number(np))) return;
+                        const k=`${nb.trim()}||${nm}`;
+                        const nfp={...fps,[k]:np};
+                        setS(p=>({...p,filamentPrices:nfp}));
+                        setNb(""); setNp("");
+                      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+                    </div>
+                  );
+                })()}
+              </>
+            );
+          })()}
         </div>
       </section>
 
@@ -3988,6 +4231,7 @@ function App() {
   const [inventory,setInventory]=useState([]);
   const [settlements,setSettlements]=useState([]);
   const [wastageLog,setWastageLog]=useState([]);
+  const [products,setProducts]=useState([]);
   const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
   const cdnPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
   const syncQueue = useRef([]);
@@ -4073,10 +4317,11 @@ function App() {
       client.from("settlements").select(),
       client.from("inventory").select(),
       client.from("wastage_log").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog])=>{
+      client.from("products").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog,prods])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
-      const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt });
+      const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
@@ -4101,6 +4346,7 @@ function App() {
       }
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
+      if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
@@ -4147,7 +4393,8 @@ function App() {
       sl: it.sl||i+1, item: it.item||"", hsn: it.hsn||"", unit: it.unit||"Nos",
       unit_price: it.unitPrice||0, qty: it.qty||0, discount: it.discount||0,
       gross_amt: it.grossAmt||0, cgst_rate: it.cgstRate||0, cgst_amt: it.cgstAmt||0,
-      sgst_rate: it.sgstRate||0, sgst_amt: it.sgstAmt||0, net_amt: it.netAmt||0
+      sgst_rate: it.sgstRate||0, sgst_amt: it.sgstAmt||0, net_amt: it.netAmt||0,
+      brand: it._brand||"", material: it._material||"", product_id: it._productId||""
     }));
     // upsert all item rows (merge-duplicates handles updates)
     if (itemRows.length) enqueue({action:"upsert",table:"items",row:itemRows});
@@ -4241,6 +4488,9 @@ function App() {
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const upsertInventoryItem=(i)=>enqueue({action:"upsert",table:"inventory",row:{id:i.id,brand:i.brand,material:i.material,color:i.color,weight_g:i.weightG,cost_total:i.costTotal||0,purchase_date:i.purchaseDate,notes:i.notes||"",linked_expense_ids:i.linkedExpenseIds||[]}});
+  const upsertProduct=(p)=>enqueue({action:"upsert",table:"products",row:{id:p.id,name:p.name,hsn:p.hsn||"",brand:p.brand||"",material:p.material||"",weight_g:p.weightG||0,cgst_rate:p.cgstRate||9,sgst_rate:p.sgstRate||9,notes:p.notes||""}});
+  const deleteProduct=(id)=>enqueue({action:"delete",table:"products",col:"id",val:id});
+  const syncSetProducts=(v)=>{ const n=typeof v==="function"?v(products):v; const removed=products.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteProduct(x.id)); n.forEach(p=>{ const prev=products.find(q=>q.id===p.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(p)) upsertProduct(p); }); setProducts(n); };
   const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
   const deleteWastage=(id)=>enqueue({action:"delete",table:"wastage_log",col:"id",val:id});
   const syncSetWastageLog=(v)=>{ const n=typeof v==="function"?v(wastageLog):v; const removed=wastageLog.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteWastage(x.id)); n.forEach(w=>{ const prev=wastageLog.find(p=>p.id===w.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(w)) upsertWastage(w); }); setWastageLog(n); };
@@ -4325,7 +4575,7 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
+  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"products",label:"Products"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -4355,11 +4605,12 @@ function App() {
       </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
+          {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast}/>}
           {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
