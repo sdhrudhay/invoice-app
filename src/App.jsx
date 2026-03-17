@@ -102,6 +102,9 @@ create table if not exists orders (
   filament_usage text default '[]', charges text default '[]',
   created_at timestamptz default now()
 );
+-- Migration: alter table quotations add column if not exists order_snapshot text;
+-- Migration: alter table proformas add column if not exists order_snapshot text;
+-- Migration: alter table tax_invoices add column if not exists order_snapshot text;
 -- Quotations
 create table if not exists quotations (
   inv_no text primary key, inv_no_base text, inv_date text,
@@ -132,9 +135,6 @@ create table if not exists items (
   brand text default '', material text default '', product_id text default '',
   created_at timestamptz default now()
 );
--- Migration: alter table quotations add column if not exists order_snapshot text;
--- Migration: alter table proformas add column if not exists order_snapshot text;
--- Migration: alter table tax_invoices add column if not exists order_snapshot text;
 -- Migration: alter table items add column if not exists brand text default '';
 -- Migration: alter table items add column if not exists material text default '';
 -- Migration: alter table items add column if not exists product_id text default '';
@@ -184,9 +184,9 @@ create table if not exists settings (
 );`;
 
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
-function buildQuotationHtml(order, inv, seller) {
-  seller = inv.sellerSnapshot || seller;
-  order = inv.orderSnapshot ? {...order, ...inv.orderSnapshot} : order;
+function buildQuotationHtml(orderArg, inv, sellerArg) {
+  const seller = inv.sellerSnapshot || sellerArg;
+  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
   const items = inv.items || [];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
@@ -247,9 +247,9 @@ ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> $
 }
 
 // ─── Invoice HTML Builder ─────────────────────────────────────────────────────
-function buildInvoiceHtml(order, inv, type, seller) {
-  seller = inv.sellerSnapshot || seller;
-  order = inv.orderSnapshot ? {...order, ...inv.orderSnapshot} : order;
+function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
+  const seller = inv.sellerSnapshot || sellerArg;
+  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
   const isProforma = type === "proforma";
   const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
   const items = inv.items || [];
@@ -564,7 +564,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
     const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{ customerName:order.customerName, billingName:order.billingName, billingAddress:order.billingAddress, billingStateCode:order.billingStateCode, gstin:order.gstin, phone:order.phone||order.contact, shippingName:order.shippingName, shippingAddress:order.shippingAddress, shippingContact:order.shippingContact, shippingGstin:order.shippingGstin, shippingStateCode:order.shippingStateCode, type:order.type, needsGst:order.needsGst, placeOfSupply:order.placeOfSupply } };
+    const orderSnap = { customerName, billingName, billingAddress, billingStateCode, gstin:gstin||"", phone:phone||"", shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, type, needsGst, placeOfSupply };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:orderSnap };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -1087,7 +1088,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const origInv = type==="proforma"
       ? proformas.find(p=>p.invNo===updatedInv.invNo)
       : taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot};
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || origInv?.orderSnapshot};
     onSaveInvoice(saved, type);
   };
   const handleCreate = (type) => setCreating(type);
@@ -1111,7 +1112,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{ customerName:order.customerName, billingName:order.billingName, billingAddress:order.billingAddress, billingStateCode:order.billingStateCode, gstin:order.gstin, phone:order.phone||order.contact, shippingName:order.shippingName, shippingAddress:order.shippingAddress, shippingContact:order.shippingContact, shippingGstin:order.shippingGstin, shippingStateCode:order.shippingStateCode, type:order.type, needsGst:order.needsGst, placeOfSupply:order.placeOfSupply }};
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{ customerName:order.customerName, billingName:order.billingName, billingAddress:order.billingAddress, billingStateCode:order.billingStateCode, gstin:order.gstin||"", phone:order.phone||order.contact||"", shippingName:order.shippingName, shippingAddress:order.shippingAddress, shippingContact:order.shippingContact, shippingGstin:order.shippingGstin, shippingStateCode:order.shippingStateCode, type:order.type, needsGst:order.needsGst, placeOfSupply:order.placeOfSupply }};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -3108,30 +3109,30 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 // ─── Inventory ───────────────────────────────────────────────────────────────
 
 function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
-  const [nb, setNb] = useState("");
-  const [nm, setNm] = useState(materialList[0]||"PLA");
-  const [np, setNp] = useState("");
+  const [nb, setNb] = React.useState("");
+  const [nm, setNm] = React.useState(materialList[0]||"PLA");
+  const [np, setNp] = React.useState("");
   return (
-    <div className="flex items-center gap-2 mt-1">
+    <div className="flex items-center gap-2 mt-2">
       <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
-        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
+        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
       <select value={nm} onChange={e=>setNm(e.target.value)}
-        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
+        className="w-28 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
         {materialList.map(m=><option key={m}>{m}</option>)}
       </select>
-      <span className="text-gray-400 text-xs shrink-0">₹/g</span>
+      <span className="text-gray-400 text-sm shrink-0">₹/g</span>
       <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
         className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
       <button onClick={()=>{
         if (!np||isNaN(Number(np))) return;
         const k=`${nb.trim()}||${nm}`;
-        const nfp={...fps,[k]:np};
-        setSeller({...seller,filamentPrices:nfp});
+        setSeller({...seller, filamentPrices:{...(seller.filamentPrices||{}), [k]:np}});
         setNb(""); setNp("");
-      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">+ Add</button>
     </div>
   );
 }
+
 
 const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
@@ -3146,6 +3147,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   const [matFilter, setMatFilter] = useState("All");
   const [brandFilter, setBrandFilter] = useState("All");
   const [grouped, setGrouped] = useState(true);
+  const [invTab, setInvTab] = useState("stock");
   const [materialList, setMaterialList] = useState(()=>{
     const custom = inventory.map(i=>i.material).filter(m=>m&&!FILAMENT_MATERIALS.includes(m));
     return [...FILAMENT_MATERIALS, ...[...new Set(custom)]];
@@ -3157,7 +3159,6 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
 
   const WASTE_REASONS = ["Sample / Testing","Product Prototype","Jammed / Broken","Moisture Damage","Calibration","Other"];
   const [showWasteForm, setShowWasteForm] = useState(false);
-  const [invTab, setInvTab] = useState("stock");
   const [wasteEntry, setWasteEntry] = useState({groupKey:"",weightG:"",reason:"Sample / Testing",orderNo:"",notes:"",date:today()});
   const updW = (k,v) => setWasteEntry(p=>({...p,[k]:v}));
 
@@ -3300,15 +3301,18 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
           <p className="text-xs text-gray-400">Track filament stock, wastage and pricing.</p>
         </div>
-        <button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
+        {invTab==="stock"&&<button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
           {showForm?"Cancel":"+ Add Stock"}
-        </button>
+        </button>}
+        {invTab==="wastage"&&<button onClick={()=>setShowWasteForm(v=>!v)} className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
+          {showWasteForm?"Cancel":"+ Record Wastage"}
+        </button>}
       </div>
 
       {/* Sub-tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {[["stock","📦 Stock"],["wastage","🗑 Wastage"],["pricing","₹ Pricing"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setInvTab(id)}
+        {[["stock","📦 Stock"],["pricing","₹ Pricing"],["wastage","🗑 Wastage"]].map(([id,label])=>(
+          <button key={id} onClick={()=>{setInvTab(id);setShowForm(false);setShowWasteForm(false);}}
             className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${invTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
             {label}
           </button>
@@ -3428,7 +3432,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       )}
 
       <div className="space-y-2">
-      {invTab==="stock"&&<><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
+        {invTab==="stock"&&<div className="space-y-3">
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs font-semibold text-gray-500">Material</span>
@@ -3556,8 +3561,10 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       </div>
       )}
 
-      </>}
-      {invTab==="pricing"&&<>
+      </div>}
+
+      {/* Pricing tab */}
+      {invTab==="pricing"&&<div className="space-y-3">
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -3592,19 +3599,15 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         })()}
       </div>
 
-      </>}
-      {invTab==="wastage"&&<>
+      </div>}
+
+      {/* Wastage tab */}
+      {invTab==="wastage"&&<div className="space-y-3">
       <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div>
             <p className="text-sm font-bold text-slate-700">Wastage Log</p>
             <p className="text-xs text-gray-400">Record filament lost to testing, prototypes, jams, etc.</p>
           </div>
-          <button onClick={()=>setShowWasteForm(p=>!p)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 border border-orange-200 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-all">
-            {showWasteForm?"✕ Cancel":"+ Record Wastage"}
-          </button>
-        </div>
 
         {showWasteForm&&(
           <div className="bg-orange-50/60 border border-orange-100 rounded-xl p-3 space-y-3">
@@ -3724,8 +3727,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             </div>
           ))}
         </div>
-      </div>
-      </>}
+      </div>}
     </div>
   );
 }
@@ -4453,7 +4455,8 @@ function App() {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
       order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
-      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null
+      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null,
+      order_snapshot: q.orderSnapshot ? JSON.stringify(q.orderSnapshot) : null
     }});
     syncItems("quotation", q.invNo, q.items);
   };
@@ -4461,7 +4464,8 @@ function App() {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
       order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
-      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null
+      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null,
+      order_snapshot: p.orderSnapshot ? JSON.stringify(p.orderSnapshot) : null
     }});
     syncItems("proforma", p.invNo, p.items);
   };
@@ -4602,11 +4606,11 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabGroups=[
-    { label:"Orders", tabs:[{id:"new",label:"+ New",icon:"✏️"},{id:"orders",label:"Orders",icon:"📋"},{id:"clients",label:"Clients",icon:"👥"}] },
-    { label:"Finance", tabs:[{id:"expenses",label:"Expenses",icon:"💸"},{id:"income",label:"Income",icon:"📈"},{id:"dashboard",label:"Splitwise",icon:"⚖️"}] },
-    { label:"Operations", tabs:[{id:"inventory",label:"Inventory",icon:"🧵"},{id:"products",label:"Products",icon:"📦"},{id:"assets",label:"Assets",icon:"🏗️"}] },
-    { label:"", tabs:[{id:"settings",label:"Settings",icon:"⚙️"}] },
+  const navGroups=[
+    {tabs:[{id:"new",label:"New Order",icon:"✏️"},{id:"orders",label:"Orders",icon:"📋"},{id:"clients",label:"Clients",icon:"👥"}]},
+    {tabs:[{id:"expenses",label:"Expenses",icon:"💸"},{id:"income",label:"Income",icon:"📈"},{id:"dashboard",label:"Splitwise",icon:"⚖️"}]},
+    {tabs:[{id:"inventory",label:"Inventory",icon:"🧵"},{id:"products",label:"Products",icon:"📦"},{id:"assets",label:"Assets",icon:"🏗️"}]},
+    {tabs:[{id:"settings",label:"Settings",icon:"⚙️"}]},
   ];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
@@ -4616,7 +4620,40 @@ function App() {
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
-
+      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4">
+          {/* Row 1: logo + status + sign out */}
+          <div className="flex items-center justify-between py-2.5 border-b border-gray-50">
+            <div className="flex items-center gap-3">
+              {seller.logo
+                ? <img src={seller.logo} alt="logo" className="h-8 max-w-[110px] object-contain"/>
+                : <span className="text-sm font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
+              }
+              {syncStatus==="saving"&&<span className="text-xs text-indigo-400 animate-pulse">Saving…</span>}
+              {syncStatus==="saved"&&<span className="text-xs text-emerald-500">✓ Saved</span>}
+              {syncStatus==="error"&&<span className="text-xs text-red-400">⚠ Failed to save</span>}
+            </div>
+            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
+              Sign Out{countdown!==null&&<span className="ml-1.5 text-xs font-black text-amber-600 tabular-nums bg-amber-100 px-1.5 py-0.5 rounded">{String(Math.floor(countdown/60)).padStart(2,"0")+":"+String(countdown%60).padStart(2,"0")}</span>}
+            </button>
+          </div>
+          {/* Row 2: grouped tabs */}
+          <div className="flex items-center overflow-x-auto py-1 gap-1">
+            {navGroups.map((g,gi)=>(
+              <div key={gi} className={`flex items-center ${gi>0?"border-l border-gray-200 pl-1 ml-0.5":""}`}>
+                {g.tabs.map(t=>(
+                  <button key={t.id} onClick={()=>setTab(t.id)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
+                    <span>{t.icon}</span>
+                    <span>{t.label}</span>
+                    {tab===t.id&&<span className="w-1 h-1 rounded-full bg-indigo-500"/>}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
