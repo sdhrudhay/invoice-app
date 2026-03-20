@@ -386,7 +386,7 @@ function S({ label, value, onChange, options, className="" }) {
 }
 
 // ─── Item Table ───────────────────────────────────────────────────────────────
-function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="" }) {
+function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null }) {
   const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
   const del = (i) => setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
@@ -414,15 +414,28 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const spoolGroups = {};
   fullSpools.forEach(s => {
     const key = `${s.brand||""}||${s.material}||${s.color||""}`;
-    if (!spoolGroups[key]) spoolGroups[key] = { brand:s.brand, material:s.material, color:s.color, weightG:s.weightG, costTotal:s.costTotal, count:0 };
-    spoolGroups[key].count++;
+    if (!spoolGroups[key]) spoolGroups[key] = { brand:s.brand, material:s.material, color:s.color, weightG:s.weightG, costTotal:s.costTotal, spoolIds:[] };
+    spoolGroups[key].spoolIds.push(s.id);
   });
-  const spoolOptions = Object.values(spoolGroups);
+  const spoolOptions = Object.values(spoolGroups).map(g=>({...g, count:g.spoolIds.length}));
 
-  const applySpoolToRow = (rowIdx, sg) => {
-    const name = [`${sg.brand||""}`, sg.material, sg.color, `${(Number(sg.weightG)/1000).toFixed(sg.weightG%1000===0?0:2)}kg`].filter(Boolean).join(' ');
+  const applySpoolToRow = (rowIdx, sg, spoolId) => {
+    const name = [`${sg.brand||""}`, sg.material, sg.color, `${(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg`].filter(Boolean).join(' ');
     const unitPrice = sg.costTotal ? Math.round((Number(sg.costTotal)/1)*100)/100 : "";
-    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true}, needsGst) : it));
+    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true, _spoolId:spoolId}, needsGst) : it));
+    // Register filament usage so inventory deducts correctly
+    if (onSpoolAdded) {
+      const batchKey = "BATCH-"+Date.now();
+      onSpoolAdded({
+        id: "FU-"+Date.now()+"-"+spoolId,
+        inventoryId: spoolId,
+        weightUsedG: Number(sg.weightG||0),
+        isWaste: false,
+        notes: "Sold as whole spool",
+        groupKey: `${sg.brand||""}||${sg.material}||${sg.color||""}`,
+        batchKey,
+      });
+    }
   };
   const getUnitPrice = (p) => {
     if (p.productType==="other") return p.unitPrice||"";
@@ -472,7 +485,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>}
-                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer" title="Add full spool from inventory">
+                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg,sg.spoolIds[0]); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer" title="Add full spool from inventory">
                       <option value="">+ Spool</option>
                       {spoolOptions.map((sg,si)=><option key={si} value={si}>{[sg.brand,sg.material,sg.color].filter(Boolean).join(' ')} {(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</option>)}
                     </select>}
@@ -1310,7 +1323,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"/>
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
+                  onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}/>
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
@@ -1526,7 +1540,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Invoice Editor ────────────────────────────────────────────────────────────
 
 // ─── Expandable Item Table ────────────────────────────────────────────────────
-function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="" }) {
+function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fsItems, setFsItems] = useState(null); // local copy for fullscreen edits
   const openFullscreen = () => { setFsItems(items.map(i=>({...i}))); setFullscreen(true); };
@@ -1544,7 +1558,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
           </div>
           {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
-        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo}/>
+        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo} onSpoolAdded={onSpoolAdded}/>
       </div>
       {fullscreen && fsItems !== null && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
@@ -1556,7 +1570,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
-            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo}/>
+            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo} onSpoolAdded={onSpoolAdded}/>
           </div>
         </div>
       )}
