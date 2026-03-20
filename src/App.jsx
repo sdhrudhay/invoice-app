@@ -4282,6 +4282,10 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
   const [from, setFrom] = useState(threeMonthsAgo);
   const [to, setTo] = useState(thisMonth);
+  const [custTypes, setCustTypes] = useState(['B2B','B2C']);        // B2B / B2C
+  const [orderStatuses, setOrderStatuses] = useState(['Pending','Completed','Cancelled']); // status filter
+  const [balanceFilter, setBalanceFilter] = useState('all');         // all / no_balance / has_balance
+  const [docTypes, setDocTypes] = useState(['quotation','proforma','tax']); // which doc types to include
   const [status, setStatus] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState({done:0,total:0});
@@ -4291,9 +4295,26 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const inRange = (dateStr) => { if (!dateStr) return false; const ym=dateStr.slice(0,7); return ym>=from&&ym<=to; };
   const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
 
-  const qtFiltered = quotations.filter(q=>inRange(q.invDate));
-  const pfFiltered = proformas.filter(p=>inRange(p.invDate));
-  const tiFiltered = taxInvoices.filter(t=>inRange(t.invDate));
+  const getOrderBalance = (order) => {
+    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(t.amount||t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0);
+    const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
+    const orderTotal = tiTotal>0?tiTotal:qtTotal;
+    const totalPaid = (order.payments||[]).reduce((s,p)=>s+num(p.amount),0)+num(order.advance);
+    return orderTotal - totalPaid;
+  };
+
+  const orderPassesFilters = (order) => {
+    if (!order.orderNo) return false;
+    if (!custTypes.includes(order.type==='B2B'?'B2B':'B2C')) return false;
+    if (!orderStatuses.includes(order.status||'Pending')) return false;
+    if (balanceFilter==='no_balance' && getOrderBalance(order)>0.01) return false;
+    if (balanceFilter==='has_balance' && getOrderBalance(order)<=0.01) return false;
+    return true;
+  };
+
+  const qtFiltered  = docTypes.includes('quotation') ? quotations.filter(q=>inRange(q.invDate)&&orderPassesFilters(getOrder(q))) : [];
+  const pfFiltered  = docTypes.includes('proforma')  ? proformas.filter(p=>inRange(p.invDate)&&orderPassesFilters(getOrder(p))) : [];
+  const tiFiltered  = docTypes.includes('tax')       ? taxInvoices.filter(t=>inRange(t.invDate)&&orderPassesFilters(getOrder(t))) : [];
   const total = qtFiltered.length+pfFiltered.length+tiFiltered.length;
 
   // Folder preview tree
@@ -4311,7 +4332,9 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   tiFiltered.forEach(t=>addToTree(t,'ti'));
   const treeEntries=Object.values(tree).sort((a,b)=>`${a.ct}${a.year}${a.month}`>`${b.ct}${b.year}${b.month}`?1:-1);
 
-  // Load a CDN script once
+  const toggleArr = (arr, setArr, val) => arr.includes(val) ? setArr(arr.filter(x=>x!==val)) : setArr([...arr, val]);
+  const chipCls = (active) => `px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer select-none ${active?'bg-indigo-600 border-indigo-600 text-white':'border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600'}`;
+
   const loadScript = (url) => new Promise((res,rej)=>{
     if (document.querySelector(`script[src="${url}"]`)) { res(); return; }
     const s=document.createElement('script'); s.src=url;
@@ -4319,110 +4342,82 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     document.head.appendChild(s);
   });
 
-  // Convert an HTML string to PDF blob via hidden iframe + html2canvas + jsPDF
   const htmlToPdfBlob = (html) => new Promise((resolve, reject) => {
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1080px;height:1px;border:none;visibility:hidden;';
     document.body.appendChild(iframe);
     const cleanup = () => { try { document.body.removeChild(iframe); } catch(e){} };
-
     iframe.onload = async () => {
       try {
-        // Wait for images/fonts to settle
         await new Promise(r=>setTimeout(r,300));
-        const doc = iframe.contentDocument;
-        const body = doc.body;
-        const htmlEl = doc.documentElement;
-        const fullH = Math.max(body.scrollHeight,body.offsetHeight,htmlEl.scrollHeight,htmlEl.offsetHeight);
-        iframe.style.height = fullH+'px';
+        const doc=iframe.contentDocument, body=doc.body, htmlEl=doc.documentElement;
+        const fullH=Math.max(body.scrollHeight,body.offsetHeight,htmlEl.scrollHeight,htmlEl.offsetHeight);
+        iframe.style.height=fullH+'px';
         await new Promise(r=>setTimeout(r,100));
-
-        const canvas = await window.html2canvas(body, {
-          scale:2, useCORS:true, allowTaint:true,
-          width:1080, height:fullH, scrollX:0, scrollY:0,
-          windowWidth:1080, windowHeight:fullH,
-          backgroundColor:'#ffffff',
-          logging:false,
-        });
-
-        const { jsPDF } = window.jspdf;
+        const canvas=await window.html2canvas(body,{scale:2,useCORS:true,allowTaint:true,width:1080,height:fullH,scrollX:0,scrollY:0,windowWidth:1080,windowHeight:fullH,backgroundColor:'#ffffff',logging:false});
+        const {jsPDF}=window.jspdf;
         const imgW=210, imgH=(canvas.height*imgW)/canvas.width;
-        const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+        const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
         let y=0, pageH=297;
-        while(y<imgH) {
+        while(y<imgH){
           if(y>0) pdf.addPage();
-          const srcY = Math.round((y/imgH)*canvas.height);
-          const srcH = Math.round((Math.min(pageH,imgH-y)/imgH)*canvas.height);
-          const slice=document.createElement('canvas');
-          slice.width=canvas.width; slice.height=srcH;
+          const srcY=Math.round((y/imgH)*canvas.height), srcH=Math.round((Math.min(pageH,imgH-y)/imgH)*canvas.height);
+          const slice=document.createElement('canvas'); slice.width=canvas.width; slice.height=srcH;
           slice.getContext('2d').drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
           pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,imgW,Math.min(pageH,imgH-y));
           y+=pageH;
         }
-        cleanup();
-        resolve(pdf.output('blob'));
-      } catch(e) { cleanup(); reject(e); }
+        cleanup(); resolve(pdf.output('blob'));
+      } catch(e){ cleanup(); reject(e); }
     };
-    iframe.onerror = (e) => { cleanup(); reject(e); };
-    iframe.srcdoc = html;
+    iframe.onerror=(e)=>{cleanup();reject(e);};
+    iframe.srcdoc=html;
   });
 
   const handleDownload = async () => {
-    if (total===0) { setStatus('No invoices in this period.'); return; }
+    if (total===0) { setStatus('No invoices match the filters.'); return; }
     setDownloading(true); setProgress({done:0,total});
-    setStatus('Loading libraries…');
     try {
+      setStatus('Loading libraries…');
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
       await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-
-      const zip = new window.JSZip();
-      let done=0;
-
+      const zip=new window.JSZip(); let done=0;
       const addPdf = async (inv, docType, html) => {
-        const order=getOrder(inv);
-        const ct=order.type==='B2B'?'B2B':'B2C';
+        const order=getOrder(inv), ct=order.type==='B2B'?'B2B':'B2C';
         const year=(inv.invDate||'').slice(0,4)||'Unknown';
         const month=MONTH_NAMES[(inv.invDate||'').slice(5,7)]||(inv.invDate||'').slice(5,7)||'Unknown';
         const folder=docType==='quotation'?'Quotations':docType==='proforma'?'Proforma Invoices':'Tax Invoices';
         const filename=(inv.invNo||'invoice').replace(/[/\\:*?"<>|]/g,'-');
-        const pdfBlob = await htmlToPdfBlob(html);
-        zip.file(`${ct}/${year}/${month}/${folder}/${filename}.pdf`, pdfBlob);
-        done++; setProgress({done,total});
-        setStatus(`Converting ${done}/${total}…`);
+        const pdfBlob=await htmlToPdfBlob(html);
+        zip.file(`${ct}/${year}/${month}/${folder}/${filename}.pdf`,pdfBlob);
+        done++; setProgress({done,total}); setStatus(`Converting ${done}/${total} — ${inv.invNo}`);
       };
-
-      for (const q of qtFiltered) { setStatus(`Quotation ${q.invNo}…`); await addPdf(q,'quotation',buildQuotationHtml(getOrder(q),q,seller)); }
-      for (const p of pfFiltered) { setStatus(`Proforma ${p.invNo}…`); await addPdf(p,'proforma',buildInvoiceHtml(getOrder(p),p,'proforma',seller)); }
-      for (const t of tiFiltered) { setStatus(`Tax Invoice ${t.invNo}…`); await addPdf(t,'tax',buildInvoiceHtml(getOrder(t),t,'tax',seller)); }
-
+      for (const q of qtFiltered) await addPdf(q,'quotation',buildQuotationHtml(getOrder(q),q,seller));
+      for (const p of pfFiltered) await addPdf(p,'proforma',buildInvoiceHtml(getOrder(p),p,'proforma',seller));
+      for (const t of tiFiltered) await addPdf(t,'tax',buildInvoiceHtml(getOrder(t),t,'tax',seller));
       setStatus('Compressing…');
-      const blob = await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
-        (meta)=>setStatus(`Compressing ${Math.round(meta.percent)}%…`)
-      );
+      const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},(meta)=>setStatus(`Compressing ${Math.round(meta.percent)}%…`));
       const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download=`Invoices_${from}_to_${to}.zip`; a.click();
+      const a=document.createElement('a'); a.href=url; a.download=`Invoices_${from}_to_${to}.zip`; a.click();
       URL.revokeObjectURL(url);
       setStatus(`✓ ${done} PDFs downloaded`);
     } catch(e) {
-      console.error(e);
-      setStatus('Error: '+(e.message||'Download failed'));
-    } finally {
-      setDownloading(false);
-    }
+      console.error(e); setStatus('Error: '+(e.message||'Download failed'));
+    } finally { setDownloading(false); }
   };
 
   return (
-    <div className="space-y-6 max-w-xl">
+    <div className="space-y-5 max-w-2xl">
       <div>
         <p className="text-sm font-bold text-slate-700">Bulk Invoice Download</p>
-        <p className="text-xs text-gray-400 mt-0.5">Download all invoices for a period as PDFs inside a structured ZIP file.</p>
+        <p className="text-xs text-gray-400 mt-0.5">Download filtered invoices as PDFs inside a structured ZIP.</p>
       </div>
 
+      {/* ── Period ── */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Period</p>
-        <div className="grid grid-cols-2 gap-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</p>
+        <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">From</label>
             <input type="month" value={from} onChange={e=>setFrom(e.target.value)}
@@ -4434,47 +4429,92 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
         </div>
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap gap-1.5">
           {[
             ['This month',()=>{setFrom(thisMonth);setTo(thisMonth);}],
             ['Last 3 months',()=>{const d=new Date();d.setMonth(d.getMonth()-2);setFrom(d.toISOString().slice(0,7));setTo(thisMonth);}],
             ['This year',()=>{setFrom(new Date().getFullYear()+'-01');setTo(thisMonth);}],
             ['Last year',()=>{const y=new Date().getFullYear()-1;setFrom(`${y}-01`);setTo(`${y}-12`);}],
           ].map(([label,fn])=>(
-            <button key={label} onClick={fn}
-              className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg font-medium transition-all">
-              {label}
-            </button>
+            <button key={label} onClick={fn} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg font-medium">{label}</button>
           ))}
         </div>
       </div>
 
+      {/* ── Filters ── */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filters</p>
+
+        {/* Customer type */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-gray-600">Customer Type</p>
+          <div className="flex gap-2">
+            {['B2B','B2C'].map(v=>(
+              <button key={v} onClick={()=>toggleArr(custTypes,setCustTypes,v)} className={chipCls(custTypes.includes(v))}>{v}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Order status */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-gray-600">Order Status</p>
+          <div className="flex flex-wrap gap-2">
+            {['Pending','Completed','Cancelled'].map(v=>(
+              <button key={v} onClick={()=>toggleArr(orderStatuses,setOrderStatuses,v)} className={chipCls(orderStatuses.includes(v))}>{v}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Balance filter */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-gray-600">Payment Status</p>
+          <div className="flex flex-wrap gap-2">
+            {[['all','All orders'],['no_balance','No balance due'],['has_balance','Balance pending']].map(([v,label])=>(
+              <button key={v} onClick={()=>setBalanceFilter(v)} className={chipCls(balanceFilter===v)}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Document types */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-gray-600">Document Types</p>
+          <div className="flex flex-wrap gap-2">
+            {[['quotation','Quotations'],['proforma','Proforma'],['tax','Tax Invoices']].map(([v,label])=>(
+              <button key={v} onClick={()=>toggleArr(docTypes,setDocTypes,v)} className={chipCls(docTypes.includes(v))}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Preview ── */}
       {total>0 ? (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{total} invoice{total!==1?'s':''} — folder preview</p>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-56 overflow-y-auto">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{total} invoice{total!==1?'s':''} matched — folder preview</p>
+          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-52 overflow-y-auto">
             <p className="text-gray-400 mb-1">📦 Invoices_{from}_to_{to}.zip</p>
             {treeEntries.map((node,ni)=>(
               <div key={ni} className="ml-2">
                 <p className="text-slate-600 font-semibold">📁 {node.ct} / {node.year} / {node.month}</p>
-                {node.qt>0&&<p className="ml-4 text-gray-400">📁 Quotations <span className="text-gray-300">({node.qt})</span></p>}
-                {node.pf>0&&<p className="ml-4 text-gray-400">📁 Proforma Invoices <span className="text-gray-300">({node.pf})</span></p>}
-                {node.ti>0&&<p className="ml-4 text-gray-400">📁 Tax Invoices <span className="text-gray-300">({node.ti})</span></p>}
+                {node.qt>0&&<p className="ml-4 text-gray-400">📁 Quotations ({node.qt})</p>}
+                {node.pf>0&&<p className="ml-4 text-gray-400">📁 Proforma Invoices ({node.pf})</p>}
+                {node.ti>0&&<p className="ml-4 text-gray-400">📁 Tax Invoices ({node.ti})</p>}
               </div>
             ))}
           </div>
         </div>
       ) : (
         <div className="bg-gray-50 border border-gray-100 rounded-xl p-8 text-center">
-          <p className="text-sm text-gray-400">No invoices found for the selected period.</p>
+          <p className="text-sm text-gray-400">No invoices match the current filters.</p>
+          <p className="text-xs text-gray-300 mt-1">Adjust the period or filters above.</p>
         </div>
       )}
 
+      {/* ── Progress bar ── */}
       {downloading&&progress.total>0&&(
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-gray-500">
-            <span>{status}</span>
-            <span>{progress.done}/{progress.total}</span>
+            <span className="truncate mr-2">{status}</span>
+            <span className="shrink-0">{progress.done}/{progress.total}</span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-indigo-500 rounded-full transition-all duration-300"
@@ -4483,26 +4523,21 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
         </div>
       )}
 
+      {/* ── Download button ── */}
       <div className="flex items-center gap-3">
         <button onClick={handleDownload} disabled={downloading||total===0}
           className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-all">
           {downloading?'Converting…':`⬇ Download PDFs (${total})`}
         </button>
         {!downloading&&status&&(
-          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500'}`}>
-            {status}
-          </span>
+          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500'}`}>{status}</span>
         )}
       </div>
 
-      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-700 space-y-1">
-        <p className="font-semibold">Note</p>
-        <p>Each invoice is rendered in a hidden browser frame and converted to PDF. A large download may take a few minutes. Keep this tab open during conversion.</p>
-      </div>
+      <p className="text-xs text-gray-400 border-t border-gray-100 pt-3">Each invoice is rendered and converted to PDF client-side. Keep this tab open during conversion.</p>
     </div>
   );
 }
-
 
 function App() {
   const [tab,setTab]=useState("new");
