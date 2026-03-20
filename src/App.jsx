@@ -437,7 +437,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   <div className="flex items-center gap-1">
                     <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/>
                     {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer" title="Fill from product">
-                      <option value="">📦</option>
+                      <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>}
                   </div>
@@ -451,7 +451,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
                   <button type="button" title="Calculate from filament weight"
                     onClick={()=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:""}:it2))}
-                    className="text-indigo-400 hover:text-indigo-600 text-xs leading-none px-0.5 shrink-0" style={{fontSize:"10px"}}>⚖</button>
+                    className="text-indigo-400 hover:text-indigo-600 font-semibold leading-none px-1 shrink-0" style={{fontSize:"10px"}}>g→₹</button>
                 </div>
                 {it._calcOpen&&(
                   <div className="absolute z-20 mt-1 bg-white border border-indigo-200 rounded-xl shadow-lg p-2 space-y-1.5" style={{minWidth:"200px"}}>
