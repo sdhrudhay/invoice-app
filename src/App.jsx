@@ -3270,7 +3270,7 @@ function IncomeView({ orders, recipients, allRecipients=[], seller }) {
 
 // ─── Inventory ───────────────────────────────────────────────────────────────
 const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
-const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"" };
+const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"", qty:1 };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
 function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
@@ -3394,12 +3394,15 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
     const validRows = rows.filter(r=>r.brand||r.color||r.material);
     if (!validRows.length) { toast("Add at least one filament","error"); return; }
     if (!purchaseDate) { toast("Purchase date is required","error"); return; }
-    const newItems = validRows.map(r=>({
-      id:"FIL-"+Date.now()+"-"+Math.random().toString(36).slice(2,6),
-      brand:r.brand, material:r.material, color:r.color,
-      weightG:Number(r.weightG)||1000, notes:r.notes||"",
-      purchaseDate, costTotal:Number(r.costTotal)||0, linkedExpenseIds:[],
-    }));
+    const newItems = validRows.flatMap(r=>{
+      const count = Math.max(1, Number(r.qty)||1);
+      return Array.from({length:count}, (_,i)=>({
+        id:"FIL-"+Date.now()+"-"+Math.random().toString(36).slice(2,6)+"-"+i,
+        brand:r.brand, material:r.material, color:r.color,
+        weightG:Number(r.weightG)||1000, notes:r.notes||"",
+        purchaseDate, costTotal:Number(r.costTotal)||0, linkedExpenseIds:[],
+      }));
+    });
     const newExpenses = [];
     if (totalSplit>0) {
       const desc = validRows.map(r=>`${r.brand||"?"} ${r.material} ${r.color||""}`.trim()).join(", ");
@@ -3416,7 +3419,9 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
     setCostSplits(EMPTY_COST_SPLIT());
     setPurchaseDate(today());
     setShowForm(false);
-    toast(`Added ${newItems.length} filament${newItems.length>1?"s":""}${newExpenses.length?" + "+newExpenses.length+" expense"+(newExpenses.length>1?"s":""):""}`);
+    const totalSpools = newItems.length;
+    const rowCount = validRows.length;
+    toast(`Added ${totalSpools} spool${totalSpools>1?"s":""} (${rowCount} filament${rowCount>1?" types":""})${newExpenses.length?" + "+newExpenses.length+" expense"+(newExpenses.length>1?"s":""):""}`);
   };
 
   const handleDelete = (item) => {
@@ -3491,6 +3496,11 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost (₹) <span className="text-gray-300 font-normal normal-case">per spool</span></label>
                     <input type="number" value={row.costTotal} min="0" onChange={e=>updRow(idx,"costTotal",e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quantity <span className="text-gray-400 font-normal normal-case text-xs">spools</span></label>
+                    <input type="number" value={row.qty??1} min="1" step="1" onChange={e=>updRow(idx,"qty",Math.max(1,parseInt(e.target.value)||1))} onWheel={e=>e.target.blur()}
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                   </div>
                   <div className="flex flex-col gap-1">
