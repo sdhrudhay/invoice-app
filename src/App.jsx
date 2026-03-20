@@ -386,12 +386,44 @@ function S({ label, value, onChange, options, className="" }) {
 }
 
 // ─── Item Table ───────────────────────────────────────────────────────────────
-function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={} }) {
+function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="" }) {
   const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
   const del = (i) => setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
   const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
   const filamentPrices = seller.filamentPrices || {};
+
+  // Compute used-per-spool to know which spools are still full/available
+  const spoolUsed = {};
+  orders.forEach(o => {
+    if (o.orderNo===currentOrderNo) return; // exclude current order
+    (o.filamentUsage||[]).forEach(u => { spoolUsed[u.inventoryId]=(spoolUsed[u.inventoryId]||0)+Number(u.weightUsedG||0); });
+  });
+  wastageLog.forEach(w => {
+    // spread wastage across spools of matching group, largest-first (approx)
+    const groupSpools = inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).sort((a,b)=>Number(b.weightG)-Number(a.weightG));
+    let rem=Number(w.weightG||0);
+    for(const s of groupSpools){ const take=Math.min(rem,Math.max(0,Number(s.weightG||0)-(spoolUsed[s.id]||0))); spoolUsed[s.id]=(spoolUsed[s.id]||0)+take; rem-=take; if(rem<=0)break; }
+  });
+  // Full spools: remaining >= 95% of original weight (i.e. essentially untouched)
+  const fullSpools = inventory.filter(i => {
+    const remaining = Math.max(0, Number(i.weightG||0) - (spoolUsed[i.id]||0));
+    return remaining >= Number(i.weightG||0) * 0.95 && Number(i.weightG||0) > 0;
+  });
+  // Group full spools by brand+material+color for the picker display
+  const spoolGroups = {};
+  fullSpools.forEach(s => {
+    const key = `${s.brand||""}||${s.material}||${s.color||""}`;
+    if (!spoolGroups[key]) spoolGroups[key] = { brand:s.brand, material:s.material, color:s.color, weightG:s.weightG, costTotal:s.costTotal, count:0 };
+    spoolGroups[key].count++;
+  });
+  const spoolOptions = Object.values(spoolGroups);
+
+  const applySpoolToRow = (rowIdx, sg) => {
+    const name = [`${sg.brand||""}`, sg.material, sg.color, `${(Number(sg.weightG)/1000).toFixed(sg.weightG%1000===0?0:2)}kg`].filter(Boolean).join(' ');
+    const unitPrice = sg.costTotal ? Math.round((Number(sg.costTotal)/1)*100)/100 : "";
+    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true}, needsGst) : it));
+  };
   const getUnitPrice = (p) => {
     if (p.productType==="other") return p.unitPrice||"";
     const key = `${p.brand||""}||${p.material||""}`;
@@ -439,6 +471,10 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                     {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer" title="Fill from product">
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>}
+                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer" title="Add full spool from inventory">
+                      <option value="">+ Spool</option>
+                      {spoolOptions.map((sg,si)=><option key={si} value={si}>{[sg.brand,sg.material,sg.color].filter(Boolean).join(' ')} {(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</option>)}
                     </select>}
                   </div>
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
@@ -1274,7 +1310,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} label="Order Items" sublabel="Edit items here to update quotation"/>
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"/>
               </div>
               <div className="pt-3 border-t space-y-3">
                 <button
@@ -1490,7 +1526,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 // ─── Invoice Editor ────────────────────────────────────────────────────────────
 
 // ─── Expandable Item Table ────────────────────────────────────────────────────
-function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false, products=[], seller={} }) {
+function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="" }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [fsItems, setFsItems] = useState(null); // local copy for fullscreen edits
   const openFullscreen = () => { setFsItems(items.map(i=>({...i}))); setFullscreen(true); };
@@ -1508,7 +1544,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
           </div>
           {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
         </div>
-        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller}/>
+        <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo}/>
       </div>
       {fullscreen && fsItems !== null && (
         <div className="fixed inset-0 z-[70] bg-white flex flex-col">
@@ -1520,7 +1556,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6">
-            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller}/>
+            <ItemTable items={fsItems} setItems={setFsItems} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={currentOrderNo}/>
           </div>
         </div>
       )}
