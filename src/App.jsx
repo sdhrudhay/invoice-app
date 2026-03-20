@@ -1349,11 +1349,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
                   onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool)=>{
-                    setFilamentUsage(prev=>prev.map(u=>
+                    const updated = filamentUsage.map(u=>
                       (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool"))
                         ? {...u, weightUsedG: Number(weightGPerSpool||0) * Number(newQty||0)}
                         : u
-                    ));
+                    );
+                    setFilamentUsage(updated);
+                    // Sync to orders array so InventoryManager sees the change immediately
+                    onSaveOrder({...o, items: orderItems, filamentUsage: updated, charges});
                   }}
                   onSpoolRemoved={(spoolId)=>{
                     const updated = filamentUsage.filter(u=>u.inventoryId!==spoolId||!u.notes?.includes("Sold as whole spool"));
