@@ -1328,7 +1328,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && creating && (
 <div className="space-y-4">
               <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: orderItems && orderItems.length > 0 ? orderItems.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
+              inv={{ invNo:"(auto)", invDate:today(), items: order.items && order.items.length > 0 ? order.items.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
