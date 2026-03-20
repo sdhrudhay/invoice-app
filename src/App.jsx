@@ -4276,6 +4276,180 @@ function Toast({ toasts }) {
   );
 }
 
+// ─── Bulk Download ────────────────────────────────────────────────────────────
+function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={} }) {
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
+  const [from, setFrom] = useState(threeMonthsAgo);
+  const [to, setTo] = useState(thisMonth);
+  const [status, setStatus] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  const MONTH_NAMES = {'01':'01-Jan','02':'02-Feb','03':'03-Mar','04':'04-Apr','05':'05-May','06':'06-Jun','07':'07-Jul','08':'08-Aug','09':'09-Sep','10':'10-Oct','11':'11-Nov','12':'12-Dec'};
+
+  const inRange = (dateStr) => {
+    if (!dateStr) return false;
+    const ym = dateStr.slice(0,7);
+    return ym >= from && ym <= to;
+  };
+  const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId) || {};
+
+  const qtFiltered = quotations.filter(q=>inRange(q.invDate));
+  const pfFiltered = proformas.filter(p=>inRange(p.invDate));
+  const tiFiltered = taxInvoices.filter(t=>inRange(t.invDate));
+  const total = qtFiltered.length + pfFiltered.length + tiFiltered.length;
+
+  // Build preview tree
+  const tree = {};
+  const addToTree = (inv, type) => {
+    const order = getOrder(inv);
+    const ct = order.type==='B2B' ? 'B2B' : 'B2C';
+    const year = (inv.invDate||'').slice(0,4) || 'Unknown';
+    const monthKey = (inv.invDate||'').slice(5,7);
+    const month = MONTH_NAMES[monthKey] || monthKey || 'Unknown';
+    const k = `${ct}|||${year}|||${month}`;
+    if (!tree[k]) tree[k] = { ct, year, month, qt:0, pf:0, ti:0 };
+    tree[k][type]++;
+  };
+  qtFiltered.forEach(q=>addToTree(q,'qt'));
+  pfFiltered.forEach(p=>addToTree(p,'pf'));
+  tiFiltered.forEach(t=>addToTree(t,'ti'));
+  const treeEntries = Object.values(tree).sort((a,b)=>`${a.ct}${a.year}${a.month}`>`${b.ct}${b.year}${b.month}`?1:-1);
+
+  const handleDownload = async () => {
+    if (total===0) { setStatus('No invoices in this period.'); return; }
+    setDownloading(true);
+    setStatus('Loading library…');
+    try {
+      // Load JSZip from CDN
+      if (!window.JSZip) {
+        await new Promise((res,rej)=>{
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+          s.onload=res; s.onerror=()=>rej(new Error('Failed to load JSZip'));
+          document.head.appendChild(s);
+        });
+      }
+      const zip = new window.JSZip();
+      let done = 0;
+
+      const addFile = (inv, docType, html) => {
+        const order = getOrder(inv);
+        const ct = order.type==='B2B' ? 'B2B' : 'B2C';
+        const year = (inv.invDate||'').slice(0,4) || 'Unknown';
+        const monthKey = (inv.invDate||'').slice(5,7);
+        const month = MONTH_NAMES[monthKey] || monthKey || 'Unknown';
+        const folder = docType==='quotation' ? 'Quotations' : docType==='proforma' ? 'Proforma Invoices' : 'Tax Invoices';
+        const filename = (inv.invNo||'invoice').replace(/[\/\\:*?"<>|]/g,'-');
+        zip.file(`${ct}/${year}/${month}/${folder}/${filename}.html`, html);
+        done++;
+        setStatus(`Building ${done}/${total}…`);
+      };
+
+      for (const q of qtFiltered) addFile(q, 'quotation', buildQuotationHtml(getOrder(q), q, seller));
+      for (const p of pfFiltered) addFile(p, 'proforma', buildInvoiceHtml(getOrder(p), p, 'proforma', seller));
+      for (const t of tiFiltered) addFile(t, 'tax', buildInvoiceHtml(getOrder(t), t, 'tax', seller));
+
+      setStatus('Compressing…');
+      const blob = await zip.generateAsync(
+        { type:'blob', compression:'DEFLATE', compressionOptions:{level:6} },
+        (meta) => setStatus(`Compressing ${Math.round(meta.percent)}%…`)
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoices_${from}_to_${to}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(`✓ ${done} invoices downloaded`);
+    } catch(e) {
+      setStatus('Error: ' + (e.message||'Download failed'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-xl">
+      <div>
+        <p className="text-sm font-bold text-slate-700">Bulk Invoice Download</p>
+        <p className="text-xs text-gray-400 mt-0.5">Download all invoices for a period as a structured ZIP file.</p>
+      </div>
+
+      {/* Date range picker */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Period</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">From</label>
+            <input type="month" value={from} onChange={e=>setFrom(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">To</label>
+            <input type="month" value={to} onChange={e=>setTo(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+        </div>
+        {/* Quick presets */}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {[
+            ['This month', ()=>{ setFrom(thisMonth); setTo(thisMonth); }],
+            ['Last 3 months', ()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); setFrom(d.toISOString().slice(0,7)); setTo(thisMonth); }],
+            ['This year', ()=>{ setFrom(new Date().getFullYear()+'-01'); setTo(thisMonth); }],
+            ['Last year', ()=>{ const y=new Date().getFullYear()-1; setFrom(`${y}-01`); setTo(`${y}-12`); }],
+          ].map(([label,fn])=>(
+            <button key={label} onClick={fn}
+              className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg font-medium transition-all">
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Folder preview */}
+      {total>0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{total} invoice{total!==1?'s':''} — folder preview</p>
+          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-60 overflow-y-auto">
+            <p className="text-gray-400 mb-1">📦 Invoices_{from}_to_{to}.zip</p>
+            {treeEntries.map((node,ni)=>(
+              <div key={ni} className="ml-2">
+                <p className="text-slate-600 font-semibold">📁 {node.ct} / {node.year} / {node.month}</p>
+                {node.qt>0&&<p className="ml-4 text-gray-400">📁 Quotations <span className="text-gray-300">({node.qt})</span></p>}
+                {node.pf>0&&<p className="ml-4 text-gray-400">📁 Proforma Invoices <span className="text-gray-300">({node.pf})</span></p>}
+                {node.ti>0&&<p className="ml-4 text-gray-400">📁 Tax Invoices <span className="text-gray-300">({node.ti})</span></p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-100 rounded-xl p-8 text-center">
+          <p className="text-sm text-gray-400">No invoices found for the selected period.</p>
+          <p className="text-xs text-gray-300 mt-1">Adjust the date range above.</p>
+        </div>
+      )}
+
+      {/* Download */}
+      <div className="flex items-center gap-3">
+        <button onClick={handleDownload} disabled={downloading||total===0}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-all">
+          {downloading ? 'Downloading…' : `⬇ Download ZIP (${total})`}
+        </button>
+        {status&&(
+          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500 animate-pulse'}`}>
+            {status}
+          </span>
+        )}
+      </div>
+
+      <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
+        Each file is an HTML document. Open in browser and use <span className="font-semibold">Print → Save as PDF</span> to convert.
+      </p>
+    </div>
+  );
+}
+
 function App() {
   const [tab,setTab]=useState("new");
   const [viewOrder,setViewOrder]=useState(null);
@@ -4653,7 +4827,7 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"products",label:"Products"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"settings",label:"Settings"}];
+  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"products",label:"Products"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"download",label:"Download"},{id:"settings",label:"Settings"}];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -4691,6 +4865,7 @@ function App() {
           {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
           {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
+          {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
