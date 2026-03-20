@@ -4284,86 +4284,130 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const [to, setTo] = useState(thisMonth);
   const [status, setStatus] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState({done:0,total:0});
 
   const MONTH_NAMES = {'01':'01-Jan','02':'02-Feb','03':'03-Mar','04':'04-Apr','05':'05-May','06':'06-Jun','07':'07-Jul','08':'08-Aug','09':'09-Sep','10':'10-Oct','11':'11-Nov','12':'12-Dec'};
 
-  const inRange = (dateStr) => {
-    if (!dateStr) return false;
-    const ym = dateStr.slice(0,7);
-    return ym >= from && ym <= to;
-  };
-  const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId) || {};
+  const inRange = (dateStr) => { if (!dateStr) return false; const ym=dateStr.slice(0,7); return ym>=from&&ym<=to; };
+  const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
 
   const qtFiltered = quotations.filter(q=>inRange(q.invDate));
   const pfFiltered = proformas.filter(p=>inRange(p.invDate));
   const tiFiltered = taxInvoices.filter(t=>inRange(t.invDate));
-  const total = qtFiltered.length + pfFiltered.length + tiFiltered.length;
+  const total = qtFiltered.length+pfFiltered.length+tiFiltered.length;
 
-  // Build preview tree
+  // Folder preview tree
   const tree = {};
   const addToTree = (inv, type) => {
-    const order = getOrder(inv);
-    const ct = order.type==='B2B' ? 'B2B' : 'B2C';
-    const year = (inv.invDate||'').slice(0,4) || 'Unknown';
-    const monthKey = (inv.invDate||'').slice(5,7);
-    const month = MONTH_NAMES[monthKey] || monthKey || 'Unknown';
-    const k = `${ct}|||${year}|||${month}`;
-    if (!tree[k]) tree[k] = { ct, year, month, qt:0, pf:0, ti:0 };
+    const order=getOrder(inv); const ct=order.type==='B2B'?'B2B':'B2C';
+    const year=(inv.invDate||'').slice(0,4)||'Unknown';
+    const month=MONTH_NAMES[(inv.invDate||'').slice(5,7)]||(inv.invDate||'').slice(5,7)||'Unknown';
+    const k=`${ct}|||${year}|||${month}`;
+    if(!tree[k]) tree[k]={ct,year,month,qt:0,pf:0,ti:0};
     tree[k][type]++;
   };
   qtFiltered.forEach(q=>addToTree(q,'qt'));
   pfFiltered.forEach(p=>addToTree(p,'pf'));
   tiFiltered.forEach(t=>addToTree(t,'ti'));
-  const treeEntries = Object.values(tree).sort((a,b)=>`${a.ct}${a.year}${a.month}`>`${b.ct}${b.year}${b.month}`?1:-1);
+  const treeEntries=Object.values(tree).sort((a,b)=>`${a.ct}${a.year}${a.month}`>`${b.ct}${b.year}${b.month}`?1:-1);
+
+  // Load a CDN script once
+  const loadScript = (url) => new Promise((res,rej)=>{
+    if (document.querySelector(`script[src="${url}"]`)) { res(); return; }
+    const s=document.createElement('script'); s.src=url;
+    s.onload=res; s.onerror=()=>rej(new Error('Failed to load '+url));
+    document.head.appendChild(s);
+  });
+
+  // Convert an HTML string to PDF blob via hidden iframe + html2canvas + jsPDF
+  const htmlToPdfBlob = (html) => new Promise((resolve, reject) => {
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1080px;height:1px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+    const cleanup = () => { try { document.body.removeChild(iframe); } catch(e){} };
+
+    iframe.onload = async () => {
+      try {
+        // Wait for images/fonts to settle
+        await new Promise(r=>setTimeout(r,300));
+        const doc = iframe.contentDocument;
+        const body = doc.body;
+        const htmlEl = doc.documentElement;
+        const fullH = Math.max(body.scrollHeight,body.offsetHeight,htmlEl.scrollHeight,htmlEl.offsetHeight);
+        iframe.style.height = fullH+'px';
+        await new Promise(r=>setTimeout(r,100));
+
+        const canvas = await window.html2canvas(body, {
+          scale:2, useCORS:true, allowTaint:true,
+          width:1080, height:fullH, scrollX:0, scrollY:0,
+          windowWidth:1080, windowHeight:fullH,
+          backgroundColor:'#ffffff',
+          logging:false,
+        });
+
+        const { jsPDF } = window.jspdf;
+        const imgW=210, imgH=(canvas.height*imgW)/canvas.width;
+        const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+        let y=0, pageH=297;
+        while(y<imgH) {
+          if(y>0) pdf.addPage();
+          const srcY = Math.round((y/imgH)*canvas.height);
+          const srcH = Math.round((Math.min(pageH,imgH-y)/imgH)*canvas.height);
+          const slice=document.createElement('canvas');
+          slice.width=canvas.width; slice.height=srcH;
+          slice.getContext('2d').drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
+          pdf.addImage(slice.toDataURL('image/jpeg',0.92),'JPEG',0,0,imgW,Math.min(pageH,imgH-y));
+          y+=pageH;
+        }
+        cleanup();
+        resolve(pdf.output('blob'));
+      } catch(e) { cleanup(); reject(e); }
+    };
+    iframe.onerror = (e) => { cleanup(); reject(e); };
+    iframe.srcdoc = html;
+  });
 
   const handleDownload = async () => {
     if (total===0) { setStatus('No invoices in this period.'); return; }
-    setDownloading(true);
-    setStatus('Loading library…');
+    setDownloading(true); setProgress({done:0,total});
+    setStatus('Loading libraries…');
     try {
-      // Load JSZip from CDN
-      if (!window.JSZip) {
-        await new Promise((res,rej)=>{
-          const s=document.createElement('script');
-          s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-          s.onload=res; s.onerror=()=>rej(new Error('Failed to load JSZip'));
-          document.head.appendChild(s);
-        });
-      }
-      const zip = new window.JSZip();
-      let done = 0;
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
 
-      const addFile = (inv, docType, html) => {
-        const order = getOrder(inv);
-        const ct = order.type==='B2B' ? 'B2B' : 'B2C';
-        const year = (inv.invDate||'').slice(0,4) || 'Unknown';
-        const monthKey = (inv.invDate||'').slice(5,7);
-        const month = MONTH_NAMES[monthKey] || monthKey || 'Unknown';
-        const folder = docType==='quotation' ? 'Quotations' : docType==='proforma' ? 'Proforma Invoices' : 'Tax Invoices';
-        const filename = (inv.invNo||'invoice').replace(/[\/\\:*?"<>|]/g,'-');
-        zip.file(`${ct}/${year}/${month}/${folder}/${filename}.html`, html);
-        done++;
-        setStatus(`Building ${done}/${total}…`);
+      const zip = new window.JSZip();
+      let done=0;
+
+      const addPdf = async (inv, docType, html) => {
+        const order=getOrder(inv);
+        const ct=order.type==='B2B'?'B2B':'B2C';
+        const year=(inv.invDate||'').slice(0,4)||'Unknown';
+        const month=MONTH_NAMES[(inv.invDate||'').slice(5,7)]||(inv.invDate||'').slice(5,7)||'Unknown';
+        const folder=docType==='quotation'?'Quotations':docType==='proforma'?'Proforma Invoices':'Tax Invoices';
+        const filename=(inv.invNo||'invoice').replace(/[/\\:*?"<>|]/g,'-');
+        const pdfBlob = await htmlToPdfBlob(html);
+        zip.file(`${ct}/${year}/${month}/${folder}/${filename}.pdf`, pdfBlob);
+        done++; setProgress({done,total});
+        setStatus(`Converting ${done}/${total}…`);
       };
 
-      for (const q of qtFiltered) addFile(q, 'quotation', buildQuotationHtml(getOrder(q), q, seller));
-      for (const p of pfFiltered) addFile(p, 'proforma', buildInvoiceHtml(getOrder(p), p, 'proforma', seller));
-      for (const t of tiFiltered) addFile(t, 'tax', buildInvoiceHtml(getOrder(t), t, 'tax', seller));
+      for (const q of qtFiltered) { setStatus(`Quotation ${q.invNo}…`); await addPdf(q,'quotation',buildQuotationHtml(getOrder(q),q,seller)); }
+      for (const p of pfFiltered) { setStatus(`Proforma ${p.invNo}…`); await addPdf(p,'proforma',buildInvoiceHtml(getOrder(p),p,'proforma',seller)); }
+      for (const t of tiFiltered) { setStatus(`Tax Invoice ${t.invNo}…`); await addPdf(t,'tax',buildInvoiceHtml(getOrder(t),t,'tax',seller)); }
 
       setStatus('Compressing…');
-      const blob = await zip.generateAsync(
-        { type:'blob', compression:'DEFLATE', compressionOptions:{level:6} },
-        (meta) => setStatus(`Compressing ${Math.round(meta.percent)}%…`)
+      const blob = await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},
+        (meta)=>setStatus(`Compressing ${Math.round(meta.percent)}%…`)
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Invoices_${from}_to_${to}.zip`;
-      a.click();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=`Invoices_${from}_to_${to}.zip`; a.click();
       URL.revokeObjectURL(url);
-      setStatus(`✓ ${done} invoices downloaded`);
+      setStatus(`✓ ${done} PDFs downloaded`);
     } catch(e) {
-      setStatus('Error: ' + (e.message||'Download failed'));
+      console.error(e);
+      setStatus('Error: '+(e.message||'Download failed'));
     } finally {
       setDownloading(false);
     }
@@ -4373,10 +4417,9 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     <div className="space-y-6 max-w-xl">
       <div>
         <p className="text-sm font-bold text-slate-700">Bulk Invoice Download</p>
-        <p className="text-xs text-gray-400 mt-0.5">Download all invoices for a period as a structured ZIP file.</p>
+        <p className="text-xs text-gray-400 mt-0.5">Download all invoices for a period as PDFs inside a structured ZIP file.</p>
       </div>
 
-      {/* Date range picker */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select Period</p>
         <div className="grid grid-cols-2 gap-4">
@@ -4391,13 +4434,12 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
         </div>
-        {/* Quick presets */}
         <div className="flex flex-wrap gap-1.5 pt-1">
           {[
-            ['This month', ()=>{ setFrom(thisMonth); setTo(thisMonth); }],
-            ['Last 3 months', ()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); setFrom(d.toISOString().slice(0,7)); setTo(thisMonth); }],
-            ['This year', ()=>{ setFrom(new Date().getFullYear()+'-01'); setTo(thisMonth); }],
-            ['Last year', ()=>{ const y=new Date().getFullYear()-1; setFrom(`${y}-01`); setTo(`${y}-12`); }],
+            ['This month',()=>{setFrom(thisMonth);setTo(thisMonth);}],
+            ['Last 3 months',()=>{const d=new Date();d.setMonth(d.getMonth()-2);setFrom(d.toISOString().slice(0,7));setTo(thisMonth);}],
+            ['This year',()=>{setFrom(new Date().getFullYear()+'-01');setTo(thisMonth);}],
+            ['Last year',()=>{const y=new Date().getFullYear()-1;setFrom(`${y}-01`);setTo(`${y}-12`);}],
           ].map(([label,fn])=>(
             <button key={label} onClick={fn}
               className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg font-medium transition-all">
@@ -4407,11 +4449,10 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
         </div>
       </div>
 
-      {/* Folder preview */}
       {total>0 ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{total} invoice{total!==1?'s':''} — folder preview</p>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-60 overflow-y-auto">
+          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-56 overflow-y-auto">
             <p className="text-gray-400 mb-1">📦 Invoices_{from}_to_{to}.zip</p>
             {treeEntries.map((node,ni)=>(
               <div key={ni} className="ml-2">
@@ -4426,29 +4467,42 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       ) : (
         <div className="bg-gray-50 border border-gray-100 rounded-xl p-8 text-center">
           <p className="text-sm text-gray-400">No invoices found for the selected period.</p>
-          <p className="text-xs text-gray-300 mt-1">Adjust the date range above.</p>
         </div>
       )}
 
-      {/* Download */}
+      {downloading&&progress.total>0&&(
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>{status}</span>
+            <span>{progress.done}/{progress.total}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+              style={{width:`${Math.round((progress.done/progress.total)*100)}%`}}/>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <button onClick={handleDownload} disabled={downloading||total===0}
           className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-all">
-          {downloading ? 'Downloading…' : `⬇ Download ZIP (${total})`}
+          {downloading?'Converting…':`⬇ Download PDFs (${total})`}
         </button>
-        {status&&(
-          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500 animate-pulse'}`}>
+        {!downloading&&status&&(
+          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500'}`}>
             {status}
           </span>
         )}
       </div>
 
-      <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
-        Each file is an HTML document. Open in browser and use <span className="font-semibold">Print → Save as PDF</span> to convert.
-      </p>
+      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-700 space-y-1">
+        <p className="font-semibold">Note</p>
+        <p>Each invoice is rendered in a hidden browser frame and converted to PDF. A large download may take a few minutes. Keep this tab open during conversion.</p>
+      </div>
     </div>
   );
 }
+
 
 function App() {
   const [tab,setTab]=useState("new");
