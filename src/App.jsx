@@ -86,7 +86,9 @@ const DEFAULT_SERIES = {
 const SUPABASE_SQL = `
 -- Orders
 -- Migration: run in Supabase SQL editor:
--- create table if not exists products (id text primary key, name text, hsn text default '', brand text default '', material text default '', weight_g numeric default 0, cgst_rate numeric default 9, sgst_rate numeric default 9, notes text default '', created_at timestamptz default now());
+-- create table if not exists products (id text primary key, name text, hsn text default '', brand text default '', material text default '', weight_g numeric default 0, unit_price numeric default 0, product_type text default '3d_printed', cgst_rate numeric default 9, sgst_rate numeric default 9, notes text default '', created_at timestamptz default now());
+-- alter table products add column if not exists unit_price numeric default 0;
+-- alter table products add column if not exists product_type text default '3d_printed';
 -- 
 -- alter table orders add column if not exists filament_usage text default '[]';
 -- alter table orders add column if not exists charges text default '[]';
@@ -391,6 +393,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
   const filamentPrices = seller.filamentPrices || {};
   const getUnitPrice = (p) => {
+    if (p.productType==="other") return p.unitPrice||"";
     const key = `${p.brand||""}||${p.material||""}`;
     const ppg = filamentPrices[key] || filamentPrices[`||${p.material||""}`] || 0;
     return ppg && p.weightG ? Math.round(Number(ppg)*Number(p.weightG)*100)/100 : p.unitPrice||"";
@@ -1910,7 +1913,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 // ─── Settings ─────────────────────────────────────────────────────────────────
 // ─── Product Manager ──────────────────────────────────────────────────────────
 function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[] }) {
-  const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", cgstRate:9, sgstRate:9, notes:"" };
+  const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", unitPrice:"", productType:"3d_printed", cgstRate:9, sgstRate:9, notes:"" };
   const [form, setForm] = useState({...EMPTY_P});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1936,7 +1939,9 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
     const entry = {
       ...form,
       id: editId || ("PROD-"+Date.now()),
-      weightG: Number(form.weightG)||0,
+      weightG: form.productType==="3d_printed" ? Number(form.weightG)||0 : 0,
+      unitPrice: form.productType==="other" ? Number(form.unitPrice)||0 : 0,
+      productType: form.productType||"3d_printed",
       cgstRate: Number(form.cgstRate)||9,
       sgstRate: Number(form.sgstRate)||9,
     };
@@ -1944,7 +1949,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
     setForm({...EMPTY_P}); setEditId(null);
     toast(editId?"Product updated":"Product added");
   };
-  const handleEdit = (p) => { setForm({...p, weightG:String(p.weightG||"")}); setEditId(p.id); };
+  const handleEdit = (p) => { setForm({...p, weightG:String(p.weightG||""), unitPrice:String(p.unitPrice||""), productType:p.productType||"3d_printed"}); setEditId(p.id); };
   const handleDelete = (id) => { if(window.confirm("Delete this product?")) setProducts(prev=>prev.filter(p=>p.id!==id)); };
 
   const filtered = products.filter(p =>
@@ -1956,16 +1961,24 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div><p className="text-sm font-bold text-slate-700">Products</p><p className="text-xs text-gray-400">Define your 3D printed products. Unit price is auto-calculated from filament price per gram.</p></div>
+        <div><p className="text-sm font-bold text-slate-700">Products</p><p className="text-xs text-gray-400">Define products — 3D printed (price from filament) or other items sold by the piece.</p></div>
       </div>
 
       {/* Form */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{editId?"Edit Product":"New Product"}</p>
+        {/* Type toggle */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-1">
+          {[["3d_printed","🖨 3D Printed"],["other","📦 Other / Pcs"]].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>upd("productType",v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${form.productType===v?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{l}</button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2 flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Product Name</label>
-            <input value={form.name} onChange={e=>upd("name",e.target.value)} placeholder="e.g. Phone Stand - Black PLA"
+            <input value={form.name} onChange={e=>upd("name",e.target.value)} placeholder={form.productType==="3d_printed"?"e.g. Phone Stand - Black PLA":"e.g. Packaging Box, Screws…"}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
           <div className="flex flex-col gap-1">
@@ -1974,31 +1987,44 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">Brand</label>
-            <input value={form.brand} onChange={e=>upd("brand",e.target.value)} placeholder="e.g. Bambu, eSUN…"
+            <label className="text-xs font-semibold text-gray-500">Brand <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input value={form.brand} onChange={e=>upd("brand",e.target.value)} placeholder="e.g. Bambu, In-house…"
               list="prod-brands"
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
             <datalist id="prod-brands">{allBrands.map(b=><option key={b} value={b}/>)}</datalist>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">Material</label>
-            <select value={form.material} onChange={e=>upd("material",e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
-              {allMaterials.map(m=><option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
-            <input type="number" value={form.weightG} min="0" step="0.1" onChange={e=>upd("weightG",e.target.value)} onWheel={e=>e.target.blur()}
-              placeholder="0.0"
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">Calculated Unit Price</label>
-            <div className={`border rounded-lg px-3 py-2 text-sm font-semibold ${unitPrice?"border-emerald-300 bg-emerald-50 text-emerald-700":"border-gray-200 bg-gray-50 text-gray-400"}`}>
-              {unitPrice ? `₹${unitPrice}` : "— set filament price in Inventory tab"}
+
+          {form.productType==="3d_printed"&&<>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Material</label>
+              <select value={form.material} onChange={e=>upd("material",e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                {allMaterials.map(m=><option key={m}>{m}</option>)}
+              </select>
             </div>
-          </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
+              <input type="number" value={form.weightG} min="0" step="0.1" onChange={e=>upd("weightG",e.target.value)} onWheel={e=>e.target.blur()}
+                placeholder="0.0"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Calculated Unit Price</label>
+              <div className={`border rounded-lg px-3 py-2 text-sm font-semibold ${unitPrice?"border-emerald-300 bg-emerald-50 text-emerald-700":"border-gray-200 bg-gray-50 text-gray-400"}`}>
+                {unitPrice ? `₹${unitPrice}` : "— set filament price in Inventory tab"}
+              </div>
+            </div>
+          </>}
+
+          {form.productType==="other"&&(
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Unit Price (₹)</label>
+              <input type="number" value={form.unitPrice} min="0" step="0.01" onChange={e=>upd("unitPrice",e.target.value)} onWheel={e=>e.target.blur()}
+                placeholder="0.00"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">CGST %</label>
             <input type="number" value={form.cgstRate} min="0" max="100" onChange={e=>upd("cgstRate",e.target.value)} onWheel={e=>e.target.blur()}
@@ -2033,13 +2059,14 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold text-slate-800">{p.name}</p>
+                  {p.productType==="other"&&<span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">Pcs</span>}
                   {p.brand&&<span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{p.brand}</span>}
-                  {p.material&&<span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">{p.material}</span>}
+                  {p.productType!=="other"&&p.material&&<span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">{p.material}</span>}
                 </div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   {p.hsn&&<span className="text-xs text-gray-400">HSN {p.hsn}</span>}
-                  {p.weightG>0&&<span className="text-xs text-gray-500">{p.weightG}g</span>}
-                  {up&&<span className="text-xs text-emerald-600 font-semibold">₹{up}</span>}
+                  {p.productType!=="other"&&p.weightG>0&&<span className="text-xs text-gray-500">{p.weightG}g</span>}
+                  {(p.productType==="other"?p.unitPrice>0:up)&&<span className="text-xs text-emerald-600 font-semibold">₹{p.productType==="other"?p.unitPrice:up}</span>}
                   <span className="text-xs text-gray-400">CGST {p.cgstRate}% SGST {p.sgstRate}%</span>
                 </div>
               </div>
@@ -4356,7 +4383,7 @@ function App() {
       }
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
-      if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
+      if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, unitPrice:Number(r.unit_price)||0, productType:r.product_type||"3d_printed", cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
     }).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
@@ -4499,7 +4526,7 @@ function App() {
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const upsertInventoryItem=(i)=>enqueue({action:"upsert",table:"inventory",row:{id:i.id,brand:i.brand,material:i.material,color:i.color,weight_g:i.weightG,cost_total:i.costTotal||0,purchase_date:i.purchaseDate,notes:i.notes||"",linked_expense_ids:i.linkedExpenseIds||[]}});
-  const upsertProduct=(p)=>enqueue({action:"upsert",table:"products",row:{id:p.id,name:p.name,hsn:p.hsn||"",brand:p.brand||"",material:p.material||"",weight_g:p.weightG||0,cgst_rate:p.cgstRate||9,sgst_rate:p.sgstRate||9,notes:p.notes||""}});
+  const upsertProduct=(p)=>enqueue({action:"upsert",table:"products",row:{id:p.id,name:p.name,hsn:p.hsn||"",brand:p.brand||"",material:p.material||"",weight_g:p.weightG||0,unit_price:p.unitPrice||0,product_type:p.productType||"3d_printed",cgst_rate:p.cgstRate||9,sgst_rate:p.sgstRate||9,notes:p.notes||""}});
   const deleteProduct=(id)=>enqueue({action:"delete",table:"products",col:"id",val:id});
   const syncSetProducts=(v)=>{ const n=typeof v==="function"?v(products):v; const removed=products.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteProduct(x.id)); n.forEach(p=>{ const prev=products.find(q=>q.id===p.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(p)) upsertProduct(p); }); setProducts(n); };
   const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
