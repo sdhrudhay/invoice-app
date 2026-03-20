@@ -487,10 +487,10 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
           {items.map((it,i)=>(
             <tr key={i} className="border-b border-gray-100 hover:bg-slate-50">
               <td className="px-2 py-1.5 text-gray-400 w-6 text-center">{it.sl}</td>
-              <td className="px-2 py-1.5">
+              <td className="px-2 py-1.5 max-w-[220px]">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
-                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[100px] flex-1"}/>
+                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
                     {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer" title="Fill from product">
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
@@ -503,7 +503,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
                 </div>
               </td>
-              <td className="px-2 py-1.5 text-center"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center w-16"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-full text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none text-center">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
               <td className="px-2 py-1.5 text-center relative">
                 <div className="flex items-center gap-0.5 justify-center">
@@ -1173,7 +1173,20 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = (updatedFilamentUsage) => {
-    const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
+    let fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
+    // Sync filamentUsage weightUsedG for spool items — qty * weightPerSpool
+    const spoolItems = orderItems.filter(it => it._spoolGroup && it._spoolId);
+    if (spoolItems.length > 0) {
+      fu = fu.map(u => {
+        const matchedItem = spoolItems.find(it => it._spoolId === u.inventoryId && u.notes?.includes("Sold as whole spool"));
+        if (matchedItem) {
+          const spoolW = matchedItem._weightGPerSpool || inventory.find(s=>s.id===u.inventoryId)?.weightG || u.weightUsedG;
+          return {...u, weightUsedG: Number(spoolW) * Number(matchedItem.qty||1)};
+        }
+        return u;
+      });
+      setFilamentUsage(fu);
+    }
     const updated = {...o, items: orderItems, filamentUsage: fu, charges};
     const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
