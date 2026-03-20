@@ -102,6 +102,10 @@ create table if not exists orders (
   filament_usage text default '[]', charges text default '[]',
   created_at timestamptz default now()
 );
+-- Run in Supabase:
+-- alter table quotations add column if not exists order_snapshot text;
+-- alter table proformas add column if not exists order_snapshot text;
+-- alter table tax_invoices add column if not exists order_snapshot text;
 -- Quotations
 create table if not exists quotations (
   inv_no text primary key, inv_no_base text, inv_date text,
@@ -181,8 +185,9 @@ create table if not exists settings (
 );`;
 
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
-function buildQuotationHtml(order, inv, seller) {
-  seller = inv.sellerSnapshot || seller;
+function buildQuotationHtml(orderArg, inv, sellerArg) {
+  const seller = inv.sellerSnapshot || sellerArg;
+  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
   const items = inv.items || [];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
@@ -243,8 +248,9 @@ ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> $
 }
 
 // ─── Invoice HTML Builder ─────────────────────────────────────────────────────
-function buildInvoiceHtml(order, inv, type, seller) {
-  seller = inv.sellerSnapshot || seller;
+function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
+  const seller = inv.sellerSnapshot || sellerArg;
+  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
   const isProforma = type === "proforma";
   const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
   const items = inv.items || [];
@@ -559,7 +565,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
     const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller} };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -1082,7 +1088,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const origInv = type==="proforma"
       ? proformas.find(p=>p.invNo===updatedInv.invNo)
       : taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot};
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || origInv?.orderSnapshot};
     onSaveInvoice(saved, type);
   };
   const handleCreate = (type) => setCreating(type);
@@ -1106,7 +1112,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}};
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:order.customerName,billingName:order.billingName,billingAddress:order.billingAddress,billingStateCode:order.billingStateCode,gstin:order.gstin||"",phone:order.phone||order.contact||"",shippingName:order.shippingName,shippingAddress:order.shippingAddress,shippingContact:order.shippingContact,shippingGstin:order.shippingGstin,shippingStateCode:order.shippingStateCode,type:order.type,needsGst:order.needsGst,placeOfSupply:order.placeOfSupply}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1660,11 +1666,11 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo2 = orderNo;
     if(type==="proforma"){
       const orig = proformas.find(p=>p.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
       setProformas(proformas.map(p=>p.invNo===saved.invNo?saved:p));
     } else {
       const orig = taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot};
+      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
       setTaxInvoices(taxInvoices.map(t=>t.invNo===saved.invNo?saved:t));
     }
   };
@@ -4328,7 +4334,7 @@ function App() {
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [] });
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
@@ -4429,7 +4435,8 @@ function App() {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
       order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
-      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null
+      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null,
+      order_snapshot: q.orderSnapshot ? JSON.stringify(q.orderSnapshot) : null
     }});
     syncItems("quotation", q.invNo, q.items);
   };
@@ -4437,7 +4444,8 @@ function App() {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
       order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
-      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null
+      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null,
+      order_snapshot: p.orderSnapshot ? JSON.stringify(p.orderSnapshot) : null
     }});
     syncItems("proforma", p.invNo, p.items);
   };
@@ -4446,6 +4454,7 @@ function App() {
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
       order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
       seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null,
+      order_snapshot: t.orderSnapshot ? JSON.stringify(t.orderSnapshot) : null,
       charges: t.charges?.length ? JSON.stringify(t.charges) : null
     }});
     syncItems("tax_invoice", t.invNo, t.items);
