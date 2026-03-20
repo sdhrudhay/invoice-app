@@ -422,7 +422,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const applySpoolToRow = (rowIdx, sg, spoolId) => {
     const name = [`${sg.brand||""}`, sg.material, sg.color, `${(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg`].filter(Boolean).join(' ');
     const unitPrice = sg.costTotal ? Math.round((Number(sg.costTotal)/1)*100)/100 : "";
-    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true, _spoolId:spoolId}, needsGst) : it));
+    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true, _spoolId:spoolId, _spoolCount:sg.count}, needsGst) : it));
     // Register filament usage so inventory deducts correctly
     if (onSpoolAdded) {
       const batchKey = "BATCH-"+Date.now();
@@ -480,7 +480,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               <td className="px-2 py-1.5">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
-                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[140px]"}/>
+                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" min-w-[100px] flex-1"}/>
                     {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer" title="Fill from product">
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
@@ -528,7 +528,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   </div>
                 )}
               </td>
-              <td className="px-2 py-1.5 text-center"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center">{it._spoolGroup?(<div className="flex flex-col items-center gap-0"><input type="number" value={it.qty} onChange={e=>{const v=e.target.value;if(v===""||parseFloat(v)<0)return;if(it._spoolCount&&parseFloat(v)>it._spoolCount)return;upd(i,"qty",v);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max={it._spoolCount||undefined} className={inp+" w-14 text-center"}/>{it._spoolCount&&<span className="text-[9px] text-gray-300 leading-none">max {it._spoolCount}</span>}</div>):(<input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/>)}</td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&(isIgst
                 ? <td className="px-2 py-1.5 text-center text-xs text-gray-500">{Number(it.cgstRate)+Number(it.sgstRate)}%</td>
