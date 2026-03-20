@@ -412,7 +412,8 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   // Also count spools already added as items in the current order
   items.forEach(it => {
     if (it._spoolGroup && it._spoolId) {
-      spoolUsed[it._spoolId] = (spoolUsed[it._spoolId]||0) + Number(it._weightGPerSpool||0) || Number(inventory.find(s=>s.id===it._spoolId)?.weightG||0);
+      const _spoolW = Number(it._weightGPerSpool||0) || Number(inventory.find(s=>s.id===it._spoolId)?.weightG||0);
+      spoolUsed[it._spoolId] = (spoolUsed[it._spoolId]||0) + _spoolW * Number(it.qty||1);
     }
   });
   // Full spools: remaining >= 95% of original weight (i.e. essentially untouched)
@@ -1180,8 +1181,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       fu = fu.map(u => {
         const matchedItem = spoolItems.find(it => it._spoolId === u.inventoryId && u.notes?.includes("Sold as whole spool"));
         if (matchedItem) {
-          const spoolW = matchedItem._weightGPerSpool || inventory.find(s=>s.id===u.inventoryId)?.weightG || u.weightUsedG;
-          return {...u, weightUsedG: Number(spoolW) * Number(matchedItem.qty||1)};
+          // Per-spool weight: from item, inventory, or divide current weightUsedG by old qty (approx)
+          const spoolW = Number(matchedItem._weightGPerSpool||0) || Number(inventory.find(s=>s.id===u.inventoryId)?.weightG||0) || Number(u.weightUsedG||0);
+          return {...u, weightUsedG: spoolW * Number(matchedItem.qty||1)};
         }
         return u;
       });
@@ -1349,13 +1351,17 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
                   onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool)=>{
-                    const updated = filamentUsage.map(u=>
-                      (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool"))
-                        ? {...u, weightUsedG: Number(weightGPerSpool||0) * Number(newQty||0)}
-                        : u
-                    );
+                    const updated = filamentUsage.map(u=>{
+                      if (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool")) {
+                        // Derive per-spool weight: from _weightGPerSpool, or inventory, or original entry (÷ old qty)
+                        const perSpool = Number(weightGPerSpool||0)
+                          || Number(inventory.find(s=>s.id===spoolId)?.weightG||0)
+                          || Number(u.weightUsedG||0); // fallback: current value is 1-spool weight
+                        return {...u, weightUsedG: perSpool * Number(newQty||0)};
+                      }
+                      return u;
+                    });
                     setFilamentUsage(updated);
-                    // Sync to orders array so InventoryManager sees the change immediately
                     onSaveOrder({...o, items: orderItems, filamentUsage: updated, charges});
                   }}
                   onSpoolRemoved={(spoolId)=>{
