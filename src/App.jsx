@@ -391,7 +391,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
   const del = (i) => {
     const removed = items[i];
-    if (removed?._spoolGroup && removed?._spoolId && onSpoolRemoved) onSpoolRemoved(removed._spoolId);
+    if (removed?._spoolGroup && removed?._spoolId && onSpoolRemoved) onSpoolRemoved(removed._spoolId, removed._batchKey);
     setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
   };
   const tG=items.reduce((s,i)=>s+num(i.grossAmt),0), tC=items.reduce((s,i)=>s+num(i.cgstAmt),0), tS=items.reduce((s,i)=>s+num(i.sgstAmt),0), tN=items.reduce((s,i)=>s+num(i.netAmt),0);
@@ -433,10 +433,10 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const applySpoolToRow = (rowIdx, sg, spoolId) => {
     const name = [`${sg.brand||""}`, sg.material, sg.color, `${(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg`].filter(Boolean).join(' ');
     const unitPrice = sg.costTotal ? Math.round((Number(sg.costTotal)/1)*100)/100 : "";
-    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true, _spoolId:spoolId, _spoolCount:sg.count, _weightGPerSpool:Number(sg.weightG||0)}, needsGst) : it));
-    // Register filament usage so inventory deducts correctly
+    const batchKey = "BATCH-"+Date.now();
+    setItems(items.map((it,idx)=>idx===rowIdx ? calcItem({...it, item:name, unit:"Nos", unitPrice, qty:1, _brand:sg.brand, _material:sg.material, _spoolGroup:true, _spoolId:spoolId, _spoolIds:sg.spoolIds, _spoolCount:sg.count, _weightGPerSpool:Number(sg.weightG||0), _batchKey:batchKey}, needsGst) : it));
+    // Register ONE entry for the first spool (qty=1)
     if (onSpoolAdded) {
-      const batchKey = "BATCH-"+Date.now();
       onSpoolAdded({
         id: "FU-"+Date.now()+"-"+spoolId,
         inventoryId: spoolId,
@@ -539,7 +539,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   </div>
                 )}
               </td>
-              <td className="px-2 py-1.5 text-center">{it._spoolGroup?(<div className="flex flex-col items-center gap-0"><input type="number" value={it.qty} onChange={e=>{const v=e.target.value;if(v===""){ upd(i,"qty",v); return; }const n=parseFloat(v);if(n<0)return;if(it._spoolCount&&n>it._spoolCount)return;upd(i,"qty",v);if(n===0&&it._spoolId&&onSpoolRemoved){onSpoolRemoved(it._spoolId);}else if(n>0&&it._spoolId&&onSpoolQtyChanged){onSpoolQtyChanged(it._spoolId,n,it._weightGPerSpool);}}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max={it._spoolCount||undefined} className={inp+" w-14 text-center"}/>{it._spoolCount&&<span className="text-[9px] text-gray-300 leading-none">max {it._spoolCount}</span>}</div>):(<input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/>)}</td>
+              <td className="px-2 py-1.5 text-center">{it._spoolGroup?(<div className="flex flex-col items-center gap-0"><input type="number" value={it.qty} onChange={e=>{const v=e.target.value;if(v===""){ upd(i,"qty",v); return; }const n=parseFloat(v);if(n<0)return;if(it._spoolCount&&n>it._spoolCount)return;upd(i,"qty",v);if(n===0&&it._spoolId&&onSpoolRemoved){onSpoolRemoved(it._spoolId,it._batchKey);}else if(n>0&&it._spoolId&&onSpoolQtyChanged){onSpoolQtyChanged(it._spoolId,n,it._weightGPerSpool,it._batchKey,it._spoolIds);}}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max={it._spoolCount||undefined} className={inp+" w-14 text-center"}/>{it._spoolCount&&<span className="text-[9px] text-gray-300 leading-none">max {it._spoolCount}</span>}</div>):(<input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/>)}</td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&(isIgst
                 ? <td className="px-2 py-1.5 text-center text-xs text-gray-500">{Number(it.cgstRate)+Number(it.sgstRate)}%</td>
@@ -1174,21 +1174,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = (updatedFilamentUsage) => {
-    let fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
-    // Sync filamentUsage weightUsedG for spool items — qty * weightPerSpool
-    const spoolItems = orderItems.filter(it => it._spoolGroup && it._spoolId);
-    if (spoolItems.length > 0) {
-      fu = fu.map(u => {
-        const matchedItem = spoolItems.find(it => it._spoolId === u.inventoryId && u.notes?.includes("Sold as whole spool"));
-        if (matchedItem) {
-          // Per-spool weight: from item, inventory, or divide current weightUsedG by old qty (approx)
-          const spoolW = Number(matchedItem._weightGPerSpool||0) || Number(inventory.find(s=>s.id===u.inventoryId)?.weightG||0) || Number(u.weightUsedG||0);
-          return {...u, weightUsedG: spoolW * Number(matchedItem.qty||1)};
-        }
-        return u;
-      });
-      setFilamentUsage(fu);
-    }
+    const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
+    // Each spool item now has its own filamentUsage entry — no weight mutation needed
     const updated = {...o, items: orderItems, filamentUsage: fu, charges};
     const origItems = JSON.stringify((order.items||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
     const newItems  = JSON.stringify((orderItems||[]).map(i=>({item:i.item,qty:i.qty,unitPrice:i.unitPrice})));
@@ -1350,20 +1337,36 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               <div className="border-t pt-4">
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
                   onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}
-                  onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool)=>{
-                    const perSpool = Number(weightGPerSpool||0)
-                      || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
-                    const updated = filamentUsage.map(u=>
-                      (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool"))
-                        ? {...u, weightUsedG: perSpool * Number(newQty||0)}
-                        : u
-                    );
+                  onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{
+                    const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
+                    const allSpoolIds = spoolIds || [spoolId];
+                    // Current entries for this batch
+                    const existing = filamentUsage.filter(u=>u.batchKey===batchKey && u.notes?.includes("Sold as whole spool"));
+                    const others   = filamentUsage.filter(u=>!(u.batchKey===batchKey && u.notes?.includes("Sold as whole spool")));
+                    const qty = Math.max(0, Math.round(Number(newQty)||0));
+                    // Build new entries — one per spool, up to qty
+                    const newEntries = [];
+                    for (let i=0; i<qty; i++) {
+                      const sid = allSpoolIds[i] || allSpoolIds[allSpoolIds.length-1];
+                      newEntries.push({
+                        id: existing[i]?.id || ("FU-"+Date.now()+"-"+sid+"-"+i),
+                        inventoryId: sid,
+                        weightUsedG: perSpool,
+                        isWaste: false,
+                        notes: "Sold as whole spool",
+                        groupKey: existing[0]?.groupKey || `${inventory.find(s=>s.id===spoolId)?.brand||""}||${inventory.find(s=>s.id===spoolId)?.material||""}||${inventory.find(s=>s.id===spoolId)?.color||""}`,
+                        batchKey,
+                      });
+                    }
+                    const updated = [...others, ...newEntries];
                     setFilamentUsage(updated);
-                    // Route through handleSaveOrder so full sync logic runs
                     handleSaveOrder(updated);
                   }}
-                  onSpoolRemoved={(spoolId)=>{
-                    const updated = filamentUsage.filter(u=>u.inventoryId!==spoolId||!u.notes?.includes("Sold as whole spool"));
+                  onSpoolRemoved={(spoolId, batchKey)=>{
+                    // Remove all entries for this batch (all spools in this order-item row)
+                    const updated = batchKey
+                      ? filamentUsage.filter(u=>!(u.batchKey===batchKey && u.notes?.includes("Sold as whole spool")))
+                      : filamentUsage.filter(u=>u.inventoryId!==spoolId||!u.notes?.includes("Sold as whole spool"));
                     setFilamentUsage(updated);
                     handleSaveOrder(updated);
                   }}/>
