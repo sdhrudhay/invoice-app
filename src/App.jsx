@@ -1351,24 +1351,21 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
                   onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool)=>{
-                    const updated = filamentUsage.map(u=>{
-                      if (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool")) {
-                        // Derive per-spool weight: from _weightGPerSpool, or inventory, or original entry (÷ old qty)
-                        const perSpool = Number(weightGPerSpool||0)
-                          || Number(inventory.find(s=>s.id===spoolId)?.weightG||0)
-                          || Number(u.weightUsedG||0); // fallback: current value is 1-spool weight
-                        return {...u, weightUsedG: perSpool * Number(newQty||0)};
-                      }
-                      return u;
-                    });
+                    const perSpool = Number(weightGPerSpool||0)
+                      || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
+                    const updated = filamentUsage.map(u=>
+                      (u.inventoryId===spoolId && u.notes?.includes("Sold as whole spool"))
+                        ? {...u, weightUsedG: perSpool * Number(newQty||0)}
+                        : u
+                    );
                     setFilamentUsage(updated);
-                    onSaveOrder({...o, items: orderItems, filamentUsage: updated, charges});
+                    // Route through handleSaveOrder so full sync logic runs
+                    handleSaveOrder(updated);
                   }}
                   onSpoolRemoved={(spoolId)=>{
                     const updated = filamentUsage.filter(u=>u.inventoryId!==spoolId||!u.notes?.includes("Sold as whole spool"));
                     setFilamentUsage(updated);
-                    // Immediately sync to orders so inventory updates without needing save
-                    onSaveOrder({...o, items: orderItems, filamentUsage: updated, charges});
+                    handleSaveOrder(updated);
                   }}/>
               </div>
               <div className="pt-3 border-t space-y-3">
