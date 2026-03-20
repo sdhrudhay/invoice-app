@@ -414,6 +414,14 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
     }, needsGst);
     setItems(items.map((it,idx)=>idx===rowIdx?newItem:it));
   };
+  const FILAMENT_MATS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin",...Object.keys(filamentPrices).map(k=>k.split("||")[1]).filter(Boolean)].filter((v,i,a)=>a.indexOf(v)===i);
+  const calcFromGrams = (rowIdx, brand, material, weightG) => {
+    const key = `${brand||""}||${material||""}`;
+    const ppg = filamentPrices[key] || filamentPrices[`||${material||""}`] || 0;
+    if (!ppg || !weightG) return;
+    const price = Math.round(Number(ppg)*Number(weightG)*100)/100;
+    setItems(items.map((it,idx)=>idx===rowIdx?calcItem({...it,unitPrice:price,_brand:brand,_material:material},needsGst):it));
+  };
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
   const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
@@ -438,7 +446,39 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               </td>
               <td className="px-2 py-1.5 text-center"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-16 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none text-center">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
-              <td className="px-2 py-1.5 text-center"><input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-20 text-center"}/></td>
+              <td className="px-2 py-1.5 text-center relative">
+                <div className="flex items-center gap-0.5 justify-center">
+                  <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
+                  <button type="button" title="Calculate from filament weight"
+                    onClick={()=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:""}:it2))}
+                    className="text-indigo-400 hover:text-indigo-600 text-xs leading-none px-0.5 shrink-0" style={{fontSize:"10px"}}>⚖</button>
+                </div>
+                {it._calcOpen&&(
+                  <div className="absolute z-20 mt-1 bg-white border border-indigo-200 rounded-xl shadow-lg p-2 space-y-1.5" style={{minWidth:"200px"}}>
+                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">Calc from weight</p>
+                    <input value={it._calcBrand||""} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcBrand:e.target.value}:it2))}
+                      placeholder="Brand (optional)" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+                    <select value={it._calcMat||"PLA"} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcMat:e.target.value}:it2))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                      {FILAMENT_MATS.map(m=><option key={m}>{m}</option>)}
+                    </select>
+                    <input type="number" value={it._calcG||""} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcG:e.target.value}:it2))}
+                      onWheel={e=>e.target.blur()} placeholder="Weight (g)" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+                    {(()=>{
+                      const key=`${it._calcBrand||""}||${it._calcMat||""}`;
+                      const ppg=filamentPrices[key]||filamentPrices[`||${it._calcMat||""}`]||0;
+                      const preview=ppg&&it._calcG?Math.round(Number(ppg)*Number(it._calcG)*100)/100:null;
+                      return preview!==null?<p className="text-xs font-bold text-emerald-600">= ₹{preview}</p>:<p className="text-xs text-gray-400">{ppg?'Enter weight':'No price set for this material'}</p>;
+                    })()}
+                    <div className="flex gap-1 pt-0.5">
+                      <button type="button" onClick={()=>{ calcFromGrams(i,it._calcBrand||"",it._calcMat||"PLA",it._calcG); setItems(prev=>prev.map((it2,idx)=>idx===i?{...it2,_calcOpen:false}:it2)); }}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded px-2 py-1 text-xs font-semibold">Apply</button>
+                      <button type="button" onClick={()=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:false}:it2))}
+                        className="border border-gray-200 text-gray-500 rounded px-2 py-1 text-xs">✕</button>
+                    </div>
+                  </div>
+                )}
+              </td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/></td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&(isIgst
