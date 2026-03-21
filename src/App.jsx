@@ -3369,6 +3369,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
 
   const WASTE_REASONS = ["Sample / Testing","Product Prototype","Jammed / Broken","Moisture Damage","Calibration","Other"];
   const [showWasteForm, setShowWasteForm] = useState(false);
+  const [invTab, setInvTab] = useState("stock");
   const [wasteEntry, setWasteEntry] = useState({groupKey:"",weightG:"",reason:"Sample / Testing",orderNo:"",notes:"",date:today()});
   const updW = (k,v) => setWasteEntry(p=>({...p,[k]:v}));
 
@@ -3510,18 +3511,25 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   filtered.forEach(i=>{ if(!byMaterial[i.material]) byMaterial[i.material]={count:0,nonEmpty:0,weight:0,remaining:0}; byMaterial[i.material].count++; const r=getRemainingG(i); byMaterial[i.material].weight+=Number(i.weightG||0); byMaterial[i.material].remaining+=r; if(r>0) byMaterial[i.material].nonEmpty++; });
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
-          <p className="text-xs text-gray-400">Track filament stock by brand, material and colour.</p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
+        <div className="flex items-center gap-2">
+          {invTab==="stock"&&<button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showForm?"Cancel":"+ Add Stock"}</button>}
+          {invTab==="wastage"&&<button onClick={()=>setShowWasteForm(v=>!v)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showWasteForm?"Cancel":"+ Record Wastage"}</button>}
         </div>
-        <button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold shrink-0">
-          {showForm?"Cancel":"+ Add Stock"}
-        </button>
+      </div>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[["stock","Stock"],["pricing","₹ Pricing"],["wastage","Wastage"]].map(([id,label])=>(
+          <button key={id} onClick={()=>{setInvTab(id);setShowForm(false);setShowWasteForm(false);}}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${invTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
-      {showForm&&(
+      {invTab==="stock"&&showForm&&(
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h3 className="font-bold text-slate-700 text-sm">New Filament Purchase</h3>
@@ -3639,7 +3647,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       )}
 
       <div className="space-y-2">
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
+        {invTab==="stock"&&(<div className="space-y-3">
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs font-semibold text-gray-500">Material</span>
@@ -3767,8 +3776,10 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       </div>
       )}
 
-      {/* ── Filament Price Per Gram ────────────────────────────────────────── */}
-      <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
+      </div>)}
+
+      {invTab==="pricing"&&(
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-slate-700">Price Per Gram</p>
@@ -3824,17 +3835,16 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
         })()}
       </div>
 
-      {/* ── Wastage Log Section ───────────────────────────────────────── */}
-      <div className="mt-6 border-t border-gray-100 pt-5 space-y-3">
+      </div>)}
+
+      {invTab==="wastage"&&(
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-slate-700">Wastage Log</p>
             <p className="text-xs text-gray-400">Record filament lost to testing, prototypes, jams, etc.</p>
           </div>
-          <button onClick={()=>setShowWasteForm(p=>!p)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 border border-orange-200 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-all">
-            {showWasteForm?"✕ Cancel":"+ Record Wastage"}
-          </button>
+
         </div>
 
         {showWasteForm&&(
@@ -3955,7 +3965,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             </div>
           ))}
         </div>
-      </div>
+      </div>)}
     </div>
   );
 }
@@ -5119,12 +5129,12 @@ function App() {
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
       {/* ── Sidebar nav (desktop) ── */}
-      <div className="hidden md:flex fixed left-0 top-0 h-full w-44 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
+      <div className="hidden md:flex fixed left-0 top-0 h-full w-36 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
         {/* Logo / brand */}
-        <div className="flex items-center gap-2.5 px-4 h-16 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-center h-14 border-b border-gray-100 shrink-0 px-3">
           {seller.logo
-            ? <img src={seller.logo} alt="logo" className="h-10 max-w-[120px] object-contain"/>
-            : <span className="text-sm font-black text-indigo-600 tracking-tight leading-tight">{seller.name||"Elace"}</span>
+            ? <img src={seller.logo} alt="logo" className="h-9 max-w-[100px] object-contain mx-auto"/>
+            : <span className="text-xs font-black text-indigo-600 tracking-tight leading-tight text-center">{seller.name||"Elace"}</span>
           }
         </div>
         {/* Tabs */}
@@ -5152,7 +5162,7 @@ function App() {
             <span>Settings</span>
           </button>
           <button onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-all">
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
             <span className="text-sm leading-none shrink-0">🚪</span>
             <span>{countdown!==null
               ? <span className="font-black text-amber-600 tabular-nums">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
@@ -5173,7 +5183,7 @@ function App() {
       </div>
 
       {/* ── Main content area ── */}
-      <div className="md:pl-44 pb-16 md:pb-0">
+      <div className="md:pl-36 pb-16 md:pb-0">
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
