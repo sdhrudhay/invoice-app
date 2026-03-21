@@ -262,7 +262,7 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   </div>
 </div>
 <div class="two-col">
-  <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
@@ -296,8 +296,10 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  // Pickup = ONLY the explicit flag — never inferred from missing addresses
+  // Pickup = ONLY the explicit flag
   const _pickup = !!order.isPickup;
+  // When pickup, place of supply = seller's state always
+  const _placeOfSupply = _pickup ? (seller.state||seller.stateCode||"") : (order.placeOfSupply||"");
   // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
   const _customerState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
   const isIgst = !_pickup && ng && seller.stateCode && _customerState && String(_customerState).trim() !== String(seller.stateCode).trim();
@@ -328,13 +330,13 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
     <div class="sd">${seller.address}<br>GSTIN: <b>${seller.gstin}</b> | State: ${seller.state} (${seller.stateCode})<br>${seller.phone}</div>
   </div>
   <div><div class="inv-title">${title}</div>
-    <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
+    <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${_placeOfSupply?`<b>Place of Supply:</b> ${_placeOfSupply}<br>`:""}</div>
   </div>
 </div>
 ${_pickup
-  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${order.placeOfSupply||seller.state} &nbsp;·&nbsp; Office Pickup</span></div>`
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${_placeOfSupply}</span></div>`
   : `<div class="two-col">
-  <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>`}
 <table><thead><tr>
@@ -1269,7 +1271,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:order.customerName,billingName:order.billingName,billingAddress:order.billingAddress,billingStateCode:order.billingStateCode,gstin:order.gstin||"",phone:order.phone||order.contact||"",shippingName:order.shippingName,shippingAddress:order.shippingAddress,shippingContact:order.shippingContact,shippingGstin:order.shippingGstin,shippingStateCode:order.shippingStateCode,type:order.type,needsGst:order.needsGst,placeOfSupply:order.placeOfSupply,isPickup:!!order.isPickup}};
+    // Use live local state `o` (not prop `order`) so unsaved address/pickup edits are captured
+    const snapOrder = o || order;
+    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1366,7 +1370,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} rows={2} className="col-span-2"/>
                 </div>
               </div>
-              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" checked={!!o.isPickup} onChange={e=>upd("isPickup",e.target.checked)} className="rounded accent-indigo-600 w-4 h-4"/><span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(CGST+SGST, no address on invoice)</span></span></label>}
+              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); }} className="rounded accent-indigo-600 w-4 h-4"/><span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(CGST+SGST, no address on invoice)</span></span></label>}
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
               {/* Other Charges — saved on order, carried into Tax Invoice */}
