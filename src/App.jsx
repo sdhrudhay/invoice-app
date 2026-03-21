@@ -669,7 +669,7 @@ function ClientSearch({ clients, onSelect, value }) {
 }
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{}, products=[] }) {
+function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{}, products=[], inventory=[], wastageLog=[] }) {
   const topRef = useRef(null);
   const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
   const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
@@ -831,7 +831,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&!!(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&extractStateCode(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))!==extractStateCode(seller.stateCode)} products={products} seller={seller}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&!!(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&extractStateCode(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))!==extractStateCode(seller.stateCode)} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo=""/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -1251,7 +1251,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const origInv = type==="proforma"
       ? proformas.find(p=>p.invNo===updatedInv.invNo)
       : taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || origInv?.orderSnapshot};
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)+(updatedInv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || origInv?.orderSnapshot};
     onSaveInvoice(saved, type);
   };
   const handleCreate = (type) => setCreating(type);
@@ -1277,7 +1277,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
     // Use live local state `o` (not prop `order`) so unsaved address/pickup edits are captured
     const snapOrder = o || order;
-    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
+    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1525,7 +1525,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && creating && (
 <div className="space-y-4">
               <InvoiceEditor
-              inv={{ invNo:"(auto)", invDate:today(), items: order.items && order.items.length > 0 ? order.items.map(i=>({...i})) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
+              inv={{ invNo:"(auto)", invDate:today(), items: order.items && order.items.length > 0 ? order.items.map(i=>calcItem({...i}, creating==="tax" ? true : order.needsGst)) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -4592,7 +4592,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
 
   const getOrderBalance = (order) => {
-    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(t.amount||t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0);
+    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
     const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
     const orderTotal = tiTotal>0?tiTotal:qtTotal;
     const totalPaid = (order.payments||[]).reduce((s,p)=>s+num(p.amount),0)+num(order.advance);
