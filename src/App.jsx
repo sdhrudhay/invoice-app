@@ -544,8 +544,8 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               <td className="px-2 py-1.5 text-gray-400 w-6 text-center">{it.sl}</td>
               <td className="px-2 py-1.5 max-w-[220px]">
                 <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-1">
-                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
+                  <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
+                  {(products.length>0||spoolOptions.length>0)&&<div className="flex items-center gap-1 mt-0.5 flex-wrap">
                     {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border border-indigo-200 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer appearance-none rounded px-1.5 py-0.5" style={{width:"auto"}} title="Fill from product">
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
@@ -554,21 +554,21 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                       <option value="">+ Spool</option>
                       {spoolOptions.map((sg,si)=><option key={si} value={si}>{[sg.brand,sg.material,sg.color].filter(Boolean).join(' ')} {(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</option>)}
                     </select>}
-                  </div>
+                  </div>}
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
                 </div>
               </td>
               <td className="px-2 py-1.5 text-center w-16"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-full text-center"}/></td>
 
-              <td className="px-2 py-1.5 text-center relative">
+              <td className="px-2 py-1.5 text-center">
                 <div className="flex items-center gap-0.5 justify-center">
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
                   <button type="button" title="Calculate from filament weight"
-                    onClick={()=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:""}:it2))}
+                    onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top}:it2)); }}
                     className="text-indigo-400 hover:text-indigo-600 font-semibold leading-none px-1 shrink-0" style={{fontSize:"10px"}}>g→₹</button>
                 </div>
                 {it._calcOpen&&(
-                  <div className="absolute z-20 mt-1 bg-white border border-indigo-200 rounded-xl shadow-lg p-2 space-y-1.5" style={{minWidth:"200px"}}>
+                  <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",top:(it._calcY||0)+28,left:it._calcX||0}}>
                     <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">Calc from weight</p>
                     {(()=>{
                       const pricedBrands=[...new Set(Object.keys(filamentPrices).map(k=>k.split("||")[0]).filter(Boolean))];
