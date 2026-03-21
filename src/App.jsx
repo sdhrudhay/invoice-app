@@ -568,8 +568,17 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                 {it._calcOpen&&(
                   <div className="absolute z-20 mt-1 bg-white border border-indigo-200 rounded-xl shadow-lg p-2 space-y-1.5" style={{minWidth:"200px"}}>
                     <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">Calc from weight</p>
-                    <input value={it._calcBrand||""} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcBrand:e.target.value}:it2))}
-                      placeholder="Brand (optional)" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+                    {(()=>{
+                      const pricedBrands=[...new Set(Object.keys(filamentPrices).map(k=>k.split("||")[0]).filter(Boolean))];
+                      return pricedBrands.length>0
+                        ? <select value={it._calcBrand||""} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcBrand:e.target.value}:it2))}
+                            className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                            <option value="">Any brand</option>
+                            {pricedBrands.map(b=><option key={b} value={b}>{b}</option>)}
+                          </select>
+                        : <input value={it._calcBrand||""} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcBrand:e.target.value}:it2))}
+                            placeholder="Brand (optional)" className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"/>;
+                    })()}
                     <select value={it._calcMat||"PLA"} onChange={e=>setItems(items.map((it2,idx)=>idx===i?{...it2,_calcMat:e.target.value}:it2))}
                       className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
                       {FILAMENT_MATS.map(m=><option key={m}>{m}</option>)}
@@ -1093,7 +1102,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       </div>
 
       {/* Usage list */}
-      {filamentUsage.length===0&&(
+      {filamentUsage.length===0&&wastageLog.filter(w=>w.orderNo===currentOrderNo).length===0&&(
         <p className="text-xs text-gray-400 text-center py-6">No filament usage logged yet.</p>
       )}
       {/* Wastage linked to this order */}
@@ -4395,6 +4404,28 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                     </div>
                   </div>
 
+                  {/* Net total + Record settlement — shown at top */}
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <span className={`text-sm font-black ${s.net>0?"text-emerald-600":s.net<0?"text-orange-500":"text-gray-400"}`}>
+                      {s.net===0?"✓ Settled":`₹${fmt(Math.abs(s.net))}`}
+                    </span>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                      {s.net>0?`${s.name} owes company`:s.net<0?`Company owes ${s.name}`:"Settled"}
+                    </span>
+                  </div>
+                  <SettlementForm
+                    fromId={s.id}
+                    fromName={s.name}
+                    net={s.net}
+                    recipients={recipients}
+                    allRecipients={allRecipients}
+                    seller={seller}
+                    summaries={summaries}
+                    onSettle={(settlement)=>{
+                      setSettlements(prev=>[...prev, settlement]);
+                    }}
+                  />
+
                   {/* Entry list */}
                   <div className="space-y-1.5">
                     {allEntries.map((e, i) => (
@@ -4442,18 +4473,6 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                   </div>
 
                   {/* Record a settlement */}
-                  <SettlementForm
-                    fromId={s.id}
-                    fromName={s.name}
-                    net={s.net}
-                    recipients={recipients}
-                    allRecipients={allRecipients}
-                    seller={seller}
-                    summaries={summaries}
-                    onSettle={(settlement)=>{
-                      setSettlements(prev=>[...prev, settlement]);
-                    }}
-                  />
                 </div>
               )}
             </div>
