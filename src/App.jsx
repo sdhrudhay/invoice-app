@@ -34,6 +34,39 @@ function genClientId(clients=[]) {
   return "CLT-" + String(n).padStart(4,"0");
 }
 
+
+const INDIA_STATES = [
+  {code:"01",name:"Jammu & Kashmir"},{code:"02",name:"Himachal Pradesh"},{code:"03",name:"Punjab"},
+  {code:"04",name:"Chandigarh"},{code:"05",name:"Uttarakhand"},{code:"06",name:"Haryana"},
+  {code:"07",name:"Delhi"},{code:"08",name:"Rajasthan"},{code:"09",name:"Uttar Pradesh"},
+  {code:"10",name:"Bihar"},{code:"11",name:"Sikkim"},{code:"12",name:"Arunachal Pradesh"},
+  {code:"13",name:"Nagaland"},{code:"14",name:"Manipur"},{code:"15",name:"Mizoram"},
+  {code:"16",name:"Tripura"},{code:"17",name:"Meghalaya"},{code:"18",name:"Assam"},
+  {code:"19",name:"West Bengal"},{code:"20",name:"Jharkhand"},{code:"21",name:"Odisha"},
+  {code:"22",name:"Chhattisgarh"},{code:"23",name:"Madhya Pradesh"},{code:"24",name:"Gujarat"},
+  {code:"25",name:"Daman & Diu"},{code:"26",name:"Dadra & Nagar Haveli"},{code:"27",name:"Maharashtra"},
+  {code:"28",name:"Andhra Pradesh (Old)"},{code:"29",name:"Karnataka"},{code:"30",name:"Goa"},
+  {code:"31",name:"Lakshadweep"},{code:"32",name:"Kerala"},{code:"33",name:"Tamil Nadu"},
+  {code:"34",name:"Puducherry"},{code:"35",name:"Andaman & Nicobar Islands"},{code:"36",name:"Telangana"},
+  {code:"37",name:"Andhra Pradesh"},{code:"38",name:"Ladakh"},
+];
+const stateByCode = (code) => INDIA_STATES.find(s=>s.code===String(code).padStart(2,"0"))?.name || "";
+const stateCodeLabel = (code) => { const s=INDIA_STATES.find(s=>s.code===String(code).padStart(2,"0")); return s?s.code+" - "+s.name:""; };
+
+
+function StateSelect({ value, onChange, disabled=false, label="State/UT Code" }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</label>
+      <select value={value||""} onChange={e=>onChange(e.target.value)} disabled={disabled}
+        className={`border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white ${disabled?"opacity-60 cursor-not-allowed":""}`}>
+        <option value="">— Select State/UT —</option>
+        {INDIA_STATES.map(s=><option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
 const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"", clientType:"B2B" };
 
 const EMPTY_ITEM = { sl: 1, item: "", hsn: "", unit: "Nos", unitPrice: "", qty: "", discount: "", grossAmt: 0, cgstRate: 9, cgstAmt: 0, sgstRate: 9, sgstAmt: 0, netAmt: 0 };
@@ -296,7 +329,7 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   </div>
 </div>
 ${_pickupAtOffice
-  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555">Customer</span><br><b>${order.billingName||order.customerName}</b>${order.type==="B2B"?` &nbsp;|&nbsp; GSTIN: ${order.gstin||"-"}`:""}${order.phone||order.contact?`<br>${order.phone||order.contact}`:""}${isIgst?` &nbsp;<span style="color:#c00;font-weight:600">Inter-State Supply</span>`:""}<br><span style="font-size:10px;color:#777">Pickup at office &nbsp;·&nbsp; Place of Supply: ${order.placeOfSupply||seller.state}</span></div>`
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${order.placeOfSupply||seller.state}</span></div>`
   : `<div class="two-col">
   <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
@@ -634,7 +667,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
   const [shippingName,setShippingName]=useState(""); const [shippingContact,setShippingContact]=useState(""); const [shippingAddress,setShippingAddress]=useState(""); const [shippingGstin,setShippingGstin]=useState(""); const [shippingStateCode,setShippingStateCode]=useState("");
   const [sameAsBilling,setSameAsBilling]=useState(false);
-  const [placeOfSupply,setPlaceOfSupply]=useState(""); const [orderDate,setOrderDate]=useState(today()); const [dueDate,setDueDate]=useState(addDays(today(),30)); const [paymentMode,setPaymentMode]=useState("UPI"); const [advance,setAdvance]=useState(""); const [status,setStatus]=useState("Pending"); const [comments,setComments]=useState("");
+  const [placeOfSupply,setPlaceOfSupply]=useState(""); const [isPickup,setIsPickup]=useState(false); const [orderDate,setOrderDate]=useState(today()); const [dueDate,setDueDate]=useState(addDays(today(),30)); const [paymentMode,setPaymentMode]=useState("UPI"); const [advance,setAdvance]=useState(""); const [status,setStatus]=useState("Pending"); const [comments,setComments]=useState("");
   const [items,setItems]=useState([{...EMPTY_ITEM}]);
   const [advanceRecipient,setAdvanceRecipient]=useState("");
   const [advanceTxnRef,setAdvanceTxnRef]=useState("");
@@ -738,11 +771,15 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <F label="Txn / Ref No (optional)" value={advanceTxnRef} onChange={setAdvanceTxnRef} placeholder="UPI ref, cheque no…"/>
             <S label="Order Status" value={status} onChange={setStatus} options={STATUS_OPTIONS}/>
           </div>
-          <div className="border-t pt-4">
+          {type==="B2C"&&needsGst&&<div className="flex items-center gap-2 pt-2">
+            <input type="checkbox" id="pickup-chk" checked={isPickup} onChange={e=>{setIsPickup(e.target.checked);if(e.target.checked){setPlaceOfSupply(stateByCode(seller?.stateCode)||seller?.state||"");}}} className="rounded accent-indigo-600 w-4 h-4"/>
+            <label htmlFor="pickup-chk" className="text-sm font-semibold text-gray-700 cursor-pointer">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects from your office — no address needed)</span></label>
+          </div>}
+          {(!isPickup||type==="B2B")&&<div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
             <div className="grid grid-cols-2 gap-4">
               <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
-              <F label="State/UT Code" value={billingStateCode} onChange={setBillingStateCode} placeholder="e.g. 29"/>
+              <StateSelect value={billingStateCode} onChange={v=>{ setBillingStateCode(v); if(type==="B2B") setPlaceOfSupply(stateByCode(v)); }}/>
               <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="col-span-2"/>
             </div>
           </div>
@@ -770,15 +807,19 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? phone : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
-              <F label="State/UT Code" value={sameAsBilling ? billingStateCode : shippingStateCode} onChange={v=>{if(!sameAsBilling)setShippingStateCode(v);}} disabled={sameAsBilling}/>
+              <StateSelect value={sameAsBilling ? billingStateCode : shippingStateCode} onChange={v=>{ if(!sameAsBilling){ setShippingStateCode(v); if(type==="B2C") setPlaceOfSupply(stateByCode(v)); } }} disabled={sameAsBilling}/>
               <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
             </div>
           </div>
-          {needsGst&&<F label="Place of Supply" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="e.g. Karnataka (29)" className="w-64"/>}
+          </div>}
+          {needsGst&&<div className="flex flex-col gap-1 w-64">
+            <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label>
+            <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{placeOfSupply||<span className="text-gray-400 italic">Auto-filled from state code</span>}</div>
+          </div>}
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&seller?.stateCode&&billingStateCode&&String(billingStateCode).trim()!==String(seller.stateCode).trim()} products={products} seller={seller}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&String(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode)).trim()!==String(seller.stateCode).trim()} products={products} seller={seller}/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -787,7 +828,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
           </div>
       </div>
-    </div>
+
   );
 }
 
@@ -1305,7 +1346,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
                 <div className="grid grid-cols-2 gap-4">
                   <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)}/>
-                  <F label="State/UT Code" value={o.billingStateCode||""} onChange={v=>upd("billingStateCode",v)}/>
+                  <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }}/>
                   <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} rows={2} className="col-span-2"/>
                 </div>
               </div>
@@ -1315,11 +1356,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)}/>
                   <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)}/>
                   {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)}/>}
-                  <F label="State/UT Code" value={o.shippingStateCode||""} onChange={v=>upd("shippingStateCode",v)}/>
+                  <StateSelect value={o.shippingStateCode||""} onChange={v=>{ upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }}/>
                   <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} rows={2} className="col-span-2"/>
                 </div>
               </div>
-              {o.needsGst&&<F label="Place of Supply" value={o.placeOfSupply||""} onChange={v=>upd("placeOfSupply",v)} className="w-64"/>}
+              {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
               {/* Other Charges — saved on order, carried into Tax Invoice */}
               <div className="border-t pt-4 space-y-2">
@@ -2528,7 +2569,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
               {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} placeholder="29XXXXX0000X1ZX"/>}
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
               <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} placeholder="client@email.com"/>
-              <F label="Place of Supply" value={form.placeOfSupply} onChange={v=>upd("placeOfSupply",v)} placeholder="e.g. Karnataka (29)"/>
+              <div className="flex flex-col gap-1"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{form.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>
             </div>
           </div>
 
@@ -2536,7 +2577,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
             <div className="grid grid-cols-2 gap-4">
               <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} placeholder="Company name or individual"/>
-              <F label="State/UT Code" value={form.billingStateCode} onChange={v=>upd("billingStateCode",v)} placeholder="e.g. 29"/>
+              <StateSelect value={form.billingStateCode} onChange={v=>{ upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }}/>
               <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} rows={2} className="col-span-2"/>
             </div>
           </div>
@@ -2565,7 +2606,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
               <F label="Name" value={sameAsBilling ? (form.billingName||form.name) : form.shippingName} onChange={v=>{if(!sameAsBilling)upd("shippingName",v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? form.contact : form.shippingContact} onChange={v=>{if(!sameAsBilling)upd("shippingContact",v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               <F label="GSTIN (if different)" value={sameAsBilling ? form.gstin : form.shippingGstin} onChange={v=>{if(!sameAsBilling)upd("shippingGstin",v);}} disabled={sameAsBilling}/>
-              <F label="State/UT Code" value={sameAsBilling ? form.billingStateCode : form.shippingStateCode} onChange={v=>{if(!sameAsBilling)upd("shippingStateCode",v);}} disabled={sameAsBilling}/>
+              <StateSelect value={sameAsBilling ? form.billingStateCode : form.shippingStateCode} onChange={v=>{ if(!sameAsBilling){ upd("shippingStateCode",v); upd("placeOfSupply",stateByCode(v)); } }} disabled={sameAsBilling}/>
               <F label="Shipping Address" value={sameAsBilling ? form.billingAddress : form.shippingAddress} onChange={v=>{if(!sameAsBilling)upd("shippingAddress",v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
             </div>
           </div>
