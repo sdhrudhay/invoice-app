@@ -649,22 +649,22 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               <td className="px-2 py-1.5 text-gray-400 w-6 text-center">{it.sl}</td>
               <td className="px-2 py-1.5 max-w-[220px]">
                 <div className="flex flex-col gap-0.5">
-                  <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
-                  {(products.length>0||spoolOptions.length>0)&&<div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-1">
+                    <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
                     {products.length>0&&<ProductPicker products={products} onSelect={p=>applyProduct(i,p)} rowIdx={i}/>}
                     {spoolOptions.length>0&&<SpoolPicker spoolOptions={spoolOptions} onSelect={sg=>applySpoolToRow(i,sg,sg.spoolIds[0])}/>}
-                  </div>}
+                  </div>
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
                 </div>
               </td>
               <td className="px-2 py-1.5 text-center w-16"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-full text-center"}/></td>
 
               <td className="px-2 py-1.5 text-center">
-                <div className="flex items-center gap-0.5 justify-center">
-                  <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
+                <div className="flex items-center gap-1">
+                  <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center mx-auto"}/>
                   <button type="button" title="Calculate from filament weight"
                     onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top}:it2)); }}
-                    className="text-indigo-400 hover:text-indigo-600 font-semibold leading-none px-1 shrink-0" style={{fontSize:"10px"}}>g→₹</button>
+                    className="text-indigo-300 hover:text-indigo-500 font-semibold leading-none shrink-0 ml-auto" style={{fontSize:"10px"}}>g→₹</button>
                 </div>
                 {it._calcOpen&&(
                   <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",top:(it._calcY||0)+28,left:it._calcX||0}}>
