@@ -456,8 +456,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
     if (o.orderNo===currentOrderNo) return; // exclude current order
     (o.filamentUsage||[]).forEach(u => { spoolUsed[u.inventoryId]=(spoolUsed[u.inventoryId]||0)+Number(u.weightUsedG||0); });
   });
-  wastageLog.forEach(w => {
-    // spread wastage across spools of matching group, largest-first (approx)
+  wastageLog.filter(w=>!w.orderNo).forEach(w => {
     const groupSpools = inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).sort((a,b)=>Number(b.weightG)-Number(a.weightG));
     let rem=Number(w.weightG||0);
     for(const s of groupSpools){ const take=Math.min(rem,Math.max(0,Number(s.weightG||0)-(spoolUsed[s.id]||0))); spoolUsed[s.id]=(spoolUsed[s.id]||0)+take; rem-=take; if(rem<=0)break; }
@@ -975,10 +974,11 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   filamentUsage.forEach(u => {
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   });
-  // Add wastage deductions — spread across spools largest-first same as inventory view
+  // Only standalone wastage (no orderNo) — order-linked waste already in usedPerSpool via filamentUsage
+  const _standaloneW = wastageLog.filter(w=>!w.orderNo);
   const _wTmpRem = {};
   inventory.forEach(i=>{ _wTmpRem[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
-  wastageLog.forEach(w => {
+  _standaloneW.forEach(w => {
     let wLeft = Number(w.weightG||0);
     const spools = inventory
       .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
@@ -3565,16 +3565,16 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
   orders.forEach(o => (o.filamentUsage||[]).forEach(u => {
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   }));
-  // Also deduct standalone wastage entries by matching groupKey to inventory items
-  wastageLog.forEach(w => {
+  // Only standalone wastage (no orderNo) — order-linked waste already counted via filamentUsage
+  const standaloneWaste = wastageLog.filter(w=>!w.orderNo);
+  standaloneWaste.forEach(w => {
     inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).forEach(i=>{
-      usedPerSpool[i.id] = (usedPerSpool[i.id]||0); // mark as touched; actual deduction spread below
+      usedPerSpool[i.id] = (usedPerSpool[i.id]||0);
     });
   });
-  // Spread wastage across spools in the group (largest remaining first, same logic as order usage)
   const _tmpRemaining = {};
   inventory.forEach(i=>{ _tmpRemaining[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
-  wastageLog.forEach(w => {
+  standaloneWaste.forEach(w => {
     let wLeft = Number(w.weightG||0);
     const spools = inventory
       .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
