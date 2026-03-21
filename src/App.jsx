@@ -231,7 +231,7 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
   const _igstStateQ = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
-  const isIgst = ng && seller.stateCode && _igstStateQ && String(_igstStateQ).trim() !== String(seller.stateCode).trim();
+  const isIgst = !order.isPickup && ng && seller.stateCode && _igstStateQ && String(_igstStateQ).trim() !== String(seller.stateCode).trim();
   const cols = ng ? (isIgst ? 10 : 12) : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -296,8 +296,8 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  // Pickup = explicit flag OR (B2C with no addresses)
-  const _pickup = !!(order.isPickup || (!order.shippingAddress?.trim() && !order.billingAddress?.trim() && order.type==="B2C"));
+  // Pickup = ONLY the explicit flag — never inferred from missing addresses
+  const _pickup = !!order.isPickup;
   // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
   const _customerState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
   const isIgst = !_pickup && ng && seller.stateCode && _customerState && String(_customerState).trim() !== String(seller.stateCode).trim();
@@ -1206,7 +1206,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
   const _isIgstSC = o.type==="B2B" ? o.billingStateCode : (o.shippingStateCode||o.billingStateCode);
-  const isIgst = o.needsGst && seller?.stateCode && _isIgstSC && String(_isIgstSC).trim() !== String(seller.stateCode).trim();
+  const isIgst = !o.isPickup && o.needsGst && seller?.stateCode && _isIgstSC && String(_isIgstSC).trim() !== String(seller.stateCode).trim();
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
