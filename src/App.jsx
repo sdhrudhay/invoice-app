@@ -52,6 +52,8 @@ const INDIA_STATES = [
 ];
 const stateByCode = (code) => INDIA_STATES.find(s=>s.code===String(code).padStart(2,"0"))?.name || "";
 const stateCodeLabel = (code) => { const s=INDIA_STATES.find(s=>s.code===String(code).padStart(2,"0")); return s?s.code+" - "+s.name:""; };
+// Extract just the numeric code from any format: "29", "29 (Karnataka)", "Karnataka (29)", "29-Karnataka" etc.
+const extractStateCode = (v) => { if(!v) return ""; const m=String(v).match(/\b(\d{1,2})\b/); return m?m[1].padStart(2,"0"):""; };
 
 
 function StateSelect({ value, onChange, disabled=false, label="State/UT Code" }) {
@@ -61,7 +63,7 @@ function StateSelect({ value, onChange, disabled=false, label="State/UT Code" })
       <select value={value||""} onChange={e=>onChange(e.target.value)} disabled={disabled}
         className={`border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white ${disabled?"opacity-60 cursor-not-allowed":""}`}>
         <option value="">— Select State/UT —</option>
-        {INDIA_STATES.map(s=><option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
+        {INDIA_STATES.map(s=><option key={s.code} value={s.code}>{s.code} ({s.name})</option>)}
       </select>
     </div>
   );
@@ -231,7 +233,7 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
   const _igstStateQ = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
-  const isIgst = !order.isPickup && ng && seller.stateCode && _igstStateQ && String(_igstStateQ).trim() !== String(seller.stateCode).trim();
+  const isIgst = !order.isPickup && ng && seller.stateCode && _igstStateQ && extractStateCode(_igstStateQ) !== extractStateCode(seller.stateCode);
   const cols = ng ? (isIgst ? 10 : 12) : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -302,7 +304,7 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const _placeOfSupply = _pickup ? (seller.state||seller.stateCode||"") : (order.placeOfSupply||"");
   // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
   const _customerState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
-  const isIgst = !_pickup && ng && seller.stateCode && _customerState && String(_customerState).trim() !== String(seller.stateCode).trim();
+  const isIgst = !_pickup && ng && seller.stateCode && _customerState && extractStateCode(_customerState) !== extractStateCode(seller.stateCode);
   const cols = ng ? (isIgst ? 10 : 12) : 8;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
@@ -827,7 +829,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Order Items</p>
             <p className="text-xs text-gray-400 mb-3">These items form the basis of the quotation and all future invoices.</p>
-            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&String(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode)).trim()!==String(seller.stateCode).trim()} products={products} seller={seller}/>
+            <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&!!(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&extractStateCode(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))!==extractStateCode(seller.stateCode)} products={products} seller={seller}/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
           <div className="flex gap-3 items-center pt-2 border-t">
@@ -1208,7 +1210,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
   const _isIgstSC = o.type==="B2B" ? o.billingStateCode : (o.shippingStateCode||o.billingStateCode);
-  const isIgst = !o.isPickup && o.needsGst && seller?.stateCode && _isIgstSC && String(_isIgstSC).trim() !== String(seller.stateCode).trim();
+  const isIgst = !o.isPickup && o.needsGst && seller?.stateCode && _isIgstSC && extractStateCode(_isIgstSC) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
@@ -2305,7 +2307,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <div className="grid grid-cols-2 gap-4">
           <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="col-span-2"/>
           <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/><F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
-          <F label="State Code" value={s.stateCode} onChange={v=>setS({...s,stateCode:v})}/>
+          <StateSelect label="State/UT Code" value={extractStateCode(s.stateCode)||s.stateCode} onChange={v=>setS({...s,stateCode:v,state:stateByCode(v)})}/>
           <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2} className="col-span-2"/>
           <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})}/><F label="Email" value={s.email} onChange={v=>setS({...s,email:v})}/>
           <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})}/><F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})}/>
