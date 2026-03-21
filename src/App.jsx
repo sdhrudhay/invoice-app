@@ -3676,7 +3676,6 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             "Purchase Date":i.purchaseDate,"Notes":i.notes||"",
           })),"Inventory_Export")}/>
         </div>
-      </div>
 
       {/* View toggle */}
       <div className="flex items-center gap-2">
