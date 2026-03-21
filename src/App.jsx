@@ -5075,7 +5075,7 @@ function App() {
             className="w-full flex flex-col items-center justify-center py-2 text-gray-400 hover:text-red-500 transition-all text-base">
             {countdown!==null
               ? <span className="text-[10px] font-black text-amber-600 tabular-nums leading-none">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
-              : <span className="text-sm">↪</span>}
+              : <span className="text-xs font-bold text-gray-400">OUT</span>}
           </button>
         </div>
       </div>
@@ -5108,7 +5108,6 @@ function App() {
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
         </div>
-      </div>
       </div>
     </div>
   );
