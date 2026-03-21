@@ -531,7 +531,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
     setItems(items.map((it,idx)=>idx===rowIdx?calcItem({...it,unitPrice:price,_brand:brand,_material:material},needsGst):it));
   };
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
-  const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
+  const hdrs = ["#","Item / Description","HSN","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
       <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
@@ -557,7 +557,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                 </div>
               </td>
               <td className="px-2 py-1.5 text-center w-16"><input value={it.hsn} onChange={e=>upd(i,"hsn",e.target.value)} placeholder="HSN" className={inp+" w-full text-center"}/></td>
-              <td className="px-2 py-1.5 text-center"><select value={it.unit} onChange={e=>upd(i,"unit",e.target.value)} className="border-0 bg-transparent text-xs focus:outline-none text-center">{["Nos","g","ml","cm","Sqft","Box","Set","Pair"].map(u=><option key={u}>{u}</option>)}</select></td>
+
               <td className="px-2 py-1.5 text-center relative">
                 <div className="flex items-center gap-0.5 justify-center">
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
