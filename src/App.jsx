@@ -546,11 +546,11 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
                     <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
-                    {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer appearance-none" style={{width:"auto"}} title="Fill from product">
+                    {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border border-indigo-200 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer appearance-none rounded px-1.5 py-0.5" style={{width:"auto"}} title="Fill from product">
                       <option value="">+ Product</option>
                       {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>}
-                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg,sg.spoolIds[0]); e.target.value=""; }}} className="border-0 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer appearance-none pr-0" style={{width:"auto"}} title="Add full spool from inventory">
+                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg,sg.spoolIds[0]); e.target.value=""; }}} className="border border-orange-200 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer appearance-none rounded px-1.5 py-0.5" style={{width:"auto"}} title="Add full spool from inventory">
                       <option value="">+ Spool</option>
                       {spoolOptions.map((sg,si)=><option key={si} value={si}>{[sg.brand,sg.material,sg.color].filter(Boolean).join(' ')} {(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</option>)}
                     </select>}
