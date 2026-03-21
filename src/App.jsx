@@ -443,13 +443,13 @@ function S({ label, value, onChange, options, className="" }) {
 // ─── Item Table ───────────────────────────────────────────────────────────────
 
 function ProductPicker({ products, onSelect, rowIdx }) {
-  const [open, setOpen] = React.useState(false);
-  const [q, setQ] = React.useState("");
-  const ref = React.useRef();
-  const btnRef = React.useRef();
-  const [pos, setPos] = React.useState({top:0,left:0});
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef();
+  const btnRef = useRef();
+  const [pos, setPos] = useState({top:0,left:0});
 
-  React.useEffect(()=>{
+  useEffect(()=>{
     if (!open) return;
     const r = btnRef.current?.getBoundingClientRect();
     if (r) setPos({top: r.bottom+4, left: r.left});
@@ -486,13 +486,13 @@ function ProductPicker({ products, onSelect, rowIdx }) {
 }
 
 function SpoolPicker({ spoolOptions, onSelect }) {
-  const [open, setOpen] = React.useState(false);
-  const [q, setQ] = React.useState("");
-  const ref = React.useRef();
-  const btnRef = React.useRef();
-  const [pos, setPos] = React.useState({top:0,left:0});
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef();
+  const btnRef = useRef();
+  const [pos, setPos] = useState({top:0,left:0});
 
-  React.useEffect(()=>{
+  useEffect(()=>{
     if (!open) return;
     const r = btnRef.current?.getBoundingClientRect();
     if (r) setPos({top: r.bottom+4, left: r.left});
