@@ -3971,6 +3971,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           groups[key].totalWeight += Number(item.weightG||0);
           groups[key].totalRemaining += rem;
           groups[key].totalCost += Number(item.costTotal||0);
+          if (rem > 0) groups[key].spoolsLeft = (groups[key].spoolsLeft||0) + 1;
         });
         return (
           <div className="space-y-2">
