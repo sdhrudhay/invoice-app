@@ -3396,6 +3396,33 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
 
 // ─── Inventory ───────────────────────────────────────────────────────────────
 const FILAMENT_MATERIALS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin"];
+
+function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
+  const [nb, setNb] = useState("");
+  const [nm, setNm] = useState(materialList[0]||"PLA");
+  const [np, setNp] = useState("");
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
+        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
+      <select value={nm} onChange={e=>setNm(e.target.value)}
+        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
+        {materialList.map(m=><option key={m}>{m}</option>)}
+      </select>
+      <span className="text-gray-400 text-xs shrink-0">₹/g</span>
+      <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+        className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+      <button onClick={()=>{
+        if (!np||isNaN(Number(np))) return;
+        const k=`${nb.trim()}||${nm}`;
+        setSeller({...seller, filamentPrices:{...(seller.filamentPrices||{}), [k]:np}});
+        setNb(""); setNp("");
+      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+    </div>
+  );
+}
+
+
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"", qty:1 };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
@@ -3858,29 +3885,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   </div>
                 );
               })}
-              {(()=>{
-                const [nb,setNb]=useState(""); const [nm,setNm]=useState(materialList[0]||"PLA"); const [np,setNp]=useState("");
-                return (
-                  <div className="flex items-center gap-2 mt-1">
-                    <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
-                      className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
-                    <select value={nm} onChange={e=>setNm(e.target.value)}
-                      className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
-                      {materialList.map(m=><option key={m}>{m}</option>)}
-                    </select>
-                    <span className="text-gray-400 text-xs shrink-0">₹/g</span>
-                    <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
-                      className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <button onClick={()=>{
-                      if (!np||isNaN(Number(np))) return;
-                      const k=`${nb.trim()}||${nm}`;
-                      const nfp={...fps,[k]:np};
-                      setSeller({...seller,filamentPrices:nfp});
-                      setNb(""); setNp("");
-                    }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
-                  </div>
-                );
-              })()}
+              <AddPriceRow materialList={materialList} fps={fps} seller={seller} setSeller={setSeller}/>
             </div>
           );
         })()}
