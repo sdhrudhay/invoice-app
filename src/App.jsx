@@ -5021,7 +5021,19 @@ function App() {
   const handleSetSbUrl=(v)=>{ setSbUrl(v); localStorage.setItem("sb_url",v); };
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
-  const tabs=[{id:"new",label:"New Order"},{id:"orders",label:"Orders"},{id:"clients",label:"Clients"},{id:"expenses",label:"Expenses"},{id:"assets",label:"Assets"},{id:"inventory",label:"Inventory"},{id:"products",label:"Products"},{id:"income",label:"Income"},{id:"dashboard",label:"Splitwise"},{id:"download",label:"Download"},{id:"settings",label:"Settings"}];
+  const TABS=[
+    {id:"new",     label:"New Order",  icon:"✏️",  group:"orders"},
+    {id:"orders",  label:"Orders",     icon:"📋",  group:"orders"},
+    {id:"clients", label:"Clients",    icon:"👥",  group:"orders"},
+    {id:"expenses",label:"Expenses",   icon:"💸",  group:"finance"},
+    {id:"income",  label:"Income",     icon:"📈",  group:"finance"},
+    {id:"dashboard",label:"Splitwise", icon:"⚖️", group:"finance"},
+    {id:"inventory",label:"Inventory", icon:"🧵",  group:"ops"},
+    {id:"products",label:"Products",   icon:"📦",  group:"ops"},
+    {id:"assets",  label:"Assets",     icon:"🏗️", group:"ops"},
+    {id:"download",label:"Download",   icon:"⬇️", group:"ops"},
+    {id:"settings",label:"Settings",   icon:"⚙️", group:"meta"},
+  ];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
@@ -5030,27 +5042,59 @@ function App() {
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
-      <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {seller.logo
-              ? <img src={seller.logo} alt="logo" className="h-9 max-w-[120px] object-contain"/>
-              : <span className="text-base font-black text-slate-800 tracking-tight">{seller.name||"Elace"}</span>
-            }
-            {syncStatus==="error"&&<span className="text-xs text-red-400">Failed to save — check connection</span>}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab===t.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t.label}</button>)}
-            </div>
-            <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
-              Sign Out{countdown!==null&&<span className="ml-1 text-xs font-black text-amber-600 tabular-nums bg-amber-100 px-1.5 py-0.5 rounded-md">{`${String(Math.floor(countdown/60)).padStart(2,"0")}:${String(countdown%60).padStart(2,"0")}`}</span>}
+      {/* ── Sidebar nav (desktop) ── */}
+      <div className="hidden md:flex fixed left-0 top-0 h-full w-16 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
+        {/* Logo */}
+        <div className="flex items-center justify-center h-14 border-b border-gray-100 shrink-0">
+          {seller.logo
+            ? <img src={seller.logo} alt="logo" className="h-7 w-7 object-contain rounded"/>
+            : <span className="text-lg font-black text-indigo-600">{(seller.name||"E")[0]}</span>
+          }
+        </div>
+        {/* Tabs */}
+        <div className="flex-1 flex flex-col items-center py-2 gap-0.5 overflow-y-auto">
+          {TABS.filter(t=>t.id!=="settings").map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} title={t.label}
+              className={`relative group w-full flex flex-col items-center justify-center py-2.5 text-lg transition-all ${tab===t.id?"text-indigo-600":"text-gray-400 hover:text-gray-700"}`}>
+              <span className="leading-none">{t.icon}</span>
+              {tab===t.id&&<span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-indigo-500 rounded-r"/>}
+              {/* Tooltip */}
+              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-slate-800 text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">{t.label}</span>
             </button>
-          </div>
+          ))}
+        </div>
+        {/* Bottom: sync + settings + logout */}
+        <div className="flex flex-col items-center pb-3 gap-1 border-t border-gray-100 pt-2 shrink-0">
+          {syncStatus==="saving"&&<span className="text-[8px] text-indigo-400 font-bold animate-pulse">SYNC</span>}
+          {syncStatus==="error"&&<span className="text-[8px] text-red-400 font-bold">ERR</span>}
+          <button onClick={()=>setTab("settings")} title="Settings"
+            className={`w-full flex flex-col items-center justify-center py-2 text-lg transition-all ${tab==="settings"?"text-indigo-600":"text-gray-400 hover:text-gray-700"}`}>
+            ⚙️
+          </button>
+          <button onClick={handleLogout} title={countdown!==null?String(Math.floor(countdown/60)).padStart(2,"0")+":"+String(countdown%60).padStart(2,"0"):"Sign Out"}
+            className="w-full flex flex-col items-center justify-center py-2 text-gray-400 hover:text-red-500 transition-all text-base">
+            {countdown!==null
+              ? <span className="text-[10px] font-black text-amber-600 tabular-nums leading-none">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
+              : <span className="text-sm">↪</span>}
+          </button>
         </div>
       </div>
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
+
+      {/* ── Bottom tab bar (mobile) ── */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-20 flex overflow-x-auto">
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            className={`flex-1 min-w-[48px] flex flex-col items-center justify-center py-2 gap-0.5 transition-all ${tab===t.id?"text-indigo-600":"text-gray-400"}`}>
+            <span className="text-base leading-none">{t.icon}</span>
+            <span className={`text-[9px] font-semibold leading-none ${tab===t.id?"text-indigo-600":"text-gray-400"}`}>{t.label.split(" ")[0]}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Main content area ── */}
+      <div className="md:pl-16 pb-16 md:pb-0">
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
@@ -5063,6 +5107,8 @@ function App() {
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
+        </div>
+      </div>
       </div>
     </div>
   );
