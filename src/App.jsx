@@ -534,8 +534,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
-      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"960px":"1120px"):"720px",tableLayout:"fixed"}}>
-        <colgroup>{hdrs.map((_,i)=><col key={i} style={{minWidth:i===1?"160px":i===2?"56px":i===3?"52px":i===4?"90px":i===5?"56px":i===6?"52px":"68px"}}/>)}</colgroup>
+      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
         <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
           {items.map((it,i)=>(
