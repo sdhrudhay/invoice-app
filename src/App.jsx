@@ -1520,7 +1520,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Tax Invoices</p>
                   <div className="space-y-2">
                     {tis.map(t=>{
-                      const tN=t.items.reduce((s,i)=>s+num(i.netAmt),0);
+                      const tN=t.items.reduce((s,i)=>s+num(i.netAmt),0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
                       return (
                         <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
@@ -1573,7 +1573,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           )}
 
           {tab==="payments" && (() => {
-            const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
+            const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
             const qt2=quotations.find(q=>q.orderId===order.orderNo);
             const qtTotal=qt2?num(qt2.amount):(order.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
             const orderTotal=tiTotal>0?tiTotal:qtTotal;
@@ -1793,7 +1793,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   useEffect(()=>{ if(initialOrder){ setOpenOrder(initialOrder); onClearInitialOrder(); } },[initialOrder]);
 
   const getTotal = (o) => {
-    const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+num(t.amount),0);
+    const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
     const qt=quotations.find(q=>q.orderId===o.orderNo);
     const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
     return tiTotal>0?tiTotal:qtTotal;
@@ -1951,8 +1951,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt=quotations.find(q=>q.orderId===o.orderNo);
     // Total: use tax invoice total if exists, else quotation/order items total
-    const tiTotal=tis.reduce((s,t)=>s+num(t.amount),0);
-    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
+    const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
+    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const tN=tiTotal>0?tiTotal:qtTotal;
     const bal=tN-getTotalPaid(o);
     const due=o.dueDate||"";
@@ -3243,7 +3243,8 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   const [typeFilter, setTypeFilter] = useState("All");
   const [recipientFilter, setRecipientFilter] = useState("");
   const [modeFilter, setModeFilter] = useState("All");
-  const [view, setView] = useState("payments"); // "payments" | "invoiced"
+  const [view, setView] = useState("payments");
+  const [statusFilter, setStatusFilter] = useState("All");
 
   const resolveName = (id) => {
     if (!id) return "";
@@ -3275,21 +3276,26 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   // Build invoiced orders list (orders that have a tax invoice)
   const invoicedOrders = orders.map(o => {
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
-    if (!tis.length) return null;
-    const invoicedAmt = tis.reduce((s,t)=>s+(t.amount||t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0);
+    const qt = quotations.find(q=>q.orderId===o.orderNo);
+    const invoicedAmt = tis.length
+      ? tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0)
+      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0));
     const paidAmt = (o.payments||[]).reduce((s,p)=>s+num(p.amount),0) + num(o.advance);
     const balance = invoicedAmt - paidAmt;
-    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos:tis.map(t=>t.invNo).join(", ") };
-  }).filter(Boolean);
+    const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
+    const docType = tis.length ? "Tax Invoice" : qt ? "Quotation" : "Order";
+    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType };
+  });
 
   const filteredInvoiced = invoicedOrders
     .filter(o => !fromDate || o.orderDate >= fromDate)
     .filter(o => !toDate || o.orderDate <= toDate)
     .filter(o => typeFilter === "All" || o.type === typeFilter)
+    .filter(o => statusFilter === "All" || o.status === statusFilter)
     .filter(o => {
       if (!search) return true;
       const s = search.toLowerCase();
-      return o.orderNo.toLowerCase().includes(s) || o.customerName.toLowerCase().includes(s) || o.invNos.toLowerCase().includes(s);
+      return o.orderNo.toLowerCase().includes(s) || o.customerName.toLowerCase().includes(s) || (o.invNos||"").toLowerCase().includes(s);
     })
     .sort((a,b) => b.orderDate.localeCompare(a.orderDate));
 
@@ -3340,7 +3346,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       </div>
       {/* View toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {[["payments","Payments Received"],["invoiced","Tax Invoices"]].map(([v,l])=>(
+        {[["payments","Payments Received"],["invoiced","All Orders"]].map(([v,l])=>(
           <button key={v} onClick={()=>setView(v)}
             className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${view===v?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{l}</button>
         ))}
@@ -3410,9 +3416,15 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
 
       {view==="invoiced"&&(
         <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            {["All","Pending","Completed","Cancelled"].map(s=>(
+              <button key={s} onClick={()=>setStatusFilter(s)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
+            ))}
+          </div>
           <div className="grid grid-cols-3 gap-3">
             {[
-              ["Invoiced", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
+              ["Order Value", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
               ["Collected", filteredInvoiced.reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
               ["Outstanding", filteredInvoiced.reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
             ].map(([label,amt,grad])=>(
@@ -3425,7 +3437,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
           {filteredInvoiced.length===0?(
             <div className="text-center py-16 text-gray-400">
               <p className="text-3xl mb-2">&#x1F4C4;</p>
-              <p className="font-medium">No tax invoices found.</p>
+              <p className="font-medium">No orders found.</p>
             </div>
           ):(
             <div className="space-y-2">
@@ -3436,7 +3448,9 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                       <span className="font-semibold text-slate-800 text-sm">{o.customerName}</span>
                       <span className="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{o.orderNo}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${o.type==="B2B"?"bg-blue-100 text-blue-700":"bg-emerald-100 text-emerald-700"}`}>{o.type}</span>
-                      <span className="text-xs text-gray-400 font-mono">{o.invNos}</span>
+                      {o.invNos&&<span className="text-xs text-gray-400 font-mono">{o.invNos}</span>}
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{o.docType}</span>
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{o.status}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-gray-400">{o.orderDate}</span>
