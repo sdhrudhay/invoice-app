@@ -3620,7 +3620,7 @@ function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"", qty:1 };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
-function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, deleteExpense=()=>{}, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
   const [showForm, setShowForm] = useState(false);
   const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
   const [purchaseDate, setPurchaseDate] = useState(today());
@@ -3773,8 +3773,19 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
 
   const handleDelete = (item) => {
     if (!window.confirm("Delete this filament entry?")) return;
-    setInventory(prev=>prev.filter(i=>i.id!==item.id));
+    const remainingInventory = inventory.filter(i=>i.id!==item.id);
+    // Check each linked expense — if no remaining spool references it, delete it
+    const linkedIds = item.linkedExpenseIds||[];
+    linkedIds.forEach(expId=>{
+      const stillUsed = remainingInventory.some(i=>(i.linkedExpenseIds||[]).includes(expId));
+      if (!stillUsed) {
+        const exp = expenses.find(e=>e.id===expId);
+        if (exp) { deleteExpense({...exp, isDeleted:true}); setExpenses(prev=>prev.filter(e=>e.id!==expId)); }
+      }
+    });
+    setInventory(remainingInventory);
     deleteInventoryItem(item);
+    if (linkedIds.length>0) toast("Spool deleted — linked expense also removed");
   };
 
   const byMaterial = {};
@@ -5456,7 +5467,7 @@ function App() {
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
           {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
-          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
+          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} deleteExpense={deleteExpense} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
