@@ -273,7 +273,7 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left">${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
@@ -303,7 +303,9 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   // When pickup, place of supply = seller's state always
   const _placeOfSupply = _pickup ? (seller.state||seller.stateCode||"") : (order.placeOfSupply||"");
   // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
-  const _customerState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
+  // Use current live order for state codes (not frozen snapshot) so adding state code later works
+  const _liveOrder = orderArg || order;
+  const _customerState = _liveOrder.type==="B2B" ? _liveOrder.billingStateCode : (_liveOrder.shippingStateCode||_liveOrder.billingStateCode);
   const isIgst = !_pickup && ng && seller.stateCode && _customerState && extractStateCode(_customerState) !== extractStateCode(seller.stateCode);
   const cols = ng ? (isIgst ? 10 : 12) : 8;
 
@@ -347,7 +349,7 @@ ${_pickup
   ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.item}</td><td>${it.hsn||"-"}</td>
+${items.map((it,i)=>`<tr><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left">${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
@@ -2672,7 +2674,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
 }
 
 // ─── Expense Tracker ──────────────────────────────────────────────────────────
-const EXPENSE_CATEGORIES = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Asset Purchase","Miscellaneous"];
+const DEFAULT_EXPENSE_CATS = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Asset Purchase","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
 function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{} }) {
@@ -2683,6 +2685,10 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [msg, setMsg] = useState("");
+  const [expTab, setExpTab] = useState("expenses");
+  const [cats, setCats] = useState(()=>{ try{const s=localStorage.getItem("expense_cats");return s?JSON.parse(s):DEFAULT_EXPENSE_CATS;}catch(e){return DEFAULT_EXPENSE_CATS;} });
+  const [newCat, setNewCat] = useState("");
+  const saveCats = (u) => { setCats(u); try{localStorage.setItem("expense_cats",JSON.stringify(u));}catch(e){} };
   const upd = (k,v) => setForm(p=>({...p,[k]:v}));
 
   const notify = (m, err=false) => { if(err){setMsg(m);setTimeout(()=>setMsg(""),2500);toast(m,"error");}else{toast(m);} };
@@ -2721,7 +2727,38 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const grandTotal = expenses.reduce((s,e)=>s+num(e.amount),0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[["expenses","Expenses"],["categories","Categories"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setExpTab(id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${expTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{label}</button>
+        ))}
+      </div>
+
+      {expTab==="categories"&&(
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">Manage expense categories. Default categories cannot be removed.</p>
+          <div className="flex gap-2">
+            <input value={newCat} onChange={e=>setNewCat(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&newCat.trim()){saveCats([...cats,newCat.trim()]);setNewCat("");}}}
+              placeholder="New category name…"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <button onClick={()=>{if(newCat.trim()){saveCats([...cats,newCat.trim()]);setNewCat("");}}}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Add</button>
+          </div>
+          <div className="space-y-1">
+            {cats.map(c=>(
+              <div key={c} className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2">
+                <span className="text-sm text-gray-700">{c}</span>
+                {!DEFAULT_EXPENSE_CATS.includes(c)&&<button onClick={()=>saveCats(cats.filter(x=>x!==c))} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {expTab==="expenses"&&<>
       {/* Form */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
@@ -2736,7 +2773,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
             </select>
           </div>
           <F label="Amount (₹)" type="number" value={form.amount} onChange={v=>upd("amount",v)} placeholder="0.00" required/>
-          <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={EXPENSE_CATEGORIES}/>
+          <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={cats}/>
           <F label="Comment (optional)" value={form.comment} onChange={v=>upd("comment",v)} placeholder="Any notes…" className="col-span-2"/>
         </div>
         <div className="flex gap-2 pt-1">
@@ -2770,7 +2807,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Category</span>
           <div className="flex gap-1 flex-wrap">
-            {["All",...EXPENSE_CATEGORIES].map(c=>(
+            {["All",...cats].map(c=>(
               <button key={c} onClick={()=>setCatFilter(c)} className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${catFilter===c?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"}`}>{c}</button>
             ))}
           </div>
@@ -2816,6 +2853,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
           );
         })}
       </div>
+      </>}
     </div>
   );
 }
@@ -5254,7 +5292,7 @@ function App() {
       <div className="md:pl-36 pb-16 md:pb-0">
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
+          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
