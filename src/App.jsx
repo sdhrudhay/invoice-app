@@ -196,7 +196,8 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const isIgst = ng && seller.stateCode && order.billingStateCode && String(order.billingStateCode).trim() !== String(seller.stateCode).trim();
+  const _igstStateQ = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
+  const isIgst = ng && seller.stateCode && _igstStateQ && String(_igstStateQ).trim() !== String(seller.stateCode).trim();
   const cols = ng ? (isIgst ? 10 : 12) : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -261,8 +262,10 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const isIgst = ng && seller.stateCode && order.billingStateCode && String(order.billingStateCode).trim() !== String(seller.stateCode).trim();
+  const _igstState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
+  const isIgst = ng && seller.stateCode && _igstState && String(_igstState).trim() !== String(seller.stateCode).trim();
   const cols = ng ? (isIgst ? 10 : 12) : 8;
+  const _pickupAtOffice = !order.shippingAddress?.trim() && !order.billingAddress?.trim();
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -292,10 +295,12 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
     <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
-<div class="two-col">
+${_pickupAtOffice
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555">Customer</span><br><b>${order.billingName||order.customerName}</b>${order.type==="B2B"?` &nbsp;|&nbsp; GSTIN: ${order.gstin||"-"}`:""}${order.phone||order.contact?`<br>${order.phone||order.contact}`:""}${isIgst?` &nbsp;<span style="color:#c00;font-weight:600">Inter-State Supply</span>`:""}<br><span style="font-size:10px;color:#777">Pickup at office &nbsp;·&nbsp; Place of Supply: ${order.placeOfSupply||seller.state}</span></div>`
+  : `<div class="two-col">
   <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
-</div>
+</div>`}
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
   <th>Unit Price</th><th>Qty</th><th>Disc%</th><th>Gross</th>
@@ -1153,7 +1158,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   useEffect(() => { setO(prev=>({...order, ...prev, payments: order.payments||[] })); }, [order.orderNo]);
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
-  const isIgst = o.needsGst && seller?.stateCode && o.billingStateCode && String(o.billingStateCode).trim() !== String(seller.stateCode).trim();
+  const _isIgstSC = o.type==="B2B" ? o.billingStateCode : (o.shippingStateCode||o.billingStateCode);
+  const isIgst = o.needsGst && seller?.stateCode && _isIgstSC && String(_isIgstSC).trim() !== String(seller.stateCode).trim();
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
