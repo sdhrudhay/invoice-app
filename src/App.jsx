@@ -775,7 +775,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <input type="checkbox" id="pickup-chk" checked={isPickup} onChange={e=>{setIsPickup(e.target.checked);if(e.target.checked){setPlaceOfSupply(stateByCode(seller?.stateCode)||seller?.state||"");}}} className="rounded accent-indigo-600 w-4 h-4"/>
             <label htmlFor="pickup-chk" className="text-sm font-semibold text-gray-700 cursor-pointer">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects from your office — no address needed)</span></label>
           </div>}
-          {(!isPickup||type==="B2B")&&<div className="border-t pt-4">
+          {(!isPickup||type==="B2B")&&(
+          <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
             <div className="grid grid-cols-2 gap-4">
               <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
@@ -783,6 +784,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="col-span-2"/>
             </div>
           </div>
+          )}
+          {(!isPickup||type==="B2B")&&(
           <div className="border-t pt-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-gray-700">Shipping Address</p>
@@ -811,7 +814,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
             </div>
           </div>
-          </div>}
+          )}
           {needsGst&&<div className="flex flex-col gap-1 w-64">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label>
             <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{placeOfSupply||<span className="text-gray-400 italic">Auto-filled from state code</span>}</div>
@@ -828,7 +831,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
           </div>
       </div>
-
+    </div>
   );
 }
 
