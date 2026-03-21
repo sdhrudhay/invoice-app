@@ -617,7 +617,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
         </tbody>
         <tfoot>
           <tr className="bg-slate-50 font-semibold">
-            <td colSpan={needsGst?(isIgst?8:9):7} className="px-2 py-2 text-right text-gray-400 text-xs">Totals →</td>
+            <td colSpan={6} className="px-2 py-2 text-right text-gray-400 text-xs">Totals →</td>
             <td className="px-2 py-2 text-right text-xs">₹{fmt(tG)}</td>
             {needsGst&&(isIgst
               ? <td className="px-2 py-2 text-right text-xs">₹{fmt(tC+tS)}</td>
