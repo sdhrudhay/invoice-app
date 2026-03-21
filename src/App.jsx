@@ -124,6 +124,7 @@ const SUPABASE_SQL = `
 -- alter table products add column if not exists product_type text default '3d_printed';
 -- 
 -- alter table orders add column if not exists filament_usage text default '[]';
+-- alter table orders add column if not exists is_pickup integer default 0;
 -- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
@@ -295,10 +296,12 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const _igstState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
-  const isIgst = ng && seller.stateCode && _igstState && String(_igstState).trim() !== String(seller.stateCode).trim();
+  // Pickup = explicit flag OR (B2C with no addresses)
+  const _pickup = !!(order.isPickup || (!order.shippingAddress?.trim() && !order.billingAddress?.trim() && order.type==="B2C"));
+  // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
+  const _customerState = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
+  const isIgst = !_pickup && ng && seller.stateCode && _customerState && String(_customerState).trim() !== String(seller.stateCode).trim();
   const cols = ng ? (isIgst ? 10 : 12) : 8;
-  const _pickupAtOffice = !order.shippingAddress?.trim() && !order.billingAddress?.trim();
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -328,8 +331,8 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
     <div class="inv-meta"><b>Invoice #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
-${_pickupAtOffice
-  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${order.placeOfSupply||seller.state}</span></div>`
+${_pickup
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${order.placeOfSupply||seller.state} &nbsp;·&nbsp; Office Pickup</span></div>`
   : `<div class="two-col">
   <div class="box"><div class="bt">Bill To${isIgst?" · <span style='color:#555;font-weight:normal'>Inter-State Supply</span>":""}</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
@@ -705,8 +708,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply} };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply,isPickup:!!(type==="B2C"&&needsGst&&isPickup)} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -1266,7 +1269,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:order.customerName,billingName:order.billingName,billingAddress:order.billingAddress,billingStateCode:order.billingStateCode,gstin:order.gstin||"",phone:order.phone||order.contact||"",shippingName:order.shippingName,shippingAddress:order.shippingAddress,shippingContact:order.shippingContact,shippingGstin:order.shippingGstin,shippingStateCode:order.shippingStateCode,type:order.type,needsGst:order.needsGst,placeOfSupply:order.placeOfSupply}};
+    const newInv = {...inv, orderId:order.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:order.customerName,billingName:order.billingName,billingAddress:order.billingAddress,billingStateCode:order.billingStateCode,gstin:order.gstin||"",phone:order.phone||order.contact||"",shippingName:order.shippingName,shippingAddress:order.shippingAddress,shippingContact:order.shippingContact,shippingGstin:order.shippingGstin,shippingStateCode:order.shippingStateCode,type:order.type,needsGst:order.needsGst,placeOfSupply:order.placeOfSupply,isPickup:!!order.isPickup}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1363,6 +1366,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} rows={2} className="col-span-2"/>
                 </div>
               </div>
+              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" checked={!!o.isPickup} onChange={e=>upd("isPickup",e.target.checked)} className="rounded accent-indigo-600 w-4 h-4"/><span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(CGST+SGST, no address on invoice)</span></span></label>}
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
               {/* Other Charges — saved on order, carried into Tax Invoice */}
@@ -4911,7 +4915,7 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -5005,7 +5009,8 @@ function App() {
       quotation_no:o.quotationNo||"", proforma_ids:JSON.stringify(o.proformaIds||[]),
       tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[]),
       filament_usage:JSON.stringify(o.filamentUsage||[]),
-      charges:JSON.stringify(o.charges||[])
+      charges:JSON.stringify(o.charges||[]),
+      is_pickup:o.isPickup?1:0
     }});
     syncItems("order", o.orderNo, o.items);
   };
