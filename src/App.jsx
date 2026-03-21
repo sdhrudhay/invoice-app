@@ -71,7 +71,7 @@ function StateSelect({ value, onChange, disabled=false, label="State/UT Code" })
 
 const EMPTY_CLIENT = { id:"", name:"", gstin:"", contact:"", email:"", billingName:"", billingAddress:"", billingStateCode:"", placeOfSupply:"", shippingName:"", shippingContact:"", shippingGstin:"", shippingAddress:"", shippingStateCode:"", clientType:"B2B" };
 
-const EMPTY_ITEM = { sl: 1, item: "", hsn: "", unit: "Nos", unitPrice: "", qty: "", discount: "", grossAmt: 0, cgstRate: 9, cgstAmt: 0, sgstRate: 9, sgstAmt: 0, netAmt: 0 };
+const EMPTY_ITEM = { sl: 1, item: "", hsn: "", unit: "Nos", unitPrice: "", qty: 1, discount: 0, grossAmt: 0, cgstRate: 9, cgstAmt: 0, sgstRate: 9, sgstAmt: 0, netAmt: 0 };
 
 function calcItem(it, needsGst=true) {
   const gross = num(it.unitPrice) * num(it.qty) * (1 - num(it.discount) / 100);
@@ -267,8 +267,8 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   </div>
 </div>
 <div class="two-col">
-  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
-  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:order.billingStateCode?`State Code: ${order.billingStateCode}<br>`:""}${order.phone||order.contact||""}</div>
+  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:((order.shippingStateCode||order.billingStateCode)?`State Code: ${order.shippingStateCode||order.billingStateCode}<br>`:"")}${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
@@ -346,8 +346,8 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
 ${_pickup
   ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px;line-height:1.8"><span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;letter-spacing:0.05em">Customer</span><br><b>${order.billingName||order.customerName}</b>${order.phone||order.contact?`<br><span style="font-size:10px;color:#555"><b>Contact:</b> ${order.phone||order.contact}</span>`:""}<br><span style="font-size:10px;color:#777"><b>Place of Supply:</b> ${_placeOfSupply}</span></div>`
   : `<div class="two-col">
-  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
-  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
+  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:order.billingStateCode?`State Code: ${order.billingStateCode}<br>`:""}${order.phone||order.contact||""}</div>
+  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:((order.shippingStateCode||order.billingStateCode)?`State Code: ${order.shippingStateCode||order.billingStateCode}<br>`:"")}${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
 </div>`}
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
@@ -534,7 +534,8 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const hdrs = ["#","Item / Description","HSN","Unit","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-100">
-      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
+      <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"960px":"1120px"):"720px",tableLayout:"fixed"}}>
+        <colgroup>{hdrs.map((_,i)=><col key={i} style={{minWidth:i===1?"160px":i===2?"56px":i===3?"52px":i===4?"90px":i===5?"56px":i===6?"52px":"68px"}}/>)}</colgroup>
         <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
           {items.map((it,i)=>(
