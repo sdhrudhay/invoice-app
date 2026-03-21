@@ -441,6 +441,111 @@ function S({ label, value, onChange, options, className="" }) {
 }
 
 // ─── Item Table ───────────────────────────────────────────────────────────────
+
+function ProductPicker({ products, onSelect, rowIdx }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const ref = React.useRef();
+  const btnRef = React.useRef();
+  const [pos, setPos] = React.useState({top:0,left:0});
+
+  React.useEffect(()=>{
+    if (!open) return;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({top: r.bottom+4, left: r.left});
+    const close = (e)=>{ if(ref.current&&!ref.current.contains(e.target)&&!btnRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return ()=>document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const filtered = products.filter(p=>!q||p.name.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="relative inline-block">
+      <button ref={btnRef} type="button" onClick={()=>{ setQ(""); setOpen(v=>!v); }}
+        className="border border-indigo-200 text-xs text-indigo-500 rounded px-1.5 py-0.5 bg-transparent hover:bg-indigo-50 whitespace-nowrap">
+        + Product
+      </button>
+      {open&&(
+        <div ref={ref} className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl" style={{top:pos.top,left:pos.left,minWidth:"180px",maxHeight:"240px",display:"flex",flexDirection:"column"}}>
+          <div className="p-1.5 border-b border-gray-100">
+            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search products…"
+              className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"/>
+          </div>
+          <div className="overflow-y-auto">
+            {filtered.length===0&&<p className="text-xs text-gray-400 px-3 py-2">No products found</p>}
+            {filtered.map(p=>(
+              <button key={p.id} type="button" onClick={()=>{ onSelect(p); setOpen(false); setQ(""); }}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-gray-700">{p.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpoolPicker({ spoolOptions, onSelect }) {
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+  const ref = React.useRef();
+  const btnRef = React.useRef();
+  const [pos, setPos] = React.useState({top:0,left:0});
+
+  React.useEffect(()=>{
+    if (!open) return;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({top: r.bottom+4, left: r.left});
+    const close = (e)=>{ if(ref.current&&!ref.current.contains(e.target)&&!btnRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return ()=>document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const filtered = spoolOptions.filter(sg=>{
+    if (!q) return true;
+    const s=q.toLowerCase();
+    return [sg.brand,sg.material,sg.color].filter(Boolean).join(" ").toLowerCase().includes(s);
+  });
+
+  // Group by material
+  const byMaterial = {};
+  filtered.forEach(sg=>{ const m=sg.material||"Other"; if(!byMaterial[m])byMaterial[m]=[]; byMaterial[m].push(sg); });
+
+  return (
+    <div className="relative inline-block">
+      <button ref={btnRef} type="button" onClick={()=>{ setQ(""); setOpen(v=>!v); }}
+        className="border border-orange-200 text-xs text-orange-500 rounded px-1.5 py-0.5 bg-transparent hover:bg-orange-50 whitespace-nowrap">
+        + Spool
+      </button>
+      {open&&(
+        <div ref={ref} className="fixed z-[9999] bg-white border border-orange-200 rounded-xl shadow-xl" style={{top:pos.top,left:pos.left,minWidth:"220px",maxHeight:"280px",display:"flex",flexDirection:"column"}}>
+          <div className="p-1.5 border-b border-gray-100">
+            <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search brand, material, colour…"
+              className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400"/>
+          </div>
+          <div className="overflow-y-auto">
+            {filtered.length===0&&<p className="text-xs text-gray-400 px-3 py-2">No spools found</p>}
+            {Object.entries(byMaterial).map(([mat,spools])=>(
+              <div key={mat}>
+                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-gray-100">{mat}</p>
+                {spools.map((sg,si)=>(
+                  <button key={si} type="button" onClick={()=>{ onSelect(sg); setOpen(false); setQ(""); }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-orange-50">
+                    <span className="font-semibold text-gray-700">{sg.brand||"—"}</span>
+                    <span className="text-gray-400 mx-1">·</span>
+                    <span className="text-gray-600">{sg.color||"—"}</span>
+                    <span className="ml-1.5 text-gray-400 text-[10px]">{(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null, onSpoolRemoved=null, onSpoolQtyChanged=null }) {
   const upd = (i,f,v) => setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it));
   const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
@@ -545,15 +650,9 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               <td className="px-2 py-1.5 max-w-[220px]">
                 <div className="flex flex-col gap-0.5">
                   <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
-                  {(products.length>0||spoolOptions.length>0)&&<div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                    {products.length>0&&<select onChange={e=>{ if(e.target.value){ const p=products.find(p=>p.id===e.target.value); if(p) applyProduct(i,p); e.target.value=""; }}} className="border border-indigo-200 bg-transparent text-xs text-indigo-500 focus:outline-none cursor-pointer appearance-none rounded px-1.5 py-0.5" style={{width:"auto"}} title="Fill from product">
-                      <option value="">+ Product</option>
-                      {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>}
-                    {spoolOptions.length>0&&<select onChange={e=>{ if(e.target.value){ const sg=spoolOptions[Number(e.target.value)]; if(sg) applySpoolToRow(i,sg,sg.spoolIds[0]); e.target.value=""; }}} className="border border-orange-200 bg-transparent text-xs text-orange-500 focus:outline-none cursor-pointer appearance-none rounded px-1.5 py-0.5" style={{width:"auto"}} title="Add full spool from inventory">
-                      <option value="">+ Spool</option>
-                      {spoolOptions.map((sg,si)=><option key={si} value={si}>{[sg.brand,sg.material,sg.color].filter(Boolean).join(' ')} {(Number(sg.weightG)/1000).toFixed(Number(sg.weightG)%1000===0?0:2)}kg ×{sg.count}</option>)}
-                    </select>}
+                  {(products.length>0||spoolOptions.length>0)&&<div className="flex items-center gap-1 mt-0.5">
+                    {products.length>0&&<ProductPicker products={products} onSelect={p=>applyProduct(i,p)} rowIdx={i}/>}
+                    {spoolOptions.length>0&&<SpoolPicker spoolOptions={spoolOptions} onSelect={sg=>applySpoolToRow(i,sg,sg.spoolIds[0])}/>}
                   </div>}
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
                 </div>
