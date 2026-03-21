@@ -456,7 +456,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
     if (o.orderNo===currentOrderNo) return; // exclude current order
     (o.filamentUsage||[]).forEach(u => { spoolUsed[u.inventoryId]=(spoolUsed[u.inventoryId]||0)+Number(u.weightUsedG||0); });
   });
-  wastageLog.filter(w=>!w.orderNo).forEach(w => {
+  wastageLog.forEach(w => {
     const groupSpools = inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).sort((a,b)=>Number(b.weightG)-Number(a.weightG));
     let rem=Number(w.weightG||0);
     for(const s of groupSpools){ const take=Math.min(rem,Math.max(0,Number(s.weightG||0)-(spoolUsed[s.id]||0))); spoolUsed[s.id]=(spoolUsed[s.id]||0)+take; rem-=take; if(rem<=0)break; }
@@ -925,10 +925,8 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       if (remaining>0.05) toast(`Only ${(need-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
     }
     if (newEntries.length===0) { toast("No stock remaining in this filament group","error"); return; }
-    const updated = [...filamentUsage, ...newEntries];
-    setFilamentUsage(updated);
-    // If marked as waste, also register in inventory wastage log
     if (newUsage.isWaste) {
+      // Waste: store ONLY in wastageLog — not in filamentUsage — to avoid double-counting
       const parts = newUsage.groupKey.split("||");
       const totalWasteG = newEntries.reduce((s,e)=>s+Number(e.weightUsedG||0),0);
       onAddWastage({
@@ -943,10 +941,16 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
         orderNo: currentOrderNo,
         notes: newUsage.notes||"",
       });
+      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
+      toast("Wastage recorded");
+    } else {
+      // Normal usage: store in filamentUsage on the order
+      const updated = [...filamentUsage, ...newEntries];
+      setFilamentUsage(updated);
+      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
+      onSave(updated);
+      toast("Filament usage recorded");
     }
-    setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
-    onSave(updated);
-    toast("Filament usage recorded");
   };
 
   const handleRemove = (removeId) => {
@@ -975,10 +979,9 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   });
   // Only standalone wastage (no orderNo) — order-linked waste already in usedPerSpool via filamentUsage
-  const _standaloneW = wastageLog.filter(w=>!w.orderNo);
   const _wTmpRem = {};
   inventory.forEach(i=>{ _wTmpRem[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
-  _standaloneW.forEach(w => {
+  wastageLog.forEach(w => {
     let wLeft = Number(w.weightG||0);
     const spools = inventory
       .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
@@ -3566,15 +3569,14 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
     usedPerSpool[u.inventoryId] = (usedPerSpool[u.inventoryId]||0) + Number(u.weightUsedG||0);
   }));
   // Only standalone wastage (no orderNo) — order-linked waste already counted via filamentUsage
-  const standaloneWaste = wastageLog.filter(w=>!w.orderNo);
-  standaloneWaste.forEach(w => {
+  wastageLog.forEach(w => {
     inventory.filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey).forEach(i=>{
       usedPerSpool[i.id] = (usedPerSpool[i.id]||0);
     });
   });
   const _tmpRemaining = {};
   inventory.forEach(i=>{ _tmpRemaining[i.id] = Number(i.weightG||0) - (usedPerSpool[i.id]||0); });
-  standaloneWaste.forEach(w => {
+  wastageLog.forEach(w => {
     let wLeft = Number(w.weightG||0);
     const spools = inventory
       .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===w.groupKey)
