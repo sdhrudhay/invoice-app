@@ -664,7 +664,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
                   <button type="button" title="Calculate from filament weight"
                     onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top}:it2)); }}
-                    className="absolute right-0 text-indigo-300 hover:text-indigo-500 font-semibold leading-none" style={{fontSize:"9px"}}>g→₹</button>
+                    className="absolute right-0 text-[10px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded px-1 py-0.5 leading-none border border-indigo-200" >g→₹</button>
                 </div>
                 {it._calcOpen&&(
                   <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",top:(it._calcY||0)+24,left:Math.min((it._calcX||0)-180, window.innerWidth-240)}}>
@@ -1258,13 +1258,13 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                   <div key={d.bk} className={`rounded-xl px-4 py-3 border ${borderCls}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {fi&&<span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[fi.material]||"bg-gray-100 text-gray-600"}`}>{fi.material}</span>}
-                          <span className="text-sm font-semibold text-slate-700">{fi?`${fi.brand||"No brand"} — ${fi.color||"No colour"}`:"Unknown"}</span>
-                          {isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
+                        <div className="flex items-start gap-1.5 flex-wrap min-w-0">
+                          {fi&&<span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${matColors[fi.material]||"bg-gray-100 text-gray-600"}`}>{fi.material}</span>}
+                          <span className="text-xs font-semibold text-slate-700 min-w-0 break-words">{fi?`${fi.brand||"No brand"} · ${fi.color||"No colour"}`:"Unknown"}</span>
+                          {isWaste&&<span className="shrink-0 text-[10px] bg-orange-100 text-orange-600 font-semibold px-1.5 py-0.5 rounded-full">Waste</span>}
                         </div>
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <span className="text-sm font-bold text-indigo-700">{d.totalG.toFixed(1)} g total</span>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-xs font-bold text-indigo-700">{d.totalG.toFixed(1)} g total</span>
                           {d.notes&&<span className="text-xs text-gray-400 italic">{d.notes}</span>}
                         </div>
                         {d.entries.length>1&&(
@@ -1287,14 +1287,14 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         {item
-                          ? <><span className={`px-2 py-0.5 rounded-full text-xs font-bold ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</span>
-                             <span className="text-sm font-semibold text-slate-700">{item.brand||"No brand"} — {item.color||"No colour"}</span></>
+                          ? <><span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</span>
+                             <span className="text-xs font-semibold text-slate-700 min-w-0 break-words">{item.brand||"No brand"} · {item.color||"No colour"}</span></>
                           : <span className="text-xs text-gray-400 italic">Spool not found</span>
                         }
-                        {isWaste&&<span className="text-xs bg-orange-100 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Waste</span>}
+                        {isWaste&&<span className="shrink-0 text-[10px] bg-orange-100 text-orange-600 font-semibold px-1.5 py-0.5 rounded-full">Waste</span>}
                       </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-sm font-bold text-indigo-700">{Number(u.weightUsedG).toFixed(1)} g</span>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs font-bold text-indigo-700">{Number(u.weightUsedG).toFixed(1)} g</span>
                         {u.notes&&<span className="text-xs text-gray-400 italic">{u.notes}</span>}
                       </div>
                     </div>
@@ -2074,7 +2074,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const isOverdue=o.status==="Pending"&&due&&due<todayStr;
     const isDueSoon=o.status==="Pending"&&due&&due>=todayStr&&due<=addDays(todayStr,3);
     return (
-      <div key={o.orderNo} onClick={()=>setOpenOrder(o)} className={`border rounded-xl px-4 py-3 hover:shadow-md transition-all bg-white cursor-pointer ${isOverdue?"border-red-200 bg-red-50/30":isDueSoon?"border-amber-200 bg-amber-50/30":"border-gray-100 hover:border-indigo-200"}`}>
+      <div key={o.orderNo} onClick={()=>setOpenOrder(o)} className={`border rounded-lg px-3 py-2.5 hover:shadow-sm transition-all bg-white cursor-pointer ${isOverdue?"border-red-200 bg-red-50/30":isDueSoon?"border-amber-200 bg-amber-50/30":"border-gray-100 hover:border-indigo-200"}`}>
         {/* Row 1: order no + badges + arrow */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -2086,25 +2086,25 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           <span className="text-gray-300 shrink-0">›</span>
         </div>
         {/* Row 2: customer + GSTIN */}
-        <p className="text-sm font-bold text-gray-800 mt-1 leading-tight">{o.customerName}</p>
-        {o.type==="B2B"&&o.gstin&&<p className="text-xs text-gray-400 font-mono">{o.gstin}</p>}
+        <p className="text-xs font-bold text-gray-800 mt-0.5 leading-tight">{o.customerName}</p>
+        {o.type==="B2B"&&o.gstin&&<p className="text-[10px] text-gray-400 font-mono">{o.gstin}</p>}
         {/* Row 3: data pills */}
-        <div className="grid grid-cols-5 gap-0 mt-2 border border-gray-100 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-5 gap-0 mt-1.5 border border-gray-100 rounded-md overflow-hidden">
           {[
-            ["Order Date", o.orderDate||"—", "text-gray-600"],
-            ["Due Date", due||"—", isOverdue?"text-red-600":isDueSoon?"text-amber-600":"text-gray-600"],
+            ["Date", o.orderDate||"—", "text-gray-600"],
+            ["Due", due||"—", isOverdue?"text-red-600":isDueSoon?"text-amber-600":"text-gray-600"],
             ["Total", tN>0?`₹${fmt(tN)}`:"—", "text-gray-800"],
             ["Advance", num(o.advance)>0?`₹${fmt(o.advance)}`:"—", "text-emerald-600"],
-            ["Balance Due", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
+            ["Balance", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
           ].map(([lbl,val,cls],i)=>(
-            <div key={i} className={`py-2 flex flex-col items-center justify-center ${i<4?"border-r border-gray-100":""}`}>
-              <p className="leading-none mb-1 text-center text-gray-500 font-semibold uppercase tracking-wide" style={{fontSize:"9px"}}>{lbl}</p>
-              <p className={`text-xs font-semibold text-center ${cls}`}>{val}</p>
+            <div key={i} className={`py-1.5 flex flex-col items-center justify-center ${i<4?"border-r border-gray-100":""}`}>
+              <p className="leading-none mb-0.5 text-center text-gray-400 font-semibold uppercase tracking-wide" style={{fontSize:"8px"}}>{lbl}</p>
+              <p className={`font-semibold text-center ${cls}`} style={{fontSize:"10px"}}>{val}</p>
             </div>
           ))}
         </div>
         {/* Row 4: print buttons */}
-        <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100" onClick={e=>e.stopPropagation()}>
+        <div className="flex gap-1 flex-wrap mt-1.5 pt-1.5 border-t border-gray-100" onClick={e=>e.stopPropagation()}>
           {qt&&<button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-2.5 py-1 rounded-full font-mono">👁 {qt.invNo}</button>}
           {pfs.map(p=><button key={p.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-50 px-2.5 py-1 rounded-full font-mono">👁 {p.invNo}</button>)}
           {tis.map(t=><button key={t.invNo} onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-700 hover:bg-slate-50 px-2.5 py-1 rounded-full font-mono">👁 {t.invNo}</button>)}
