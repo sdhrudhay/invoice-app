@@ -100,6 +100,7 @@ const DEFAULT_SELLER = {
   state: "Karnataka", stateCode: "29", phone: "+91 98765 43210",
   email: "billing@yourcompany.com", bank: "HDFC Bank",
   accountNo: "XXXXXXXXXXXX", ifsc: "HDFC0001234", logo: "",
+  qtTerms: "1. This quotation is valid for 15 days from the date of issue.\n2. Prices are subject to change without prior notice.\n3. 50% advance payment required to confirm the order.\n4. Delivery timelines will be confirmed upon order confirmation.",
   pfTerms: "1. This proforma invoice is valid for 15 days from the date of issue.\n2. 50% advance payment required to confirm the order.\n3. Prices are subject to change without prior notice.\n4. Delivery timelines will be confirmed upon order confirmation.",
   tiTerms: "1. Payment due within 30 days from invoice date.\n2. Goods once sold will not be taken back or exchanged.\n3. Interest @18% p.a. will be charged on overdue payments.\n4. Subject to local jurisdiction only.",
   signatory: "",
@@ -266,9 +267,10 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
     <div class="inv-meta"><b>Quotation #:</b> ${inv.invNo}<br><b>Date:</b> ${inv.invDate}<br><b>Order #:</b> ${order.orderNo}<br>${order.placeOfSupply?`<b>Place of Supply:</b> ${order.placeOfSupply}<br>`:""}</div>
   </div>
 </div>
-<div class="two-col">
-  <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:order.billingStateCode?`State Code: ${order.billingStateCode}<br>`:""}${order.phone||order.contact||""}</div>
-  <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:((order.shippingStateCode||order.billingStateCode)?`State Code: ${order.shippingStateCode||order.billingStateCode}<br>`:"")}${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
+<div class="box" style="margin:10px 0;font-size:11px;line-height:1.8">
+  <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;letter-spacing:0.05em">Customer</span><br>
+  <b>${order.billingName||order.customerName}</b>${order.type==="B2B"?` &nbsp;|&nbsp; GSTIN: ${order.gstin||"-"}`:""}<br>
+  <span style="font-size:10px;color:#555"><b>Contact:</b> ${order.phone||order.contact||"-"}</span>
 </div>
 <table><thead><tr>
   <th>#</th><th>Item / Description</th><th>HSN</th>
@@ -285,7 +287,7 @@ ${items.map((it,i)=>`<tr><td>${i+1}</td><td style="max-width:220px;word-break:br
   <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN)}</td></tr>
 </tfoot></table>
 ${inv.notes?`<div style="font-size:11px;color:#555;margin:8px 0"><b>Notes:</b> ${inv.notes}</div>`:""}
-<div class="validity">This is a quotation only and not a tax invoice. Prices are valid for 15 days from the date of issue.</div>
+${seller.qtTerms?`<div style="margin-top:12px;padding:10px 12px;background:#f9f9f9;border:1px solid #eee;border-radius:5px;font-size:10px;color:#444;line-height:1.8"><b style="font-size:11px">Terms & Conditions</b><br>${(seller.qtTerms||"").replace(/\n/g,"<br>")}</div>`:`<div class="validity">This is a quotation only and not a tax invoice.</div>`}
 </div></body></html>`;
 }
 
@@ -2436,6 +2438,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <h3 className="font-bold text-gray-800 mb-1">Terms & Conditions</h3>
         <p className="text-xs text-gray-400 mb-4">Printed at the bottom of each invoice. Leave blank to omit.</p>
         <div className="space-y-4">
+          <F label="Quotation — Terms & Conditions" value={s.qtTerms||""} onChange={v=>setS({...s,qtTerms:v})} rows={4} placeholder="Enter terms for quotations…"/>
           <F label="Proforma Invoice — Terms & Conditions" value={s.pfTerms} onChange={v=>setS({...s,pfTerms:v})} rows={4} placeholder="Enter terms for proforma invoices…"/>
           <F label="Tax Invoice — Terms & Conditions" value={s.tiTerms} onChange={v=>setS({...s,tiTerms:v})} rows={4} placeholder="Enter terms for tax invoices…"/>
         </div>
