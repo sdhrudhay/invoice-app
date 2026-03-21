@@ -5043,39 +5043,44 @@ function App() {
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
       {/* ── Sidebar nav (desktop) ── */}
-      <div className="hidden md:flex fixed left-0 top-0 h-full w-16 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
-        {/* Logo */}
-        <div className="flex items-center justify-center h-14 border-b border-gray-100 shrink-0">
+      <div className="hidden md:flex fixed left-0 top-0 h-full w-44 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
+        {/* Logo / brand */}
+        <div className="flex items-center gap-2.5 px-4 h-16 border-b border-gray-100 shrink-0">
           {seller.logo
-            ? <img src={seller.logo} alt="logo" className="h-7 w-7 object-contain rounded"/>
-            : <span className="text-lg font-black text-indigo-600">{(seller.name||"E")[0]}</span>
+            ? <img src={seller.logo} alt="logo" className="h-10 max-w-[120px] object-contain"/>
+            : <span className="text-sm font-black text-indigo-600 tracking-tight leading-tight">{seller.name||"Elace"}</span>
           }
         </div>
         {/* Tabs */}
-        <div className="flex-1 flex flex-col items-center py-2 gap-0.5 overflow-y-auto">
+        <div className="flex-1 flex flex-col py-3 gap-0.5 overflow-y-auto px-2">
           {TABS.filter(t=>t.id!=="settings").map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} title={t.label}
-              className={`relative group w-full flex flex-col items-center justify-center py-2.5 text-lg transition-all ${tab===t.id?"text-indigo-600":"text-gray-400 hover:text-gray-700"}`}>
-              <span className="leading-none">{t.icon}</span>
-              {tab===t.id&&<span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-indigo-500 rounded-r"/>}
-              {/* Tooltip */}
-              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-slate-800 text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50">{t.label}</span>
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={`relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab===t.id?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
+              {tab===t.id&&<span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-500 rounded-r"/>}
+              <span className="text-sm leading-none shrink-0">{t.icon}</span>
+              <span className="truncate">{t.label}</span>
             </button>
           ))}
         </div>
-        {/* Bottom: sync + settings + logout */}
-        <div className="flex flex-col items-center pb-3 gap-1 border-t border-gray-100 pt-2 shrink-0">
-          {syncStatus==="saving"&&<span className="text-[8px] text-indigo-400 font-bold animate-pulse">SYNC</span>}
-          {syncStatus==="error"&&<span className="text-[8px] text-red-400 font-bold">ERR</span>}
-          <button onClick={()=>setTab("settings")} title="Settings"
-            className={`w-full flex flex-col items-center justify-center py-2 text-lg transition-all ${tab==="settings"?"text-indigo-600":"text-gray-400 hover:text-gray-700"}`}>
-            ⚙️
+        {/* Bottom: sync status + settings + sign out */}
+        <div className="flex flex-col border-t border-gray-100 pt-2 pb-3 px-2 gap-0.5 shrink-0">
+          {(syncStatus==="saving"||syncStatus==="error")&&(
+            <div className="px-3 py-1">
+              {syncStatus==="saving"&&<span className="text-[10px] text-indigo-400 font-semibold animate-pulse">Saving…</span>}
+              {syncStatus==="error"&&<span className="text-[10px] text-red-400 font-semibold">Failed to save</span>}
+            </div>
+          )}
+          <button onClick={()=>setTab("settings")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab==="settings"?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
+            <span className="text-sm leading-none shrink-0">⚙️</span>
+            <span>Settings</span>
           </button>
-          <button onClick={handleLogout} title={countdown!==null?String(Math.floor(countdown/60)).padStart(2,"0")+":"+String(countdown%60).padStart(2,"0"):"Sign Out"}
-            className="w-full flex flex-col items-center justify-center py-2 text-gray-400 hover:text-red-500 transition-all text-base">
-            {countdown!==null
-              ? <span className="text-[10px] font-black text-amber-600 tabular-nums leading-none">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
-              : <span className="text-xs font-bold text-gray-400">OUT</span>}
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition-all">
+            <span className="text-sm leading-none shrink-0">🚪</span>
+            <span>{countdown!==null
+              ? <span className="font-black text-amber-600 tabular-nums">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
+              : "Sign Out"}</span>
           </button>
         </div>
       </div>
@@ -5092,7 +5097,7 @@ function App() {
       </div>
 
       {/* ── Main content area ── */}
-      <div className="md:pl-16 pb-16 md:pb-0">
+      <div className="md:pl-44 pb-16 md:pb-0">
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products}/>}
