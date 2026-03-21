@@ -2086,8 +2086,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           <span className="text-gray-300 shrink-0">›</span>
         </div>
         {/* Row 2: customer + GSTIN */}
-        <p className="text-xs font-bold text-gray-800 mt-0.5 leading-tight">{o.customerName}</p>
-        {o.type==="B2B"&&o.gstin&&<p className="text-[10px] text-gray-400 font-mono">{o.gstin}</p>}
+        <p className="text-sm font-bold text-gray-800 mt-1 leading-tight">{o.customerName}</p>
+        {o.type==="B2B"&&o.gstin&&<p className="text-xs text-gray-400 font-mono">{o.gstin}</p>}
         {/* Row 3: data pills */}
         <div className="grid grid-cols-5 gap-0 mt-1.5 border border-gray-100 rounded-md overflow-hidden">
           {[
@@ -2098,8 +2098,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             ["Balance", tN>0?(bal>0?`₹${fmt(bal)}`:"Nil"):"—", bal>0?"text-orange-500":"text-gray-400"],
           ].map(([lbl,val,cls],i)=>(
             <div key={i} className={`py-1.5 flex flex-col items-center justify-center ${i<4?"border-r border-gray-100":""}`}>
-              <p className="leading-none mb-0.5 text-center text-gray-400 font-semibold uppercase tracking-wide" style={{fontSize:"8px"}}>{lbl}</p>
-              <p className={`font-semibold text-center ${cls}`} style={{fontSize:"10px"}}>{val}</p>
+              <p className="leading-none mb-1 text-center text-gray-500 font-semibold uppercase tracking-wide" style={{fontSize:"9px"}}>{lbl}</p>
+              <p className={`text-xs font-semibold text-center ${cls}`}>{val}</p>
             </div>
           ))}
         </div>
@@ -3981,10 +3981,10 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
               return (
                 <div key={gi} className="bg-white border border-gray-100 rounded-xl px-4 py-3 hover:shadow-sm transition-all">
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`}>{g.material}</div>
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 mt-0.5 ${matColors[g.material]||"bg-gray-100 text-gray-600"}`} style={{minWidth:0,maxWidth:"80px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{g.material}</div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-slate-800">{g.brand||<span className="text-gray-400 font-normal">No brand</span>} <span className="font-normal text-gray-500">— {g.color||"No colour"}</span></p>
+                        <p className="text-sm font-bold text-slate-800 truncate">{g.brand||<span className="text-gray-400 font-normal">No brand</span>} <span className="font-normal text-gray-500">· {g.color||"No colour"}</span></p>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <span className="text-xs text-gray-500">{g.spoolsLeft||0} of {g.items.length} spool{g.items.length!==1?"s":""} left · {(g.totalWeight/1000).toFixed(2)} kg total</span>
                           <span className={`text-xs font-bold ${c}`}>{g.totalRemaining.toFixed(0)}g left ({pct}%)</span>
