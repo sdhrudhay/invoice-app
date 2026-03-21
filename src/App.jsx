@@ -338,7 +338,7 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   </div>
 </div>
 ${_pickup
-  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b><br><span style="font-size:10px;color:#777">Place of Supply: ${_placeOfSupply}</span></div>`
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b>${order.phone||order.contact?`<br><span style="font-size:11px">${order.phone||order.contact}</span>`:""}<br><span style="font-size:10px;color:#777">Place of Supply: ${_placeOfSupply}</span></div>`
   : `<div class="two-col">
   <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
@@ -1211,8 +1211,12 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   useEffect(() => { setO(prev=>({...order, ...prev, payments: order.payments||[] })); }, [order.orderNo]);
 
   const upd = (k,v) => setO(p=>({...p,[k]:v}));
-  const _isIgstSC = o.type==="B2B" ? o.billingStateCode : (o.shippingStateCode||o.billingStateCode);
-  const isIgst = !o.isPickup && o.needsGst && seller?.stateCode && _isIgstSC && extractStateCode(_isIgstSC) !== extractStateCode(seller.stateCode);
+  // Merge o (live edits) with order (saved) — o wins for edits, order fills gaps
+  const _scFromO = o.type==="B2B"
+    ? (o.billingStateCode||order.billingStateCode)
+    : (o.shippingStateCode||order.shippingStateCode||o.billingStateCode||order.billingStateCode);
+  const _pickupFromO = o.isPickup !== undefined ? o.isPickup : order.isPickup;
+  const isIgst = !_pickupFromO && (o.needsGst??order.needsGst) && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
   const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
@@ -1356,6 +1360,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
               </div>
+              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
+                <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} className="rounded accent-indigo-600 w-4 h-4"/>
+                <span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects — CGST+SGST, no address on invoice)</span></span>
+              </label>}
+              {!o.isPickup&&<>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
                 <div className="grid grid-cols-2 gap-4">
@@ -1374,7 +1383,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} rows={2} className="col-span-2"/>
                 </div>
               </div>
-              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); }} className="rounded accent-indigo-600 w-4 h-4"/><span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(CGST+SGST, no address on invoice)</span></span></label>}
+              </>}
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
               {/* Other Charges — saved on order, carried into Tax Invoice */}
