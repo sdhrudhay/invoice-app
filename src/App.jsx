@@ -300,7 +300,8 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
-  const ng = order.needsGst;
+  // For tax invoices, needsGst is always true by definition
+  const ng = type==="tax" ? true : (orderArg.needsGst !== undefined ? orderArg.needsGst : order.needsGst);
   // Pickup = ONLY the explicit flag
   const _pickup = !!order.isPickup;
   // When pickup, place of supply = seller's state always
@@ -1286,7 +1287,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
     // Use live local state `o` (not prop `order`) so unsaved address/pickup edits are captured
     const snapOrder = o || order;
-    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
+    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:type==="tax"?true:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1365,7 +1366,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
               </div>
-              {o.needsGst&&o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
+              {o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
                 <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} className="rounded accent-indigo-600 w-4 h-4"/>
                 <span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects — CGST+SGST, no address on invoice)</span></span>
               </label>}
