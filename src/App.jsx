@@ -232,8 +232,11 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
   const tN = items.reduce((s,i)=>s+num(i.netAmt),0);
   const ng = order.needsGst;
-  const _igstStateQ = order.type==="B2B" ? order.billingStateCode : (order.shippingStateCode||order.billingStateCode);
-  const isIgst = !order.isPickup && ng && seller.stateCode && _igstStateQ && extractStateCode(_igstStateQ) !== extractStateCode(seller.stateCode);
+  const _billSCQ = orderArg.billingStateCode || order.billingStateCode;
+  const _shipSCQ = orderArg.shippingStateCode || order.shippingStateCode;
+  const _igstStateQ = order.type==="B2B" ? _billSCQ : (_shipSCQ || _billSCQ);
+  const _pickupQ = orderArg.isPickup !== undefined ? orderArg.isPickup : order.isPickup;
+  const isIgst = !_pickupQ && ng && seller.stateCode && _igstStateQ && extractStateCode(_igstStateQ) !== extractStateCode(seller.stateCode);
   const cols = ng ? (isIgst ? 10 : 12) : 8;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${inv.invNo}</title>
 <style>
@@ -303,9 +306,11 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   // When pickup, place of supply = seller's state always
   const _placeOfSupply = _pickup ? (seller.state||seller.stateCode||"") : (order.placeOfSupply||"");
   // IGST: never on pickup; for B2B use billing state; for B2C use shipping state
-  // Use current live order for state codes (not frozen snapshot) so adding state code later works
-  const _liveOrder = orderArg || order;
-  const _customerState = _liveOrder.type==="B2B" ? _liveOrder.billingStateCode : (_liveOrder.shippingStateCode||_liveOrder.billingStateCode);
+  // For IGST: orderArg is the live "o" state — prefer it for state codes (not frozen snapshot)
+  // orderSnapshot overwrites orderArg in `order` which may have empty state code from snapshot time
+  const _billSC = orderArg.billingStateCode || order.billingStateCode;
+  const _shipSC = orderArg.shippingStateCode || order.shippingStateCode;
+  const _customerState = order.type==="B2B" ? _billSC : (_shipSC || _billSC);
   const isIgst = !_pickup && ng && seller.stateCode && _customerState && extractStateCode(_customerState) !== extractStateCode(seller.stateCode);
   const cols = ng ? (isIgst ? 10 : 12) : 8;
 
@@ -338,7 +343,7 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   </div>
 </div>
 ${_pickup
-  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px"><b>${order.billingName||order.customerName}</b>${order.phone||order.contact?`<br><span style="font-size:11px">${order.phone||order.contact}</span>`:""}<br><span style="font-size:10px;color:#777">Place of Supply: ${_placeOfSupply}</span></div>`
+  ? `<div style="margin:10px 0;padding:9px 11px;border:1px solid #999;border-radius:5px;font-size:11px;line-height:1.8"><span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#555;letter-spacing:0.05em">Customer</span><br><b>${order.billingName||order.customerName}</b>${order.phone||order.contact?`<br><span style="font-size:10px;color:#555"><b>Contact:</b> ${order.phone||order.contact}</span>`:""}<br><span style="font-size:10px;color:#777"><b>Place of Supply:</b> ${_placeOfSupply}</span></div>`
   : `<div class="two-col">
   <div class="box"><div class="bt">Bill To</div><b>${order.billingName||order.customerName}</b><br>${order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.gstin||"-"}<br>State Code: ${order.billingStateCode||"-"}<br>`:""}${order.phone||order.contact||""}</div>
   <div class="box"><div class="bt">Ship To</div><b>${order.shippingName||order.billingName||order.customerName}</b><br>${order.shippingAddress||order.billingAddress||""}<br>${order.type==="B2B"?`GSTIN: ${order.shippingGstin||order.gstin||"-"}<br>State Code: ${order.shippingStateCode||order.billingStateCode||"-"}<br>`:""} ${order.shippingContact?`${order.shippingContact}<br>`:""}</div>
