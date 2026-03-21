@@ -1795,7 +1795,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const getTotal = (o) => {
     const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
     const qt=quotations.find(q=>q.orderId===o.orderNo);
-    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
+    const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     return tiTotal>0?tiTotal:qtTotal;
   };
   const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+num(p.amount),0);
@@ -1952,7 +1952,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const qt=quotations.find(q=>q.orderId===o.orderNo);
     // Total: use tax invoice total if exists, else quotation/order items total
     const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
-    const qtTotal=qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+    // Order card: always items + charges
+    const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+    const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+chargesTotal;
     const tN=tiTotal>0?tiTotal:qtTotal;
     const bal=tN-getTotalPaid(o);
     const due=o.dueDate||"";
@@ -3277,9 +3279,10 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   const invoicedOrders = orders.map(o => {
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt = quotations.find(q=>q.orderId===o.orderNo);
+    // Income: items only, no charges
     const invoicedAmt = tis.length
-      ? tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0)
-      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0));
+      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
+      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
     const paidAmt = (o.payments||[]).reduce((s,p)=>s+num(p.amount),0) + num(o.advance);
     const balance = invoicedAmt - paidAmt;
     const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
