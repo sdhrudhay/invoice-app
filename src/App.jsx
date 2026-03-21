@@ -3647,7 +3647,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       )}
 
       <div className="space-y-2">
-        {invTab==="stock"&&(<div className="space-y-3">
+        {invTab==="stock"&&(
+        <div className="space-y-3">
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search brand, material, colour…"
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
         <div className="flex flex-wrap gap-2 items-center">
@@ -3775,10 +3776,11 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       </div>
       )}
 
-      </div>)}
+      </div>
+      )}
 
       {invTab==="pricing"&&(
-      <div className="space-y-3">
+        <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-slate-700">Price Per Gram</p>
@@ -3832,12 +3834,12 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             </div>
           );
         })()}
+        </div>
+      )}
       </div>
 
-      </div>)}
-
       {invTab==="wastage"&&(
-      <div className="space-y-3">
+        <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-slate-700">Wastage Log</p>
@@ -3964,7 +3966,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             </div>
           ))}
         </div>
-      </div>)}
+        </div>
+      )}
     </div>
   );
 }
