@@ -3722,25 +3722,25 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
         <input value={search} onChange={e=>setSearch(e.target.value)}
           placeholder={view==="payments"?"Search by order no, customer, recipient, txn ref…":"Search by order no, customer, invoice no…"}
           className="border border-gray-200 rounded-lg px-4 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-500">From</span>
-            <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-            <span className="text-xs font-semibold text-gray-500">To</span>
-            <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-semibold text-gray-400">From</span>
+            <input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <span className="text-xs font-semibold text-gray-400">To</span>
+            <input type="date" value={toDate} onChange={e=>setToDate(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
-          <div className="flex gap-1">
-            {["All","B2B","B2C"].map(t=><button key={t} onClick={()=>setTypeFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${typeFilter===t?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300"}`}>{t}</button>)}
+          <div className="flex gap-1 shrink-0">
+            {["All","B2B","B2C"].map(t=><button key={t} onClick={()=>setTypeFilter(t)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${typeFilter===t?"bg-indigo-600 border-indigo-600 text-white":"border-gray-200 text-gray-500 hover:border-indigo-300"}`}>{t}</button>)}
           </div>
-          <select value={recipientFilter} onChange={e=>setRecipientFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+          <select value={recipientFilter} onChange={e=>setRecipientFilter(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
             <option value="">All Recipients</option>
             {allPayRecipients.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
-          <select value={modeFilter} onChange={e=>setModeFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+          <select value={modeFilter} onChange={e=>setModeFilter(e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
             {allModes.map(m=><option key={m} value={m}>{m==="All"?"All Modes":m}</option>)}
           </select>
           {(fromDate||toDate||typeFilter!=="All"||recipientFilter||modeFilter!=="All")&&(
-            <button onClick={()=>{setFromDate("");setToDate("");setTypeFilter("All");setRecipientFilter("");setModeFilter("All");}} className="text-xs text-indigo-500 hover:underline">Clear all</button>
+            <button onClick={()=>{setFromDate("");setToDate("");setTypeFilter("All");setRecipientFilter("");setModeFilter("All");}} className="text-xs text-indigo-500 hover:underline shrink-0">Clear</button>
           )}
         </div>
       </div>
