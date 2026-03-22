@@ -3788,6 +3788,12 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            {["All","Offline","Online",...ONLINE_PLATFORMS].map(c=>(
+              <button key={c} onClick={()=>setIncChannelFilter(c)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${incChannelFilter===c?"bg-sky-600 border-sky-600 text-white":"border-gray-200 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":c==="Online"?"🌐 Online":c==="All"?"All":c}</button>
+            ))}
+          </div>
           <div className="grid grid-cols-3 gap-3">
             {[
               ["Order Value", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
