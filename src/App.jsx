@@ -131,6 +131,7 @@ const SUPABASE_SQL = `
 -- alter table orders add column if not exists cancel_reason text default '';
 -- alter table payments add column if not exists is_refund integer default 0;
 -- alter table payments add column if not exists refund_to text default '';
+-- create table if not exists employees (id text primary key, name text not null, role text default '', is_deleted boolean default false);
 -- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
@@ -2823,8 +2824,181 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
 }
 
 // ─── Expense Tracker ──────────────────────────────────────────────────────────
-const DEFAULT_EXPENSE_CATS = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Asset Purchase","Miscellaneous"];
+const DEFAULT_EXPENSE_CATS = ["Electricity","Groceries","Entertainment","Filament","Resin","Rent","Debt","Travel","Asset Purchase","Salary","Miscellaneous"];
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
+
+
+function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, toast=()=>{} }) {
+  const [subTab, setSubTab] = useState("records");
+  const [showEmpForm, setShowEmpForm] = useState(false);
+  const [empForm, setEmpForm] = useState({name:"", role:""});
+  const [editEmpId, setEditEmpId] = useState(null);
+
+  const [salForm, setSalForm] = useState({employeeId:"", amount:"", date:today(), notes:""});
+  const [showSalForm, setShowSalForm] = useState(false);
+
+  const salaryExpenses = expenses.filter(e=>e.category==="Salary"&&!e.isDeleted);
+
+  const handleSaveEmployee = () => {
+    if (!empForm.name.trim()) { toast("Name is required","error"); return; }
+    const id = editEmpId || ("EMP-"+Date.now());
+    const emp = {id, name:empForm.name.trim(), role:empForm.role.trim(), isDeleted:false};
+    if (editEmpId) {
+      setEmployees(prev=>prev.map(e=>e.id===editEmpId?emp:e));
+    } else {
+      setEmployees(prev=>[...prev,emp]);
+    }
+    upsertEmployee(emp);
+    setEmpForm({name:"",role:""}); setEditEmpId(null); setShowEmpForm(false);
+    toast(editEmpId?"Employee updated":"Employee added");
+  };
+
+  const handleDeleteEmployee = (emp) => {
+    if (!window.confirm(`Remove ${emp.name}?`)) return;
+    setEmployees(prev=>prev.filter(e=>e.id!==emp.id));
+    deleteEmployee(emp);
+    toast("Employee removed");
+  };
+
+  const handleSaveSalary = () => {
+    if (!salForm.employeeId) { toast("Select an employee","error"); return; }
+    if (!salForm.amount || isNaN(Number(salForm.amount)) || Number(salForm.amount)<=0) { toast("Enter a valid amount","error"); return; }
+    if (!salForm.date) { toast("Enter a date","error"); return; }
+    const emp = employees.find(e=>e.id===salForm.employeeId);
+    const id = "SAL-"+Date.now();
+    const expense = {
+      id, date:salForm.date, paidBy:"__company__",
+      amount:Number(salForm.amount),
+      category:"Salary",
+      comment:`${emp?.name||"Employee"}${salForm.notes?" — "+salForm.notes:""}`,
+      isDeleted:false,
+    };
+    setExpenses(prev=>[...prev, expense]);
+    setSalForm({employeeId:"", amount:"", date:today(), notes:""});
+    setShowSalForm(false);
+    toast("Salary recorded");
+  };
+
+  const handleDeleteSalary = (exp) => {
+    if (!window.confirm("Delete this salary record?")) return;
+    setExpenses(prev=>prev.filter(e=>e.id!==exp.id));
+    toast("Salary record deleted");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-bold text-slate-700">Salary & Stipend</p>
+        <p className="text-xs text-gray-400">Manage employees/interns and log salary payments. All payments are recorded as company expenses.</p>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 border-b border-gray-100 pb-0">
+        {[["records","💰 Salary Records"],["employees","👤 Employees"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setSubTab(id)}
+            className={`px-4 py-2 text-xs font-semibold rounded-t-lg border border-b-0 transition-all ${subTab===id?"bg-white border-gray-200 text-indigo-600":"bg-transparent border-transparent text-gray-400 hover:text-gray-600"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Employees sub-tab */}
+      {subTab==="employees"&&(
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{employees.length} employee{employees.length!==1?"s":""}</p>
+            <button onClick={()=>{setShowEmpForm(true);setEditEmpId(null);setEmpForm({name:"",role:""}); }}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Add</button>
+          </div>
+          {showEmpForm&&(
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{editEmpId?"Edit":"New"} Employee</p>
+              <div className="grid grid-cols-2 gap-3">
+                <F label="Name" value={empForm.name} onChange={v=>setEmpForm(f=>({...f,name:v}))} placeholder="Full name"/>
+                <F label="Role" value={empForm.role} onChange={v=>setEmpForm(f=>({...f,role:v}))} placeholder="e.g. Intern, Designer"/>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleSaveEmployee} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Save</button>
+                <button onClick={()=>{setShowEmpForm(false);setEditEmpId(null);}} className="border border-gray-200 text-gray-500 px-4 py-1.5 rounded-lg text-xs">Cancel</button>
+              </div>
+            </div>
+          )}
+          {employees.length===0&&!showEmpForm&&<p className="text-xs text-gray-400 text-center py-8">No employees added yet.</p>}
+          <div className="space-y-2">
+            {employees.map(emp=>(
+              <div key={emp.id} className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{emp.name}</p>
+                  {emp.role&&<p className="text-xs text-gray-400">{emp.role}</p>}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={()=>{setEditEmpId(emp.id);setEmpForm({name:emp.name,role:emp.role||""});setShowEmpForm(true);}}
+                    className="text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg">Edit</button>
+                  <button onClick={()=>handleDeleteEmployee(emp)}
+                    className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg">Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Salary Records sub-tab */}
+      {subTab==="records"&&(
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{salaryExpenses.length} record{salaryExpenses.length!==1?"s":""}</p>
+              {salaryExpenses.length>0&&<p className="text-xs text-gray-400 mt-0.5">Total paid: <span className="font-semibold text-slate-700">₹{salaryExpenses.reduce((s,e)=>s+Number(e.amount||0),0).toLocaleString("en-IN")}</span></p>}
+            </div>
+            <button onClick={()=>setShowSalForm(v=>!v)}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Record Payment</button>
+          </div>
+
+          {showSalForm&&(
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Salary / Stipend</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Employee / Intern</label>
+                  <select value={salForm.employeeId} onChange={e=>setSalForm(f=>({...f,employeeId:e.target.value}))}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">— Select —</option>
+                    {employees.map(e=><option key={e.id} value={e.id}>{e.name}{e.role?` (${e.role})`:""}</option>)}
+                  </select>
+                </div>
+                <F label="Amount (₹)" type="number" value={salForm.amount} onChange={v=>setSalForm(f=>({...f,amount:v}))} placeholder="0.00"/>
+                <F label="Date" type="date" value={salForm.date} onChange={v=>setSalForm(f=>({...f,date:v}))}/>
+                <F label="Notes (optional)" value={salForm.notes} onChange={v=>setSalForm(f=>({...f,notes:v}))} placeholder="e.g. March salary, bonus…" className="col-span-2"/>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleSaveSalary} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Save</button>
+                <button onClick={()=>setShowSalForm(false)} className="border border-gray-200 text-gray-500 px-4 py-1.5 rounded-lg text-xs">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {salaryExpenses.length===0&&!showSalForm&&<p className="text-xs text-gray-400 text-center py-8">No salary records yet.</p>}
+          <div className="space-y-2">
+            {salaryExpenses.slice().reverse().map(e=>(
+              <div key={e.id} className="flex items-start justify-between bg-white border border-gray-100 rounded-xl px-4 py-3 gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-slate-800">₹{Number(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">Salary</span>
+                    <span className="text-xs text-gray-400">{e.date}</span>
+                  </div>
+                  {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
+                </div>
+                <button onClick={()=>handleDeleteSalary(e)} className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{} }) {
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
@@ -5154,6 +5328,8 @@ function App() {
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
+      const emp = await sb().from("employees").select("*").eq("is_deleted",false);
+      if (emp?.length) setEmployees(emp.map(r=>({id:r.id, name:r.name, role:r.role||"", isDeleted:false})));
       const ordMapped = ord?.length ? ord.map(mapOrder) : [];
       const payMapped = pay?.length ? pay.map(mapPayment) : [];
       if (ordMapped.length) setOrders(ordMapped.map(o=>({...o, payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
@@ -5325,6 +5501,8 @@ function App() {
   const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
   const deleteWastage=(id)=>enqueue({action:"delete",table:"wastage_log",col:"id",val:id});
   const syncSetWastageLog=(v)=>{ const n=typeof v==="function"?v(wastageLog):v; const removed=wastageLog.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteWastage(x.id)); n.forEach(w=>{ const prev=wastageLog.find(p=>p.id===w.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(w)) upsertWastage(w); }); setWastageLog(n); };
+  const upsertEmployee=(e)=>enqueue({action:"upsert",table:"employees",row:{id:e.id,name:e.name,role:e.role||"",is_deleted:e.isDeleted||false}});
+  const deleteEmployee=(e)=>enqueue({action:"delete",table:"employees",col:"id",val:e.id});
   const deleteInventoryItem=(i)=>enqueue({action:"delete",table:"inventory",col:"id",val:i.id});
   const syncSetInventory=(v)=>{ const n=typeof v==="function"?v(inventory):v; const removed=inventory.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteInventoryItem(x)); n.forEach(item=>{ const prev=inventory.find(p=>p.id===item.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(item)) upsertInventoryItem(item); }); setInventory(n); };
   const upsertSettlement=(st)=>enqueue({action:"upsert",table:"settlements",row:{id:st.id,date:st.date,amount:st.amount,ref:st.ref||"",from_id:st.fromId,via:st.via,direction:st.direction}});
@@ -5416,6 +5594,7 @@ function App() {
     {id:"inventory",label:"Inventory", icon:"🧵",  group:"ops"},
     {id:"products",label:"Products",   icon:"📦",  group:"ops"},
     {id:"assets",  label:"Assets",     icon:"🏗️", group:"ops"},
+    {id:"salary",  label:"Salary",     icon:"👷",  group:"ops"},
     {id:"download",label:"Download",   icon:"⬇️", group:"ops"},
     {id:"settings",label:"Settings",   icon:"⚙️", group:"meta"},
   ];
@@ -5493,6 +5672,7 @@ function App() {
           {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
           {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
+          {tab==="salary"&&<SalaryManager employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} toast={toast}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
