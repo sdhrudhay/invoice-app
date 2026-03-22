@@ -1310,7 +1310,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[] }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -1394,6 +1394,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleDeletePayment = (id) => {
     const updated = payments.filter(p=>p.id!==id);
     setPayments(updated);
+    enqueue({action:"delete", table:"payments", col:"id", val:String(id)});
     onSaveOrder({...o, items: orderItems, payments: updated});
   };
   const handleSaveNew = (inv, type) => {
@@ -1957,7 +1958,11 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo = updated.orderNo;
     const newItems = updated.items;
     setOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
-    // Sync all payments to Supabase
+    // Sync all payments to Supabase — upsert current, delete removed
+    const prevOrder = orders.find(o=>o.orderNo===orderNo);
+    const prevPayIds = new Set((prevOrder?.payments||[]).map(p=>String(p.id)));
+    const newPayIds = new Set((updated.payments||[]).map(p=>String(p.id)));
+    prevPayIds.forEach(id=>{ if(!newPayIds.has(id)) enqueue({action:"delete",table:"payments",col:"id",val:id}); });
     if (updated.payments?.length) {
       updated.payments.forEach(p=>upsertPayment({...p, orderId:orderNo, id:String(p.id||Date.now())}));
     }
@@ -2243,6 +2248,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           setWastageLog={setWastageLog}
           allRecipients={allRecipients}
           products={products}
+          enqueue={enqueue}
         />
       )}
     </div>
