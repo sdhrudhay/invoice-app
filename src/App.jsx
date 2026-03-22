@@ -5318,7 +5318,8 @@ function App() {
       client.from("inventory").select(),
       client.from("wastage_log").select(),
       client.from("products").select(),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog,prods])=>{
+      client.from("employees").select(),
+    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog,prods,emps])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
@@ -5328,8 +5329,7 @@ function App() {
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
-      const emp = await sb().from("employees").select("*").eq("is_deleted",false);
-      if (emp?.length) setEmployees(emp.map(r=>({id:r.id, name:r.name, role:r.role||"", isDeleted:false})));
+      if (emps?.length) setEmployees(emps.filter(r=>!r.is_deleted).map(r=>({id:r.id, name:r.name, role:r.role||"", isDeleted:false})));
       const ordMapped = ord?.length ? ord.map(mapOrder) : [];
       const payMapped = pay?.length ? pay.map(mapPayment) : [];
       if (ordMapped.length) setOrders(ordMapped.map(o=>({...o, payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
