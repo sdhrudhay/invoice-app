@@ -2828,7 +2828,7 @@ const DEFAULT_EXPENSE_CATS = ["Electricity","Groceries","Entertainment","Filamen
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
 
-function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, toast=()=>{} }) {
+function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, deleteExpense=()=>{}, toast=()=>{} }) {
   const [subTab, setSubTab] = useState("records");
   const [showEmpForm, setShowEmpForm] = useState(false);
   const [empForm, setEmpForm] = useState({name:"", role:""});
@@ -2882,6 +2882,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
   const handleDeleteSalary = (exp) => {
     if (!window.confirm("Delete this salary record?")) return;
     setExpenses(prev=>prev.filter(e=>e.id!==exp.id));
+    deleteExpense({...exp, isDeleted:true});
     toast("Salary record deleted");
   };
 
@@ -3044,7 +3045,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         e.category.toLowerCase().includes(search.toLowerCase())||
         (e.comment&&e.comment.toLowerCase().includes(search.toLowerCase()));
     })
-    .slice().sort((a,b)=>b.date.localeCompare(a.date));
+    .slice().sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
 
   const total = filtered.reduce((s,e)=>s+num(e.amount),0);
   const grandTotal = expenses.reduce((s,e)=>s+num(e.amount),0);
@@ -5677,7 +5678,7 @@ function App() {
           {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
           {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
-          {tab==="salary"&&<SalaryManager employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} toast={toast}/>}
+          {tab==="salary"&&<SalaryManager employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
