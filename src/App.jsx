@@ -1723,7 +1723,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment" className="col-span-2"/>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={!!newPay.isRefund} onChange={e=>setNewPay(p=>({...p,isRefund:e.target.checked,refundTo:""}))} className="w-4 h-4 rounded accent-red-500"/>
+                    <input type="checkbox" checked={!!newPay.isRefund} onChange={e=>setNewPay(p=>({...p,isRefund:e.target.checked,refundTo:e.target.checked?(o.customerName||""):""}))} className="w-4 h-4 rounded accent-red-500"/>
                     <span className="text-sm text-gray-600 font-semibold">This is a refund <span className="font-normal text-gray-400 text-xs">(outgoing — deducted from income)</span></span>
                   </label>
                   {newPay.isRefund&&<div className="grid grid-cols-2 gap-3">
