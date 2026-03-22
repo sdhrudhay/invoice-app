@@ -3409,9 +3409,13 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt = quotations.find(q=>q.orderId===o.orderNo);
     // Income: items only, no charges
-    const invoicedAmt = tis.length
+    const rawInvoicedAmt = tis.length
       ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
       : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
+    // For cancelled orders show net collected instead of invoice amount
+    const invoicedAmt = o.status==="Cancelled"
+      ? Math.max(0, (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0) + num(o.advance))
+      : rawInvoicedAmt;
     const paidAmt = (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0) + num(o.advance);
     const balance = o.status==="Cancelled" ? 0 : invoicedAmt - paidAmt;
     const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
@@ -4377,7 +4381,12 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
       addEntry(o.advanceRecipient, o.advance, "collected", `Advance — ${o.customerName} (${o.orderNo})`, o.orderDate, o.orderNo);
     }
     (o.payments || []).forEach(p => {
-      if (p.receivedBy && p.receivedBy !== "__company__" && num(p.amount) > 0) {
+      if (!p.receivedBy || p.receivedBy === "__company__") return;
+      if (p.isRefund && num(p.amount) > 0) {
+        // Recipient paid refund on company's behalf → company owes them
+        const refundLabel = `Refund paid to ${p.refundTo||o.customerName} — ${o.orderNo}`;
+        addEntry(p.receivedBy, p.amount, "expenses", refundLabel, p.date, p.txnRef || "");
+      } else if (!p.isRefund && num(p.amount) > 0) {
         addEntry(p.receivedBy, p.amount, "collected", `Payment — ${o.customerName} (${o.orderNo})`, p.date, p.txnRef || "");
       }
     });
