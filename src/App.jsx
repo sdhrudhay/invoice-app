@@ -92,7 +92,7 @@ function mergeItemsIntoOrder(orderItems, invoiceItems) {
 
 const PAYMENT_MODES = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
 const GST_RATES = [0, 2.5, 6, 9, 14];
-const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
+const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled", "Returned"];
 
 const DEFAULT_SELLER = {
   name: "Your Company Name", gstin: "29XXXXX0000X1ZX",
@@ -128,6 +128,8 @@ const SUPABASE_SQL = `
 -- 
 -- alter table orders add column if not exists filament_usage text default '[]';
 -- alter table orders add column if not exists is_pickup integer default 0;
+-- alter table orders add column if not exists return_loss numeric default 0;
+-- alter table orders add column if not exists return_reason text default '';
 -- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
@@ -409,7 +411,7 @@ function downloadHtml(html, filename) {
 
 // ─── Reusable UI ──────────────────────────────────────────────────────────────
 function Badge({ label }) {
-  const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700" };
+  const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700", Returned:"bg-purple-100 text-purple-700" };
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c[label]||"bg-gray-100 text-gray-600"}`}>{label}</span>;
 }
 
@@ -1475,6 +1477,10 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   </select>
                 </div>
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
+                {o.status==="Returned"&&<>
+                  <F label="Return Loss (₹)" type="number" value={o.returnLoss||""} onChange={v=>upd("returnLoss",num(v))} placeholder="Amount lost on return"/>
+                  <F label="Reason for Return" value={o.returnReason||""} onChange={v=>upd("returnReason",v)} placeholder="e.g. Damaged, Wrong item, Customer request…" className="col-span-2"/>
+                </>}
               </div>
               {o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
                 <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} className="rounded accent-indigo-600 w-4 h-4"/>
@@ -1691,7 +1697,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             return (
               <div className="space-y-5">
                 {/* Summary strip */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   {[["Order Total","₹"+fmt(orderTotal),"text-slate-700"],["Total Paid","₹"+fmt(totalPaid),"text-emerald-600"],["Balance Due",balance>0?"₹"+fmt(balance):"Nil",balance>0?"text-orange-500":"text-gray-400"]].map(([label,val,cls])=>(
                     <div key={label} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
                       <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -2486,7 +2492,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <div className="space-y-3">
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Order Numbers</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <F label="Prefix" value={sr.prefix} onChange={v=>setSr({...sr,prefix:v})} placeholder="ORD"/>
               <S label="Date Format" value={sr.format} onChange={v=>setSr({...sr,format:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.digits} onChange={v=>setSr({...sr,digits:v})} options={digitOpts}/>
@@ -2499,7 +2505,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Quotation Numbers</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <F label="Prefix" value={sr.qtPrefix} onChange={v=>setSr({...sr,qtPrefix:v})} placeholder="QT"/>
               <S label="Date Format" value={sr.qtFormat} onChange={v=>setSr({...sr,qtFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.qtDigits||"6"} onChange={v=>setSr({...sr,qtDigits:v})} options={digitOpts}/>
@@ -2509,7 +2515,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Proforma Invoice Numbers</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <F label="Prefix" value={sr.pfPrefix} onChange={v=>setSr({...sr,pfPrefix:v})} placeholder="PF"/>
               <S label="Date Format" value={sr.pfFormat} onChange={v=>setSr({...sr,pfFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
@@ -2519,7 +2525,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Tax Invoice Numbers</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <F label="Prefix" value={sr.tiPrefix} onChange={v=>setSr({...sr,tiPrefix:v})} placeholder="TAX"/>
               <S label="Date Format" value={sr.tiFormat} onChange={v=>setSr({...sr,tiFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
@@ -3369,7 +3375,8 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   // Gather all payments: advance + payment entries
   const allPayments = [];
   orders.forEach(o => {
-    if (num(o.advance) > 0) {
+    // Advance excluded from cancelled orders (likely to be refunded)
+    if (num(o.advance) > 0 && o.status !== "Cancelled") {
       allPayments.push({
         date: o.orderDate||"", orderNo: o.orderNo||"", customerName: o.customerName||"",
         amount: num(o.advance), mode: o.paymentMode||"", receivedBy: resolveName(o.advanceRecipient),
@@ -3398,7 +3405,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     const balance = invoicedAmt - paidAmt;
     const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
     const docType = tis.length ? "Tax Invoice" : qt ? "Quotation" : "Order";
-    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType };
+    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType, returnLoss:o.returnLoss||0, returnReason:o.returnReason||"" };
   });
 
   const filteredInvoiced = invoicedOrders
@@ -3536,11 +3543,12 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             {[
-              ["Order Value", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
-              ["Collected", filteredInvoiced.reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
-              ["Outstanding", filteredInvoiced.reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
+              ["Order Value", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
+              ["Collected", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
+              ["Returns", filteredInvoiced.filter(o=>o.status==="Returned").reduce((s,o)=>s+o.returnLoss,0), "from-purple-500 to-purple-700"],
+              ["Outstanding", filteredInvoiced.filter(o=>o.status!=="Cancelled"&&o.status!=="Returned").reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
             ].map(([label,amt,grad])=>(
               <div key={label} className={`bg-gradient-to-r ${grad} rounded-xl p-4 text-white`}>
                 <p className="text-xs opacity-80">{label}</p>
@@ -3570,7 +3578,9 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                       <span className="text-xs text-gray-400">{o.orderDate}</span>
                       <span className="text-xs text-emerald-600 font-semibold">Paid &#x20B9;{o.paidAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
                       {o.balance>0.01&&<span className="text-xs text-orange-500 font-semibold">Due &#x20B9;{o.balance.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>}
-                      {o.balance<=0.01&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
+                      {o.balance<=0.01&&o.status!=="Returned"&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
+                      {o.status==="Returned"&&<span className="text-xs text-purple-600 font-semibold">Returned — Loss ₹{fmt(o.returnLoss)}</span>}
+                      {o.returnReason&&<span className="text-xs text-gray-400 italic">{o.returnReason}</span>}
                     </div>
                   </div>
                   <span className="font-bold text-slate-800 text-base shrink-0">&#x20B9;{o.invoicedAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
@@ -5114,7 +5124,7 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, returnLoss:r.return_loss||0, returnReason:r.return_reason||"", items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -5209,7 +5219,9 @@ function App() {
       tax_invoice_ids:JSON.stringify(o.taxInvoiceIds||[]),
       filament_usage:JSON.stringify(o.filamentUsage||[]),
       charges:JSON.stringify(o.charges||[]),
-      is_pickup:o.isPickup?1:0
+      is_pickup:o.isPickup?1:0,
+      return_loss:o.returnLoss||0,
+      return_reason:o.returnReason||""
     }});
     syncItems("order", o.orderNo, o.items);
   };
