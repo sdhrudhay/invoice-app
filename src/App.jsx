@@ -3385,7 +3385,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   const allPayments = [];
   orders.forEach(o => {
     // Advance excluded from cancelled orders (likely to be refunded)
-    if (num(o.advance) > 0 && o.status !== "Cancelled") {
+    if (num(o.advance) > 0) {
       allPayments.push({
         date: o.orderDate||"", orderNo: o.orderNo||"", customerName: o.customerName||"",
         amount: num(o.advance), mode: o.paymentMode||"", receivedBy: resolveName(o.advanceRecipient),
