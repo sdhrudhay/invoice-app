@@ -979,61 +979,23 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
 
   const handleAdd = () => {
     if (!newUsage.groupKey) { toast("Select a filament","error"); return; }
+    if (!newUsage.spoolId) { toast("Select a spool","error"); return; }
     if (!newUsage.weightUsedG || isNaN(Number(newUsage.weightUsedG)) || Number(newUsage.weightUsedG)<=0) { toast("Enter weight used","error"); return; }
-    // Find all spools in this group, compute each one's remaining stock
     const need = Number(newUsage.weightUsedG);
-    const groupSpools = inventory
-      .filter(i=>{ const k=`${i.brand||""}||${i.material}||${i.color||""}`; return k===newUsage.groupKey; })
-      .map(spool=>{
-        const alreadyUsed = filamentUsage
-          .filter(u=>u.inventoryId===spool.id)
-          .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
-        const otherOrdersUsed = orders
-          .filter(o=>o.orderNo!==currentOrderNo)
-          .flatMap(o=>o.filamentUsage||[])
-          .filter(u=>u.inventoryId===spool.id)
-          .reduce((s,u)=>s+Number(u.weightUsedG||0),0);
-        const spoolRemaining = Math.max(0, Number(spool.weightG||0) - alreadyUsed - otherOrdersUsed);
-        return { ...spool, spoolRemaining };
-      })
-      .filter(s=>s.spoolRemaining>0);
-
-    // Strategy: find the smallest single spool that can satisfy the full amount.
-    // If none can, split across spools largest-first to minimise number of spools used.
-    const newEntries = [];
-    const batchKey = "BATCH-"+Date.now(); // unique per addition — allows independent deletion
-    const spoolsThatFit = groupSpools.filter(s=>s.spoolRemaining>=need);
-    if (spoolsThatFit.length>0) {
-      // Pick smallest spool that fits (least waste)
-      const best = spoolsThatFit.sort((a,b)=>a.spoolRemaining-b.spoolRemaining)[0];
-      newEntries.push({
-        id:"FU-"+Date.now()+"-"+best.id,
-        inventoryId: best.id,
-        weightUsedG: Math.round(need*10)/10,
-        isWaste: newUsage.isWaste,
-        notes: newUsage.notes||"",
-        groupKey: newUsage.groupKey,
-        batchKey,
-      });
-    } else {
-      // No single spool fits — split, draining largest spools first
-      let remaining = need;
-      for (const spool of [...groupSpools].sort((a,b)=>b.spoolRemaining-a.spoolRemaining)) {
-        if (remaining<=0) break;
-        const take = Math.min(remaining, spool.spoolRemaining);
-        newEntries.push({
-          id:"FU-"+Date.now()+"-"+spool.id,
-          inventoryId: spool.id,
-          weightUsedG: Math.round(take*10)/10,
-          isWaste: newUsage.isWaste,
-          notes: newUsage.notes||"",
-          groupKey: newUsage.groupKey,
-          batchKey,
-        });
-        remaining -= take;
-      }
-      if (remaining>0.05) toast(`Only ${(need-remaining).toFixed(0)}g available across all spools — recorded what was available`,"error");
-    }
+    const spool = inventory.find(i=>i.id===newUsage.spoolId);
+    if (!spool) { toast("Spool not found","error"); return; }
+    const spoolRemaining = getRemainingG(spool.id)??0;
+    if (need > spoolRemaining + 0.05) { toast(`Only ${spoolRemaining.toFixed(0)}g remaining on this spool`,"error"); return; }
+    const batchKey = "BATCH-"+Date.now();
+    const newEntries = [{
+      id:"FU-"+Date.now()+"-"+spool.id,
+      inventoryId: spool.id,
+      weightUsedG: Math.round(need*10)/10,
+      isWaste: newUsage.isWaste,
+      notes: newUsage.notes||"",
+      groupKey: newUsage.groupKey,
+      batchKey,
+    }];
     if (newEntries.length===0) { toast("No stock remaining in this filament group","error"); return; }
     if (newUsage.isWaste) {
       // Waste: store ONLY in wastageLog — not in filamentUsage — to avoid double-counting
@@ -1051,13 +1013,13 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
         orderNo: currentOrderNo,
         notes: newUsage.notes||"",
       });
-      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
+      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:"", spoolId:""});
       toast("Wastage recorded");
     } else {
       // Normal usage: store in filamentUsage on the order
       const updated = [...filamentUsage, ...newEntries];
       setFilamentUsage(updated);
-      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
+      setNewUsage({groupKey:"", weightUsedG:"", isWaste:false, notes:"", spoolId:""});
       onSave(updated);
       toast("Filament usage recorded");
     }
@@ -1156,7 +1118,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                   const textC = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
                   const isSelected = newUsage.groupKey===key;
                   return (
-                    <button key={key} type="button" onClick={()=>upd("groupKey", isSelected?"":key)}
+                    <button key={key} type="button" onClick={()=>{ upd("groupKey", isSelected?"":key); upd("spoolId",""); }}
                       className={`w-full text-left rounded-xl px-3 py-2.5 border transition-all ${isSelected?"border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300":"border-gray-200 bg-white hover:border-indigo-200 hover:bg-slate-50"}`}>
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2 min-w-0">
@@ -1179,6 +1141,41 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
             );
           })()}
         </div>
+        {/* Spool picker — shown when a group is selected */}
+        {newUsage.groupKey&&(()=>{
+          const groupSpools = inventory
+            .filter(i=>`${i.brand||""}||${i.material}||${i.color||""}`===newUsage.groupKey)
+            .map(spool=>({...spool, remaining: getRemainingG(spool.id)??0}))
+            .filter(s=>s.remaining>0)
+            .sort((a,b)=>a.purchaseDate?.localeCompare(b.purchaseDate||"")||0);
+          return groupSpools.length===0 ? (
+            <p className="text-xs text-red-400">No stock remaining in this group.</p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500">Select Spool</label>
+              <div className="space-y-1">
+                {groupSpools.map(spool=>{
+                  const pct = Math.round(spool.remaining/Number(spool.weightG||1)*100);
+                  const barC = pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
+                  const textC = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
+                  const isSelected = newUsage.spoolId===spool.id;
+                  return (
+                    <button key={spool.id} type="button" onClick={()=>upd("spoolId", isSelected?"":spool.id)}
+                      className={`w-full text-left rounded-lg px-3 py-2 border text-xs transition-all ${isSelected?"border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300":"border-gray-200 bg-white hover:border-indigo-200"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-gray-600 font-mono">{spool.purchaseDate||"—"}</span>
+                        <span className={`font-bold ${textC}`}>{spool.remaining.toFixed(0)}g / {(Number(spool.weightG)/1000).toFixed(Number(spool.weightG)%1000===0?0:2)}kg left</span>
+                      </div>
+                      <div className="mt-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${barC}`} style={{width:`${pct}%`}}/>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
