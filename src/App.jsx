@@ -3851,7 +3851,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quantity <span className="text-gray-400 font-normal normal-case text-xs">spools</span></label>
-                    <input type="number" value={row.qty??1} min="1" step="1" onChange={e=>updRow(idx,"qty",Math.max(1,parseInt(e.target.value)||1))} onWheel={e=>e.target.blur()}
+                    <input type="number" value={row.qty??""} min="1" step="1" onChange={e=>updRow(idx,"qty",e.target.value===""?"":Math.max(1,parseInt(e.target.value)||1))} onBlur={e=>{if(!e.target.value||Number(e.target.value)<1)updRow(idx,"qty",1);}} onWheel={e=>e.target.blur()}
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -4007,7 +4007,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                           <div className="flex items-center gap-3 flex-wrap">
                             <span className="text-xs text-gray-400">{item.purchaseDate}</span>
                             <span className="text-xs text-gray-500">{(Number(item.weightG)/1000).toFixed(2)} kg</span>
-                            {usedPerSpool[item.id]&&<span className={`text-xs font-semibold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>}
+                            {rem<Number(item.weightG||0)&&<span className={`text-xs font-semibold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>}
                             {item.notes&&<span className="text-xs text-gray-400 italic">{item.notes}</span>}
                           </div>
                           <button onClick={()=>handleDelete(item)} className="text-xs text-red-300 hover:text-red-500 font-bold leading-none shrink-0">×</button>
