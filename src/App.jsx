@@ -5230,6 +5230,7 @@ function App() {
   const [assets,setAssets]=useState([]);
   const [inventory,setInventory]=useState([]);
   const [settlements,setSettlements]=useState([]);
+  const [employees,setEmployees]=useState([]);
   const [wastageLog,setWastageLog]=useState([]);
   const [products,setProducts]=useState([]);
   const cdnCloud = getEnv("VITE_CLOUDINARY_CLOUD")||"";
@@ -5318,7 +5319,7 @@ function App() {
       client.from("inventory").select(),
       client.from("wastage_log").select(),
       client.from("products").select(),
-      client.from("employees").select(),
+      client.from("employees").select().catch(()=>[]),
     ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog,prods,emps])=>{
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       // Map DB item row to app item object
