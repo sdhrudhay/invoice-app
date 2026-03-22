@@ -2116,6 +2116,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     );
   };
 
+  const returnedOrders = filtered.filter(o=>o.status==="Returned").slice().reverse();
   const pendingOrders = filtered.filter(o=>o.status==="Pending").sort((a,b)=>{
     const da = a.dueDate||addDays(a.orderDate,30), db = b.dueDate||addDays(b.orderDate,30);
     return da < db ? -1 : da > db ? 1 : 0;
@@ -2131,7 +2132,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Order Status</span>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {["All","Pending","Completed","Cancelled"].map(f=>(
+              {["All","Pending","Completed","Cancelled","Returned"].map(f=>(
                 <button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${filter===f?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{f}</button>
               ))}
             </div>
@@ -2183,6 +2184,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         </div>
       )}
 
+      {returnedOrders.length>0&&(filter==="All"||filter==="Returned")&&(
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-purple-500 uppercase tracking-wide">Returned ({returnedOrders.length})</p>
+          <div className="space-y-3">{returnedOrders.map(renderCard)}</div>
+        </div>
+      )}
       {cancelledOrders.length>0&&(filter==="All"||filter==="Cancelled")&&(
         <div className="space-y-2">
           <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-red-600">✕ Cancelled</span><span className="text-xs text-gray-400">({cancelledOrders.length})</span></div>
@@ -3538,7 +3545,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       {view==="invoiced"&&(
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5 mb-1">
-            {["All","Pending","Completed","Cancelled"].map(s=>(
+            {["All","Pending","Completed","Cancelled","Returned"].map(s=>(
               <button key={s} onClick={()=>setStatusFilter(s)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
             ))}
@@ -5220,8 +5227,8 @@ function App() {
       filament_usage:JSON.stringify(o.filamentUsage||[]),
       charges:JSON.stringify(o.charges||[]),
       is_pickup:o.isPickup?1:0,
-      return_loss:o.returnLoss||0,
-      return_reason:o.returnReason||""
+      ...(o.returnLoss!=null?{return_loss:o.returnLoss}:{}),
+      ...(o.returnReason?{return_reason:o.returnReason}:{})
     }});
     syncItems("order", o.orderNo, o.items);
   };
