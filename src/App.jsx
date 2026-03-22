@@ -92,7 +92,7 @@ function mergeItemsIntoOrder(orderItems, invoiceItems) {
 
 const PAYMENT_MODES = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
 const GST_RATES = [0, 2.5, 6, 9, 14];
-const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled", "Returned"];
+const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
 
 const DEFAULT_SELLER = {
   name: "Your Company Name", gstin: "29XXXXX0000X1ZX",
@@ -128,8 +128,9 @@ const SUPABASE_SQL = `
 -- 
 -- alter table orders add column if not exists filament_usage text default '[]';
 -- alter table orders add column if not exists is_pickup integer default 0;
--- alter table orders add column if not exists return_loss numeric default 0;
--- alter table orders add column if not exists return_reason text default '';
+-- alter table orders add column if not exists cancel_reason text default '';
+-- alter table payments add column if not exists is_refund integer default 0;
+-- alter table payments add column if not exists refund_to text default '';
 -- alter table orders add column if not exists charges text default '[]';
 create table if not exists orders (
   order_no text primary key, order_no_base text, type text, customer_name text,
@@ -411,7 +412,7 @@ function downloadHtml(html, filename) {
 
 // ─── Reusable UI ──────────────────────────────────────────────────────────────
 function Badge({ label }) {
-  const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700", Returned:"bg-purple-100 text-purple-700" };
+  const c = { B2B:"bg-blue-100 text-blue-800", B2C:"bg-emerald-100 text-emerald-800", "No GST":"bg-orange-100 text-orange-700", Pending:"bg-yellow-100 text-yellow-800", Completed:"bg-green-100 text-green-800", Cancelled:"bg-red-100 text-red-700" };
   return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c[label]||"bg-gray-100 text-gray-600"}`}>{label}</span>;
 }
 
@@ -1314,7 +1315,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
   const [payments, setPayments] = useState(order.payments||[]);
-  const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
+  const [newPay, setNewPay] = useState({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:"", isRefund:false, refundTo:""});
   const [statusPrompt, setStatusPrompt] = useState(null); // {updated} waiting for user decision
   const [filamentUsage, setFilamentUsage] = useState((order.filamentUsage||[]).map(u=>({...u})));
   const [newUsage, setNewUsage] = useState({groupKey:"", weightUsedG:"", isWaste:false, notes:""});
@@ -1387,7 +1388,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     setPayments(updated);
     // Save payment directly via prop and also persist to order
     onSaveOrder({...o, items: orderItems, payments: updated});
-    setNewPay({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:""});
+    setNewPay({date:today(), amount:"", mode:"UPI", receivedBy:"", txnRef:"", comments:"", isRefund:false, refundTo:""});
     toast("Payment added");
   };
   const handleDeletePayment = (id) => {
@@ -1477,10 +1478,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   </select>
                 </div>
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
-                {o.status==="Returned"&&<>
-                  <F label="Return Loss (₹)" type="number" value={o.returnLoss||""} onChange={v=>upd("returnLoss",num(v))} placeholder="Amount lost on return"/>
-                  <F label="Reason for Return" value={o.returnReason||""} onChange={v=>upd("returnReason",v)} placeholder="e.g. Damaged, Wrong item, Customer request…" className="col-span-2"/>
-                </>}
+                {o.status==="Cancelled"&&<F label="Reason for Cancellation" value={o.cancelReason||""} onChange={v=>upd("cancelReason",v)} placeholder="e.g. Customer changed mind, Out of stock…" className="col-span-2"/>}
               </div>
               {o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
                 <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} className="rounded accent-indigo-600 w-4 h-4"/>
@@ -1697,7 +1695,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             return (
               <div className="space-y-5">
                 {/* Summary strip */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {[["Order Total","₹"+fmt(orderTotal),"text-slate-700"],["Total Paid","₹"+fmt(totalPaid),"text-emerald-600"],["Balance Due",balance>0?"₹"+fmt(balance):"Nil",balance>0?"text-orange-500":"text-gray-400"]].map(([label,val,cls])=>(
                     <div key={label} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
                       <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -1723,8 +1721,17 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Txn / Ref No (optional)" value={newPay.txnRef} onChange={v=>setNewPay(p=>({...p,txnRef:v}))} placeholder="UPI ref, cheque no…"/>
                     <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment" className="col-span-2"/>
                   </div>
-                  <button onClick={handleAddPayment} className="px-5 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all">
-                    + Add Payment
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={!!newPay.isRefund} onChange={e=>setNewPay(p=>({...p,isRefund:e.target.checked,refundTo:""}))} className="w-4 h-4 rounded accent-red-500"/>
+                    <span className="text-sm text-gray-600 font-semibold">This is a refund <span className="font-normal text-gray-400 text-xs">(outgoing — deducted from income)</span></span>
+                  </label>
+                  {newPay.isRefund&&<div className="grid grid-cols-2 gap-3">
+                    <F label="Refund To (Customer)" value={newPay.refundTo} onChange={v=>setNewPay(p=>({...p,refundTo:v}))} placeholder="Customer name / contact" className="col-span-2"/>
+                  </div>}
+
+                  </div>
+                  <button onClick={handleAddPayment} className={`px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all ${newPay.isRefund?"bg-red-600 hover:bg-red-700":"bg-indigo-600 hover:bg-indigo-700"}`}>
+                    {newPay.isRefund?"+ Record Refund":"+ Add Payment"}
                   </button>
                 </div>
 
@@ -1751,13 +1758,15 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 )}
                 <div className="space-y-2">
                   {payments.slice().reverse().map(p=>(
-                    <div key={p.id} className="flex items-start justify-between border border-gray-100 rounded-xl px-4 py-3 bg-white gap-3">
+                    <div key={p.id} className={`flex items-start justify-between rounded-xl px-4 py-3 gap-3 border ${p.isRefund?"border-red-100 bg-red-50/40":"border-gray-100 bg-white"}`}>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-emerald-600">₹{fmt(p.amount)}</span>
+                          <span className={`text-sm font-bold ${p.isRefund?"text-red-600":"text-emerald-600"}`}>{p.isRefund?"−":""}₹{fmt(p.amount)}</span>
+                          {p.isRefund&&<span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold">Refund</span>}
                           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{p.mode}</span>
                           <span className="text-xs text-gray-400">{p.date}</span>
                         </div>
+                        {p.isRefund&&p.refundTo&&<p className="text-xs text-red-500 mt-0.5">↩ Refunded to: {p.refundTo}</p>}
                         {p.receivedBy&&(()=>{const r=p.receivedBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(x=>x.id===p.receivedBy)||allRecipients.find(x=>x.id===p.receivedBy));return r?<p className="text-xs text-indigo-500 mt-0.5">👤 {r.name}</p>:null;})()}
                         {p.txnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {p.txnRef}</p>}
                         {p.comments&&<p className="text-xs text-gray-500 mt-0.5">{p.comments}</p>}
@@ -2116,7 +2125,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     );
   };
 
-  const returnedOrders = filtered.filter(o=>o.status==="Returned").slice().reverse();
   const pendingOrders = filtered.filter(o=>o.status==="Pending").sort((a,b)=>{
     const da = a.dueDate||addDays(a.orderDate,30), db = b.dueDate||addDays(b.orderDate,30);
     return da < db ? -1 : da > db ? 1 : 0;
@@ -2132,7 +2140,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Order Status</span>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-              {["All","Pending","Completed","Cancelled","Returned"].map(f=>(
+              {["All","Pending","Completed","Cancelled"].map(f=>(
                 <button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${filter===f?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{f}</button>
               ))}
             </div>
@@ -2184,12 +2192,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         </div>
       )}
 
-      {returnedOrders.length>0&&(filter==="All"||filter==="Returned")&&(
-        <div className="space-y-3">
-          <p className="text-xs font-bold text-purple-500 uppercase tracking-wide">Returned ({returnedOrders.length})</p>
-          <div className="space-y-3">{returnedOrders.map(renderCard)}</div>
-        </div>
-      )}
       {cancelledOrders.length>0&&(filter==="All"||filter==="Cancelled")&&(
         <div className="space-y-2">
           <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-widest text-red-600">✕ Cancelled</span><span className="text-xs text-gray-400">({cancelledOrders.length})</span></div>
@@ -2500,7 +2502,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <div className="space-y-3">
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Order Numbers</p>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <F label="Prefix" value={sr.prefix} onChange={v=>setSr({...sr,prefix:v})} placeholder="ORD"/>
               <S label="Date Format" value={sr.format} onChange={v=>setSr({...sr,format:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.digits} onChange={v=>setSr({...sr,digits:v})} options={digitOpts}/>
@@ -2513,7 +2515,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Quotation Numbers</p>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <F label="Prefix" value={sr.qtPrefix} onChange={v=>setSr({...sr,qtPrefix:v})} placeholder="QT"/>
               <S label="Date Format" value={sr.qtFormat} onChange={v=>setSr({...sr,qtFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.qtDigits||"6"} onChange={v=>setSr({...sr,qtDigits:v})} options={digitOpts}/>
@@ -2523,7 +2525,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Proforma Invoice Numbers</p>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <F label="Prefix" value={sr.pfPrefix} onChange={v=>setSr({...sr,pfPrefix:v})} placeholder="PF"/>
               <S label="Date Format" value={sr.pfFormat} onChange={v=>setSr({...sr,pfFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
@@ -2533,7 +2535,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
 
           <div className="bg-slate-50 rounded-xl p-4 space-y-3">
             <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Tax Invoice Numbers</p>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <F label="Prefix" value={sr.tiPrefix} onChange={v=>setSr({...sr,tiPrefix:v})} placeholder="TAX"/>
               <S label="Date Format" value={sr.tiFormat} onChange={v=>setSr({...sr,tiFormat:v})} options={formatOpts}/>
               <S label="Seq Digits" value={sr.invDigits} onChange={v=>setSr({...sr,invDigits:v})} options={digitOpts}/>
@@ -3395,8 +3397,10 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       if (!num(p.amount)) return;
       allPayments.push({
         date: p.date||"", orderNo: o.orderNo||"", customerName: o.customerName||"",
-        amount: num(p.amount), mode: p.mode||"", receivedBy: resolveName(p.receivedBy),
-        txnRef: p.txnRef||"", note: p.comments||"Payment", type: o.type||""
+        amount: p.isRefund ? -num(p.amount) : num(p.amount),
+        mode: p.mode||"", receivedBy: resolveName(p.receivedBy),
+        txnRef: p.txnRef||"", note: p.isRefund?`Refund to ${p.refundTo||o.customerName}`:(p.comments||"Payment"),
+        type: o.type||"", isRefund: !!p.isRefund
       });
     });
   });
@@ -3413,7 +3417,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     const balance = invoicedAmt - paidAmt;
     const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
     const docType = tis.length ? "Tax Invoice" : qt ? "Quotation" : "Order";
-    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType, returnLoss:o.returnLoss||0, returnReason:o.returnReason||"" };
+    return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType };
   });
 
   const filteredInvoiced = invoicedOrders
@@ -3536,7 +3540,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                   {p.txnRef && <span className="text-xs text-gray-400 font-mono">Ref: {p.txnRef}</span>}
                 </div>
               </div>
-              <span className="font-bold text-emerald-600 text-base shrink-0">+&#x20B9;{num(p.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
+              <span className={`font-bold text-base shrink-0 ${p.isRefund?"text-red-500":"text-emerald-600"}`}>{p.isRefund?"−":"+"}&#x20B9;{Math.abs(num(p.amount)).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
             </div>
           ))}
         </div>
@@ -3546,17 +3550,16 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       {view==="invoiced"&&(
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5 mb-1">
-            {["All","Pending","Completed","Cancelled","Returned"].map(s=>(
+            {["All","Pending","Completed","Cancelled"].map(s=>(
               <button key={s} onClick={()=>setStatusFilter(s)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
             ))}
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {[
-              ["Order Value", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
-              ["Collected", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
-              ["Returns", filteredInvoiced.filter(o=>o.status==="Returned").reduce((s,o)=>s+o.returnLoss,0), "from-purple-500 to-purple-700"],
-              ["Outstanding", filteredInvoiced.filter(o=>o.status!=="Cancelled"&&o.status!=="Returned").reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
+              ["Order Value", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
+              ["Collected", filteredInvoiced.reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
+              ["Outstanding", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
             ].map(([label,amt,grad])=>(
               <div key={label} className={`bg-gradient-to-r ${grad} rounded-xl p-4 text-white`}>
                 <p className="text-xs opacity-80">{label}</p>
@@ -3586,9 +3589,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                       <span className="text-xs text-gray-400">{o.orderDate}</span>
                       <span className="text-xs text-emerald-600 font-semibold">Paid &#x20B9;{o.paidAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
                       {o.balance>0.01&&<span className="text-xs text-orange-500 font-semibold">Due &#x20B9;{o.balance.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>}
-                      {o.balance<=0.01&&o.status!=="Returned"&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
-                      {o.status==="Returned"&&<span className="text-xs text-purple-600 font-semibold">Returned — Loss ₹{fmt(o.returnLoss)}</span>}
-                      {o.returnReason&&<span className="text-xs text-gray-400 italic">{o.returnReason}</span>}
+                      {o.balance<=0.01&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
                     </div>
                   </div>
                   <span className="font-bold text-slate-800 text-base shrink-0">&#x20B9;{o.invoicedAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
@@ -5132,11 +5133,11 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, returnLoss:r.return_loss||0, returnReason:r.return_reason||"", items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
-      const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"" });
+      const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
       const ordMapped = ord?.length ? ord.map(mapOrder) : [];
       const payMapped = pay?.length ? pay.map(mapPayment) : [];
       if (ordMapped.length) setOrders(ordMapped.map(o=>({...o, payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
@@ -5228,8 +5229,7 @@ function App() {
       filament_usage:JSON.stringify(o.filamentUsage||[]),
       charges:JSON.stringify(o.charges||[]),
       is_pickup:o.isPickup?1:0,
-      ...(o.returnLoss!=null?{return_loss:o.returnLoss}:{}),
-      ...(o.returnReason?{return_reason:o.returnReason}:{})
+      ...(o.cancelReason?{cancel_reason:o.cancelReason}:{})
     }});
     syncItems("order", o.orderNo, o.items);
   };
@@ -5285,7 +5285,9 @@ function App() {
   }});
   const upsertPayment = (p) => enqueue({action:"upsert",table:"payments",row:{
     id:p.id, order_id:p.orderId, date:p.date, amount:p.amount||0,
-    mode:p.mode||"", received_by:p.receivedBy||"", txn_ref:p.txnRef||"", comments:p.comments||""
+    mode:p.mode||"", received_by:p.receivedBy||"", txn_ref:p.txnRef||"", comments:p.comments||"",
+    ...(p.isRefund!==undefined?{is_refund:p.isRefund?1:0}:{}),
+    ...(p.refundTo?{refund_to:p.refundTo}:{})
   }});
   const deleteExpense = (e) => upsertExpense(e); // soft delete via is_deleted flag
   const deleteClient = (c) => upsertClient(c); // soft delete via is_deleted flag
