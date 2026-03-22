@@ -93,6 +93,11 @@ function mergeItemsIntoOrder(orderItems, invoiceItems) {
 const PAYMENT_MODES = ["Cash", "UPI", "Card", "Bank Transfer", "Cheque"];
 const GST_RATES = [0, 2.5, 6, 9, 14];
 const STATUS_OPTIONS = ["Pending", "Completed", "Cancelled"];
+const ONLINE_PLATFORMS = ["Website","Amazon","Flipkart","Meesho","Other"];
+const channelBadge = (ch) => {
+  if (!ch||ch==="Offline") return {icon:"🏪",label:"Offline",cls:"bg-gray-100 text-gray-600"};
+  return {icon:"🌐",label:ch,cls:"bg-sky-100 text-sky-700"};
+};
 
 const DEFAULT_SELLER = {
   name: "Your Company Name", gstin: "29XXXXX0000X1ZX",
@@ -129,6 +134,7 @@ const SUPABASE_SQL = `
 -- alter table orders add column if not exists filament_usage text default '[]';
 -- alter table orders add column if not exists is_pickup integer default 0;
 -- alter table orders add column if not exists cancel_reason text default '';
+-- alter table orders add column if not exists channel text default 'Offline';
 -- alter table payments add column if not exists is_refund integer default 0;
 -- alter table payments add column if not exists refund_to text default '';
 -- create table if not exists employees (id text primary key, name text not null, role text default '', is_deleted boolean default false);
@@ -799,6 +805,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const [items,setItems]=useState([{...EMPTY_ITEM}]);
   const [advanceRecipient,setAdvanceRecipient]=useState("");
   const [advanceTxnRef,setAdvanceTxnRef]=useState("");
+  const [channel,setChannel]=useState("Offline");
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
   const [selectedClient,setSelectedClient]=useState(null);
   const [lastOrder,setLastOrder]=useState(null);
@@ -833,7 +840,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), channel:channel||"Offline", orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply,isPickup:!!(type==="B2C"&&needsGst&&isPickup)} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
@@ -844,7 +851,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const reset = () => {
-    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setItems([{...EMPTY_ITEM}]); setMsg("");
+    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setChannel("Offline"); setItems([{...EMPTY_ITEM}]); setMsg("");
   };
 
   const previewNo = buildOrderNo(series, type, orders);
@@ -898,6 +905,21 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             </div>
             <F label="Txn / Ref No (optional)" value={advanceTxnRef} onChange={setAdvanceTxnRef} placeholder="UPI ref, cheque no…"/>
             <S label="Order Status" value={status} onChange={setStatus} options={STATUS_OPTIONS}/>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
+              <div className="flex gap-2 flex-wrap">
+                {["Offline","Online"].map(c=>(
+                  <button key={c} type="button" onClick={()=>setChannel(c==="Offline"?"Offline":(channel==="Offline"||!ONLINE_PLATFORMS.includes(channel)?ONLINE_PLATFORMS[0]:channel))}
+                    className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?channel==="Offline":channel!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
+                ))}
+              </div>
+              {channel!=="Offline"&&<div className="flex gap-2 flex-wrap mt-1">
+                {ONLINE_PLATFORMS.map(p=>(
+                  <button key={p} type="button" onClick={()=>setChannel(p)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${channel===p?"bg-sky-100 border-sky-400 text-sky-700":"border-gray-200 text-gray-500 hover:border-sky-300"}`}>{p}</button>
+                ))}
+              </div>}
+            </div>
           </div>
           {type==="B2C"&&needsGst&&<div className="flex items-center gap-2 pt-2">
             <input type="checkbox" id="pickup-chk" checked={isPickup} onChange={e=>{setIsPickup(e.target.checked);if(e.target.checked){setPlaceOfSupply(stateByCode(seller?.stateCode)||seller?.state||"");}}} className="rounded accent-indigo-600 w-4 h-4"/>
@@ -1480,6 +1502,21 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   </select>
                 </div>
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {["Offline","Online"].map(c=>(
+                      <button key={c} type="button" onClick={()=>upd("channel",c==="Offline"?"Offline":((o.channel||"Offline")==="Offline"?ONLINE_PLATFORMS[0]:o.channel))}
+                        className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
+                    ))}
+                  </div>
+                  {(o.channel||"Offline")!=="Offline"&&<div className="flex gap-2 flex-wrap mt-1">
+                    {ONLINE_PLATFORMS.map(p=>(
+                      <button key={p} type="button" onClick={()=>upd("channel",p)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${o.channel===p?"bg-sky-100 border-sky-400 text-sky-700":"border-gray-200 text-gray-500 hover:border-sky-300"}`}>{p}</button>
+                    ))}
+                  </div>}
+                </div>
                 {o.status==="Cancelled"&&<F label="Reason for Cancellation" value={o.cancelReason||""} onChange={v=>upd("cancelReason",v)} placeholder="e.g. Customer changed mind, Out of stock…" className="col-span-2"/>}
               </div>
               {o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
@@ -1915,6 +1952,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
   const [balFilter,setBalFilter]=useState(false);
+  const [channelFilter,setChannelFilter]=useState("All");
   const [openOrder,setOpenOrder]=useState(null);
   useEffect(()=>{ if(initialOrder){ setOpenOrder(initialOrder); onClearInitialOrder(); } },[initialOrder]);
 
@@ -1930,7 +1968,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const filtered=searched
     .filter(o=>filter==="All"||o.status===filter)
     .filter(o=>typeFilter==="All"||o.type===typeFilter)
-    .filter(o=>!balFilter||(getTotal(o)-getTotalPaid(o))>0);
+    .filter(o=>!balFilter||(getTotal(o)-getTotalPaid(o))>0)
+    .filter(o=>channelFilter==="All"||(channelFilter==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline"&&(channelFilter==="Online"||o.channel===channelFilter)));
 
   // Sync order items + quotation whenever items change
   const syncItemsAndQuotation = (orderNo, mergedItems) => {
@@ -2100,7 +2139,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             {isOverdue&&<span className="text-xs font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">⚠ Overdue</span>}
             {isDueSoon&&!isOverdue&&<span className="text-xs font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">⏰ Due soon</span>}
           </div>
-          <span className="text-gray-300 shrink-0">›</span>
+          <div className="flex items-center gap-1.5 shrink-0">{(()=>{const cb=channelBadge(o.channel);return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cb.cls}`}>{cb.icon} {cb.label}</span>})()}<span className="text-gray-300">›</span></div>
         </div>
         {/* Row 2: customer + GSTIN */}
         <p className="text-sm font-bold text-gray-800 mt-1 leading-tight">{o.customerName}</p>
@@ -2155,6 +2194,14 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               {["All","B2B","B2C"].map(t=>(
                 <button key={t} onClick={()=>setTypeFilter(t)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${typeFilter===t?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Channel</span>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              {["All","Offline","Online",...ONLINE_PLATFORMS].map(f=>(
+                <button key={f} onClick={()=>setChannelFilter(f)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${channelFilter===f?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{f}</button>
               ))}
             </div>
           </div>
@@ -3554,6 +3601,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   const [modeFilter, setModeFilter] = useState("All");
   const [view, setView] = useState("payments");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [incChannelFilter, setIncChannelFilter] = useState("All");
 
   const resolveName = (id) => {
     if (!id) return "";
@@ -3609,6 +3657,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     .filter(o => !toDate || o.orderDate <= toDate)
     .filter(o => typeFilter === "All" || o.type === typeFilter)
     .filter(o => statusFilter === "All" || o.status === statusFilter)
+    .filter(o => incChannelFilter === "All" || (incChannelFilter==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline"&&(incChannelFilter==="Online"||o.channel===incChannelFilter)))
     .filter(o => {
       if (!search) return true;
       const s = search.toLowerCase();
@@ -3768,6 +3817,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                       {o.invNos&&<span className="text-xs text-gray-400 font-mono">{o.invNos}</span>}
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{o.docType}</span>
                       <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{o.status}</span>
+                      {(()=>{const cb=channelBadge(o.channel);return <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${cb.cls}`}>{cb.icon} {cb.label}</span>;})()}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-gray-400">{o.orderDate}</span>
@@ -5330,7 +5380,7 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -5427,7 +5477,8 @@ function App() {
       filament_usage:JSON.stringify(o.filamentUsage||[]),
       charges:JSON.stringify(o.charges||[]),
       is_pickup:o.isPickup?1:0,
-      ...(o.cancelReason?{cancel_reason:o.cancelReason}:{})
+      ...(o.cancelReason?{cancel_reason:o.cancelReason}:{}),
+      channel:o.channel||"Offline"
     }});
     syncItems("order", o.orderNo, o.items);
   };
