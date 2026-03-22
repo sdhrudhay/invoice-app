@@ -1523,7 +1523,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
               <div className="border-t pt-4">
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={o.needsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel="Edit items here to update quotation"
-                  onSpoolAdded={(entry)=>{ setFilamentUsage(prev=>[...prev,entry]); toast("Spool added — save order to confirm"); }}
+                  onSpoolAdded={(entry)=>{ const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{
                     const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
                     const allSpoolIds = spoolIds || [spoolId];
