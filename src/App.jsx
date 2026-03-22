@@ -5261,7 +5261,9 @@ function App() {
     const headers = { "Content-Type": "application/json", "apikey": sbKey, "Authorization": `Bearer ${token}` };
     client.from = (table) => ({
       select: async (cols="*") => {
-        const r = await fetch(`${rest}/${table}?select=${cols}&order=created_at.asc`, { headers: {...headers, "Prefer":"return=representation"} });
+        const noOrder = ["employees","products","inventory","wastage_log"].includes(table);
+        const url = `${rest}/${table}?select=${cols}${noOrder?"":"&order=created_at.asc"}`;
+        const r = await fetch(url, { headers: {...headers, "Prefer":"return=representation"} });
         if (!r.ok) return [];
         return r.json();
       },
@@ -5296,7 +5298,9 @@ function App() {
     const rest2 = `${url}/rest/v1`;
     const client = { from: (table) => ({
       select: async (cols="*") => {
-        const r = await fetch(`${rest2}/${table}?select=${cols}&order=created_at.asc`, { headers: {...authHeaders,"Prefer":"return=representation"} });
+        const noOrder2 = ["employees","products","inventory","wastage_log"].includes(table);
+        const url2 = `${rest2}/${table}?select=${cols}${noOrder2?"":"&order=created_at.asc"}`;
+        const r = await fetch(url2, { headers: {...authHeaders,"Prefer":"return=representation"} });
         if (!r.ok) return [];
         return r.json();
       }
