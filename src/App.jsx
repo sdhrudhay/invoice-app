@@ -1922,7 +1922,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     return tiTotal>0?tiTotal:qtTotal;
   };
-  const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+num(p.amount),0);
+  const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
   const searched=orders.filter(o=>o.orderNo.toLowerCase().includes(search.toLowerCase())||o.customerName.toLowerCase().includes(search.toLowerCase()));
   const filtered=searched
@@ -2080,7 +2080,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+chargesTotal;
     const tN=tiTotal>0?tiTotal:qtTotal;
-    const bal=tN-getTotalPaid(o);
+    const bal=o.status==="Cancelled"?0:tN-getTotalPaid(o);
     const due=o.dueDate||"";
     const isOverdue=o.status==="Pending"&&due&&due<todayStr;
     const isDueSoon=o.status==="Pending"&&due&&due>=todayStr&&due<=addDays(todayStr,3);
@@ -3412,8 +3412,8 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     const invoicedAmt = tis.length
       ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
       : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
-    const paidAmt = (o.payments||[]).reduce((s,p)=>s+num(p.amount),0) + num(o.advance);
-    const balance = invoicedAmt - paidAmt;
+    const paidAmt = (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0) + num(o.advance);
+    const balance = o.status==="Cancelled" ? 0 : invoicedAmt - paidAmt;
     const invNos = tis.length ? tis.map(t=>t.invNo).join(", ") : (qt ? qt.invNo : "");
     const docType = tis.length ? "Tax Invoice" : qt ? "Quotation" : "Order";
     return { orderNo:o.orderNo, customerName:o.customerName, type:o.type, orderDate:o.orderDate, invoicedAmt, paidAmt, balance, status:o.status, invNos, docType };
@@ -3587,8 +3587,9 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-gray-400">{o.orderDate}</span>
                       <span className="text-xs text-emerald-600 font-semibold">Paid &#x20B9;{o.paidAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
-                      {o.balance>0.01&&<span className="text-xs text-orange-500 font-semibold">Due &#x20B9;{o.balance.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>}
-                      {o.balance<=0.01&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
+                      {o.status!=="Cancelled"&&o.balance>0.01&&<span className="text-xs text-orange-500 font-semibold">Due &#x20B9;{o.balance.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>}
+                      {o.status!=="Cancelled"&&o.balance<=0.01&&<span className="text-xs text-emerald-500 font-semibold">Fully paid</span>}
+                      {o.status==="Cancelled"&&<span className="text-xs text-red-400 font-semibold">Cancelled — no balance due</span>}
                     </div>
                   </div>
                   <span className="font-bold text-slate-800 text-base shrink-0">&#x20B9;{o.invoicedAmt.toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
@@ -4768,7 +4769,8 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
     const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
     const orderTotal = tiTotal>0?tiTotal:qtTotal;
-    const totalPaid = (order.payments||[]).reduce((s,p)=>s+num(p.amount),0)+num(order.advance);
+    const totalPaid = (order.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0)+num(order.advance);
+    if (order.status==="Cancelled") return 0;
     return orderTotal - totalPaid;
   };
 
