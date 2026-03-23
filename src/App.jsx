@@ -3074,8 +3074,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const tick = getRoundTick(maxV);
     const ticks = [];
     for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const W=800, H=height;
-    const YPAD=42, TOP=24, BOT=22, XPAD=8;
+    const W=700, H=280;
+    const YPAD=44, TOP=28, BOT=24, XPAD=8;
     const chartH = H-TOP-BOT;
     const chartW = W-YPAD-XPAD;
     const n = data.length;
@@ -3086,13 +3086,13 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const barY = (v) => TOP+chartH-barH(v);
     const barColor = (i) => typeof color==="function"?color(i):color;
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{height:H,display:"block"}}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{display:"block"}}>
         {ticks.map(v=>{
           const y=TOP+chartH-(v/topVal)*chartH;
           return (
             <g key={v}>
               <line x1={YPAD} y1={y} x2={W-XPAD} y2={y} stroke={v===0?"#94a3b8":"#e2e8f0"} strokeWidth={v===0?1.5:1} strokeDasharray={v===0?"none":"4 2"}/>
-              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="10" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
+              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="11" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
             </g>
           );
         })}
@@ -3108,7 +3108,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 const h2=barH(data2[i]?.value||0), x2=x+barW+3, y2=barY(data2[i]?.value||0);
                 return h2>0?<rect x={x2} y={y2} width={barW} height={h2} fill={color2||"#f59e0b"} rx="2" opacity="0.65"/>:null;
               })()}
-              <text x={barX(i)+(data2?barW:barW/2)} y={H-4} textAnchor="middle" fontSize="9" fill="#64748b" fontWeight="500">{d.label}</text>
+              <text x={YPAD+i*slotW+slotW/2} y={H-4} textAnchor="middle" fontSize="11" fill="#64748b" fontWeight="500">{d.label}</text>
             </g>
           );
         })}
@@ -3125,20 +3125,20 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const tick = getRoundTick(maxV);
     const ticks = [];
     for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const W=800, H=height;
-    const YPAD=42, TOP=24, BOT=22, XPAD=8;
+    const W=700, H=280;
+    const YPAD=44, TOP=28, BOT=24, XPAD=8;
     const chartH = H-TOP-BOT;
     const chartW = W-YPAD-XPAD;
     const px = (i) => YPAD + (n>1?i/(n-1):0.5)*chartW;
     const py = (v) => TOP + chartH - (v/topVal)*chartH;
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{height:H,display:"block"}}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{display:"block"}}>
         {ticks.map(v=>{
           const y=py(v);
           return (
             <g key={v}>
               <line x1={YPAD} y1={y} x2={W-XPAD} y2={y} stroke={v===0?"#94a3b8":"#e2e8f0"} strokeWidth={v===0?1.5:1} strokeDasharray={v===0?"none":"4 2"}/>
-              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="10" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
+              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="11" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
             </g>
           );
         })}
@@ -3161,7 +3161,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           );
         })}
         {series[0].labels&&series[0].labels.map((l,i)=>(
-          <text key={i} x={px(i)} y={H-4} textAnchor="middle" fontSize="9" fill="#64748b" fontWeight="500">{l}</text>
+          <text key={i} x={px(i)} y={H-4} textAnchor="middle" fontSize="11" fill="#64748b" fontWeight="500">{l}</text>
         ))}
       </svg>
     );
