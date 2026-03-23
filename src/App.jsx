@@ -2875,6 +2875,499 @@ const DEFAULT_EXPENSE_CATS = ["Electricity","Groceries","Entertainment","Filamen
 const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscellaneous", comment:"" };
 
 
+
+function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[] }) {
+  const [period, setPeriod] = useState("month"); // "month" | "year"
+  const [year, setYear] = useState(new Date().getFullYear());
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const num = (v) => Number(v||0);
+  const fmt = (n) => Number(n||0).toLocaleString("en-IN", {minimumFractionDigits:0, maximumFractionDigits:0});
+  const fmtDec = (n) => Number(n||0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  const activeOrders = orders.filter(o => o.status !== "Cancelled");
+  const years = [...new Set(orders.map(o => o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
+
+  // ── Order revenue ─────────────────────────────────────────────────────────
+  const getOrderValue = (o) => (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0) + (o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+  const totalRevenue = activeOrders.reduce((s,o)=>s+getOrderValue(o),0);
+  const totalExpenses = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
+  const totalOrders = activeOrders.length;
+  const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
+  const b2bOrders = activeOrders.filter(o=>o.type==="B2B").length;
+  const b2cOrders = activeOrders.filter(o=>o.type==="B2C").length;
+
+  // ── Monthly/Yearly breakdown ──────────────────────────────────────────────
+  const getBuckets = () => {
+    if (period === "year") {
+      const yrs = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort();
+      return yrs.map(y => ({ label: y, orders: activeOrders.filter(o=>o.orderDate?.startsWith(y)) }));
+    }
+    return MONTHS.map((m,i) => ({
+      label: m,
+      orders: activeOrders.filter(o => {
+        const d = o.orderDate||"";
+        return d.startsWith(String(year)) && Number(d.slice(5,7))===i+1;
+      })
+    }));
+  };
+
+  const buckets = getBuckets();
+  const maxOrderCount = Math.max(1, ...buckets.map(b=>b.orders.length));
+  const maxRevenue = Math.max(1, ...buckets.map(b=>b.orders.reduce((s,o)=>s+getOrderValue(o),0)));
+
+  // ── Channel breakdown ─────────────────────────────────────────────────────
+  const channelCounts = {};
+  activeOrders.forEach(o => {
+    const ch = o.channel||"Offline";
+    channelCounts[ch] = (channelCounts[ch]||0) + 1;
+  });
+
+  // ── Expense breakdown ─────────────────────────────────────────────────────
+  const expByCat = {};
+  expenses.filter(e=>!e.isDeleted).forEach(e => {
+    expByCat[e.category||"Other"] = (expByCat[e.category||"Other"]||0) + num(e.amount);
+  });
+  const expCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxExp = Math.max(1, ...expCats.map(([,v])=>v));
+
+  // Monthly expenses
+  const expByMonth = MONTHS.map((m,i) => ({
+    label: m,
+    amount: expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1).reduce((s,e)=>s+num(e.amount),0)
+  }));
+  const maxExpMonth = Math.max(1, ...expByMonth.map(e=>e.amount));
+
+  // ── Filament usage ────────────────────────────────────────────────────────
+  const allUsage = orders.flatMap(o=>o.filamentUsage||[]);
+  const usageByMaterial = {}, usageByBrand = {}, usageByColor = {};
+  allUsage.filter(u=>!u.isWaste).forEach(u => {
+    const inv = inventory.find(i=>i.id===u.inventoryId);
+    if (!inv) return;
+    usageByMaterial[inv.material] = (usageByMaterial[inv.material]||0) + num(u.weightUsedG);
+    usageByBrand[inv.brand||"No brand"] = (usageByBrand[inv.brand||"No brand"]||0) + num(u.weightUsedG);
+    usageByColor[inv.color||"No color"] = (usageByColor[inv.color||"No color"]||0) + num(u.weightUsedG);
+  });
+
+  // ── Wastage ───────────────────────────────────────────────────────────────
+  const wasteByMaterial = {}, wasteByBrand = {}, wasteByColor = {};
+  wastageLog.forEach(w => {
+    wasteByMaterial[w.material||"?"] = (wasteByMaterial[w.material||"?"]||0) + num(w.weightG);
+    wasteByBrand[w.brand||"No brand"] = (wasteByBrand[w.brand||"No brand"]||0) + num(w.weightG);
+    wasteByColor[w.color||"No color"] = (wasteByColor[w.color||"No color"]||0) + num(w.weightG);
+  });
+  const totalWaste = wastageLog.reduce((s,w)=>s+num(w.weightG),0);
+  const totalUsed = allUsage.filter(u=>!u.isWaste).reduce((s,u)=>s+num(u.weightUsedG),0);
+
+  // ── Payment modes ─────────────────────────────────────────────────────────
+  const modeCount = {};
+  activeOrders.forEach(o => {
+    if (num(o.advance)>0) modeCount[o.paymentMode||"Unknown"] = (modeCount[o.paymentMode||"Unknown"]||0) + 1;
+    (o.payments||[]).forEach(p => { if (!p.isRefund) modeCount[p.mode||"Unknown"] = (modeCount[p.mode||"Unknown"]||0) + 1; });
+  });
+
+  // ── GST breakdown ──────────────────────────────────────────────────────────
+  const withGst = activeOrders.filter(o=>o.needsGst).length;
+  const withoutGst = activeOrders.filter(o=>!o.needsGst).length;
+
+  // ── Top customers ──────────────────────────────────────────────────────────
+  const custMap = {};
+  activeOrders.forEach(o => {
+    if (!custMap[o.customerName]) custMap[o.customerName] = {name:o.customerName, orders:0, value:0, type:o.type};
+    custMap[o.customerName].orders++;
+    custMap[o.customerName].value += getOrderValue(o);
+  });
+  const topCustomers = Object.values(custMap).sort((a,b)=>b.value-a.value).slice(0,5);
+
+  // ── Colors ────────────────────────────────────────────────────────────────
+  const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16"];
+  const barColor = (i) => PALETTE[i % PALETTE.length];
+
+  // ── Mini bar chart ────────────────────────────────────────────────────────
+  const MiniBar = ({value, max, color="#6366f1", height=32}) => (
+    <div className="flex-1 flex items-end justify-center" style={{height}}>
+      <div className="w-full rounded-sm transition-all" style={{height:`${Math.max(3,Math.round((value/max)*height))}px`,background:color,opacity:0.85}}/>
+    </div>
+  );
+
+  const SectionTitle = ({icon, title, sub}) => (
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-lg">{icon}</span>
+      <div>
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        {sub&&<p className="text-xs text-gray-400">{sub}</p>}
+      </div>
+    </div>
+  );
+
+  const Card = ({children, className=""}) => (
+    <div className={`bg-white border border-gray-100 rounded-2xl p-4 shadow-sm ${className}`}>{children}</div>
+  );
+
+  const DonutSlice = ({data, colors}) => {
+    const total = data.reduce((s,[,v])=>s+v,0);
+    if (!total) return <p className="text-xs text-gray-400 text-center py-4">No data</p>;
+    let cumPct = 0;
+    const r = 40, cx = 50, cy = 50;
+    const slices = data.map(([label, value], i) => {
+      const pct = value/total;
+      const startAngle = cumPct * 2 * Math.PI - Math.PI/2;
+      cumPct += pct;
+      const endAngle = cumPct * 2 * Math.PI - Math.PI/2;
+      const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
+      const largeArc = pct > 0.5 ? 1 : 0;
+      return { path:`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`, color:colors[i%colors.length], label, value, pct };
+    });
+    return (
+      <div className="flex items-center gap-4">
+        <svg viewBox="0 0 100 100" className="w-24 h-24 shrink-0">
+          {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+          <circle cx="50" cy="50" r="22" fill="white"/>
+        </svg>
+        <div className="space-y-1 min-w-0 flex-1">
+          {slices.map((s,i)=>(
+            <div key={i} className="flex items-center gap-1.5 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{background:s.color}}/>
+              <span className="text-xs text-gray-600 truncate flex-1">{s.label}</span>
+              <span className="text-xs font-bold text-slate-700 shrink-0">{Math.round(s.pct*100)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6 pb-10">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-lg font-black text-slate-800">Analytics</p>
+          <p className="text-xs text-gray-400">Business insights at a glance</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {["month","year"].map(p=>(
+              <button key={p} onClick={()=>setPeriod(p)} className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${period===p?"bg-white text-indigo-700 shadow-sm":"text-gray-500"}`}>{p==="month"?"Monthly":"Yearly"}</button>
+            ))}
+          </div>
+          {period==="month"&&(
+            <select value={year} onChange={e=>setYear(Number(e.target.value))} className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white focus:outline-none">
+              {(years.length?years:[String(year)]).map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          {label:"Total Orders", value:fmt(totalOrders), sub:`${completedOrders} completed`, color:"bg-indigo-600", icon:"📋"},
+          {label:"Revenue", value:"₹"+fmt(totalRevenue), sub:`${b2bOrders} B2B · ${b2cOrders} B2C`, color:"bg-emerald-500", icon:"💰"},
+          {label:"Expenses", value:"₹"+fmt(totalExpenses), sub:`Net ₹${fmt(totalRevenue-totalExpenses)}`, color:"bg-orange-500", icon:"💸"},
+          {label:"Filament Used", value:totalUsed>=1000?`${(totalUsed/1000).toFixed(1)}kg`:`${fmt(totalUsed)}g`, sub:`${fmt(totalWaste)}g waste`, color:"bg-violet-500", icon:"🧵"},
+        ].map(k=>(
+          <Card key={k.label}>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-gray-400 font-medium">{k.label}</p>
+                <p className="text-xl font-black text-slate-800 mt-0.5 leading-none">{k.value}</p>
+                <p className="text-xs text-gray-400 mt-1">{k.sub}</p>
+              </div>
+              <span className="text-2xl">{k.icon}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Orders over time */}
+      <Card>
+        <SectionTitle icon="📈" title="Orders Over Time" sub={period==="month"?`Monthly breakdown for ${year}`:"All years"}/>
+        <div className="flex items-end gap-0.5 h-32 mt-2">
+          {buckets.map((b,i)=>{
+            const b2b = b.orders.filter(o=>o.type==="B2B").length;
+            const b2c = b.orders.filter(o=>o.type==="B2C").length;
+            const total = b.orders.length;
+            const h = Math.max(4, Math.round((total/maxOrderCount)*128));
+            return (
+              <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 group cursor-pointer" title={`${b.label}: ${total} orders (B2B: ${b2b}, B2C: ${b2c})`}>
+                <div className="w-full flex flex-col justify-end rounded-sm overflow-hidden" style={{height:"120px"}}>
+                  <div style={{height:`${Math.round((b2c/maxOrderCount)*120)}px`,background:"#22d3ee"}} className="w-full"/>
+                  <div style={{height:`${Math.round((b2b/maxOrderCount)*120)}px`,background:"#6366f1"}} className="w-full"/>
+                </div>
+                <p className="text-[8px] text-gray-400 leading-none">{b.label}</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-4 mt-2">
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-indigo-500"/><span className="text-xs text-gray-500">B2B</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-cyan-400"/><span className="text-xs text-gray-500">B2C</span></div>
+        </div>
+      </Card>
+
+      {/* Revenue over time */}
+      <Card>
+        <SectionTitle icon="💹" title="Revenue Over Time" sub="Order value by period"/>
+        <div className="flex items-end gap-0.5 h-28 mt-2">
+          {buckets.map((b,i)=>{
+            const rev = b.orders.reduce((s,o)=>s+getOrderValue(o),0);
+            const online = b.orders.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getOrderValue(o),0);
+            const offline = rev - online;
+            return (
+              <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5" title={`${b.label}: ₹${fmt(rev)}`}>
+                <div className="w-full flex flex-col justify-end rounded-sm overflow-hidden" style={{height:"104px"}}>
+                  <div style={{height:`${Math.round((online/maxRevenue)*104)}px`,background:"#0ea5e9"}} className="w-full"/>
+                  <div style={{height:`${Math.round((offline/maxRevenue)*104)}px`,background:"#10b981"}} className="w-full"/>
+                </div>
+                <p className="text-[8px] text-gray-400 leading-none">{b.label}</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-4 mt-2">
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-emerald-500"/><span className="text-xs text-gray-500">Offline</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-sky-500"/><span className="text-xs text-gray-500">Online</span></div>
+        </div>
+      </Card>
+
+      {/* Row: Order breakdown donuts */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card>
+          <SectionTitle icon="👥" title="B2B vs B2C"/>
+          <DonutSlice data={[["B2B",b2bOrders],["B2C",b2cOrders]].filter(([,v])=>v)} colors={["#6366f1","#22d3ee"]}/>
+        </Card>
+        <Card>
+          <SectionTitle icon="🧾" title="GST Status"/>
+          <DonutSlice data={[["With GST",withGst],["Without GST",withoutGst]].filter(([,v])=>v)} colors={["#10b981","#f59e0b"]}/>
+        </Card>
+        <Card>
+          <SectionTitle icon="🛒" title="Sales Channel"/>
+          <DonutSlice data={Object.entries(channelCounts).sort((a,b)=>b[1]-a[1])} colors={PALETTE}/>
+        </Card>
+      </div>
+
+      {/* Order status breakdown */}
+      <Card>
+        <SectionTitle icon="📊" title="Order Status Breakdown"/>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[["Pending","#f59e0b"],["Completed","#10b981"],["Cancelled","#f43f5e"]].map(([s,c])=>{
+            const cnt = orders.filter(o=>o.status===s).length;
+            const pct = orders.length ? Math.round(cnt/orders.length*100) : 0;
+            return (
+              <div key={s} className="rounded-xl p-3 border border-gray-100">
+                <p className="text-xs text-gray-400">{s}</p>
+                <p className="text-2xl font-black mt-1" style={{color:c}}>{cnt}</p>
+                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{width:`${pct}%`,background:c}}/>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{pct}%</p>
+              </div>
+            );
+          })}
+          <div className="rounded-xl p-3 border border-gray-100">
+            <p className="text-xs text-gray-400">Avg Order Value</p>
+            <p className="text-xl font-black text-slate-800 mt-1">₹{fmt(totalOrders?totalRevenue/totalOrders:0)}</p>
+            <p className="text-xs text-gray-400 mt-1">across {totalOrders} orders</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Expenses */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card>
+          <SectionTitle icon="💸" title="Expenses by Category"/>
+          {expCats.length===0?<p className="text-xs text-gray-400 text-center py-6">No expense data</p>:(
+            <div className="space-y-2">
+              {expCats.map(([cat,amt],i)=>(
+                <div key={cat} className="space-y-0.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-600 font-medium">{cat}</span>
+                    <span className="text-xs font-bold text-slate-700">₹{fmt(amt)}</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{width:`${Math.round(amt/maxExp*100)}%`,background:barColor(i)}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card>
+          <SectionTitle icon="📅" title="Monthly Expenses" sub={String(year)}/>
+          <div className="flex items-end gap-0.5 h-28 mt-2">
+            {expByMonth.map((b,i)=>(
+              <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5" title={`${b.label}: ₹${fmt(b.amount)}`}>
+                <div className="w-full rounded-sm" style={{height:`${Math.max(2,Math.round((b.amount/maxExpMonth)*96))}px`,background:"#f59e0b",marginTop:"auto"}}/>
+                <p className="text-[8px] text-gray-400 leading-none">{b.label}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Payment modes */}
+      <Card>
+        <SectionTitle icon="💳" title="Payment Modes"/>
+        {Object.keys(modeCount).length===0?<p className="text-xs text-gray-400 text-center py-4">No payment data</p>:(
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(modeCount).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>(
+              <div key={mode} className="flex items-center gap-2 border border-gray-100 rounded-xl px-4 py-3">
+                <div className="w-3 h-3 rounded-full shrink-0" style={{background:barColor(i)}}/>
+                <span className="text-sm font-semibold text-slate-700">{mode}</span>
+                <span className="text-sm font-black" style={{color:barColor(i)}}>{cnt}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Top customers */}
+      <Card>
+        <SectionTitle icon="🏆" title="Top 5 Customers by Revenue"/>
+        {topCustomers.length===0?<p className="text-xs text-gray-400 text-center py-4">No data</p>:(
+          <div className="space-y-2">
+            {topCustomers.map((c,i)=>{
+              const maxVal = topCustomers[0].value||1;
+              return (
+                <div key={c.name} className="flex items-center gap-3">
+                  <span className="text-xs font-black text-gray-300 w-4 shrink-0">{i+1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between mb-0.5">
+                      <span className="text-xs font-semibold text-slate-700 truncate">{c.name}</span>
+                      <span className="text-xs font-bold text-slate-700 shrink-0 ml-2">₹{fmt(c.value)}</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{width:`${Math.round(c.value/maxVal*100)}%`,background:barColor(i)}}/>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${c.type==="B2B"?"bg-indigo-100 text-indigo-700":"bg-cyan-100 text-cyan-700"}`}>{c.type}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Filament usage */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          {title:"Usage by Material", data:usageByMaterial, icon:"🧪"},
+          {title:"Usage by Brand", data:usageByBrand, icon:"🏷️"},
+          {title:"Usage by Color", data:usageByColor, icon:"🎨"},
+        ].map(({title,data,icon})=>{
+          const entries = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,6);
+          const maxV = Math.max(1,...entries.map(([,v])=>v));
+          return (
+            <Card key={title}>
+              <SectionTitle icon={icon} title={title} sub="grams used"/>
+              {entries.length===0?<p className="text-xs text-gray-400 text-center py-4">No data</p>:(
+                <div className="space-y-2">
+                  {entries.map(([k,v],i)=>(
+                    <div key={k} className="space-y-0.5">
+                      <div className="flex justify-between">
+                        <span className="text-xs text-gray-600 truncate flex-1">{k}</span>
+                        <span className="text-xs font-bold text-slate-700 ml-2">{v>=1000?`${(v/1000).toFixed(1)}kg`:`${Math.round(v)}g`}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{width:`${Math.round(v/maxV*100)}%`,background:barColor(i)}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Filament wastage */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle icon="♻️" title="Filament Wastage" sub={`${totalWaste>=1000?(totalWaste/1000).toFixed(1)+"kg":Math.round(totalWaste)+"g"} total waste`}/>
+          {totalUsed>0&&<div className="text-right shrink-0">
+            <p className="text-xs text-gray-400">Waste rate</p>
+            <p className="text-lg font-black text-orange-500">{((totalWaste/(totalUsed+totalWaste))*100).toFixed(1)}%</p>
+          </div>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            {title:"By Material", data:wasteByMaterial},
+            {title:"By Brand", data:wasteByBrand},
+            {title:"By Color", data:wasteByColor},
+          ].map(({title,data})=>{
+            const entries = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,5);
+            const maxV = Math.max(1,...entries.map(([,v])=>v));
+            return (
+              <div key={title}>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{title}</p>
+                {entries.length===0?<p className="text-xs text-gray-400">No data</p>:(
+                  <div className="space-y-1.5">
+                    {entries.map(([k,v],i)=>(
+                      <div key={k} className="space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-600 truncate flex-1">{k}</span>
+                          <span className="text-xs font-bold text-orange-600 ml-2">{Math.round(v)}g</span>
+                        </div>
+                        <div className="h-1 bg-orange-50 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-orange-400" style={{width:`${Math.round(v/maxV*100)}%`}}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Inventory health */}
+      <Card>
+        <SectionTitle icon="📦" title="Inventory Health"/>
+        {inventory.length===0?<p className="text-xs text-gray-400 text-center py-4">No inventory data</p>:(()=>{
+          const byMat = {};
+          inventory.forEach(i=>{ byMat[i.material]=(byMat[i.material]||0)+1; });
+          const totalSpools = inventory.length;
+          const totalWeightKg = inventory.reduce((s,i)=>s+num(i.weightG),0)/1000;
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 bg-indigo-50 rounded-xl">
+                  <p className="text-2xl font-black text-indigo-700">{totalSpools}</p>
+                  <p className="text-xs text-indigo-500 mt-0.5">Total Spools</p>
+                </div>
+                <div className="text-center p-3 bg-emerald-50 rounded-xl">
+                  <p className="text-2xl font-black text-emerald-700">{totalWeightKg.toFixed(1)}kg</p>
+                  <p className="text-xs text-emerald-500 mt-0.5">Total Stock</p>
+                </div>
+                <div className="text-center p-3 bg-violet-50 rounded-xl">
+                  <p className="text-2xl font-black text-violet-700">{Object.keys(byMat).length}</p>
+                  <p className="text-xs text-violet-500 mt-0.5">Materials</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {Object.entries(byMat).sort((a,b)=>b[1]-a[1]).map(([mat,cnt],i)=>(
+                  <div key={mat} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600 w-20 shrink-0">{mat}</span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{width:`${Math.round(cnt/totalSpools*100)}%`,background:barColor(i)}}/>
+                    </div>
+                    <span className="text-xs font-bold text-slate-600 w-8 text-right">{cnt}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </Card>
+    </div>
+  );
+}
+
 function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, deleteExpense=()=>{}, toast=()=>{} }) {
   const [subTab, setSubTab] = useState("records");
   const [showEmpForm, setShowEmpForm] = useState(false);
@@ -5648,6 +6141,7 @@ function App() {
   const handleSetSbKey=(v)=>{ setSbKey(v); localStorage.setItem("sb_key",v); };
 
   const TABS=[
+    {id:"analytics", label:"Analytics", icon:"📊", group:"orders"},
     {id:"new",     label:"New Order",  icon:"✏️",  group:"orders"},
     {id:"orders",  label:"Orders",     icon:"📋",  group:"orders"},
     {id:"clients", label:"Clients",    icon:"👥",  group:"orders"},
@@ -5727,6 +6221,7 @@ function App() {
       <div className="md:pl-36 pb-16 md:pb-0">
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
+          {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
