@@ -3141,7 +3141,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 {label:"Collection Rate",value:collectionRate,color:collectionRate>=80?"#10b981":collectionRate>=50?"#f59e0b":"#f43f5e"},
                 {label:"Profit Margin",value:Math.max(0,profitMargin),color:profitMargin>=30?"#10b981":profitMargin>=10?"#f59e0b":"#f43f5e"},
                 {label:"Completion Rate",value:totalOrders?Math.round(completedOrders/totalOrders*100):0,color:"#6366f1"},
-                {label:"Waste Efficiency",value:Math.max(0,100-Number(wasteRate)),color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e"},
+                {label:"Waste Efficiency",value:Math.round((100-Number(wasteRate))*10)/10,color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e"},
               ].map(({label,value,color})=>(
                 <div key={label} className="text-center space-y-1">
                   <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{label}</p>
@@ -6308,7 +6308,7 @@ function App() {
 
       {/* ── Main content area ── */}
       <div className="md:pl-36 pb-16 md:pb-0">
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-6">
+      <div className="px-4 md:px-6 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
