@@ -3059,48 +3059,97 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     );
   };
 
-  // Line chart SVG
+  // Line chart SVG with y-axis
   const LineChart = ({series, height=80, showArea=true}) => {
     if (!series.length||!series[0].data.length) return null;
     const n = series[0].data.length;
     const allVals = series.flatMap(s=>s.data);
-    const minV = Math.min(0,...allVals), maxV = Math.max(1,...allVals);
-    const W=400, H=height;
-    const px=(i)=>i/(n-1)*W;
-    const py=(v)=>H-(((v-minV)/(maxV-minV))*H*0.85+H*0.05);
+    const maxV = Math.max(1,...allVals);
+    const getRoundTick = (max) => {
+      const mag = Math.pow(10,Math.floor(Math.log10(max||1)));
+      return [1,2,2.5,5,10].map(f=>f*mag).find(v=>v>=max/4)||mag;
+    };
+    const tick = getRoundTick(maxV);
+    const topVal = Math.ceil(maxV/tick)*tick||1;
+    const ticks = [];
+    for(let v=0;v<=topVal;v+=tick) ticks.push(v);
+    const fmtTick = (v) => v>=100000?`${(v/100000).toFixed(0)}L`:v>=1000?`${(v/1000).toFixed(0)}K`:v>=100?`${v}`:String(v);
+    const YPAD=24, H=height;
+    const px=(i)=>YPAD+(i/(n-1))*(400-YPAD);
+    const py=(v)=>(H-12)-(v/topVal)*(H-12-4)+4;
     return (
-      <svg viewBox={`0 0 ${W} ${H+16}`} className="w-full" style={{height:height+16}}>
+      <svg viewBox={`0 0 400 ${H+16}`} className="w-full" style={{height:height+16}}>
+        {/* Y gridlines + labels */}
+        {ticks.map(v=>(
+          <g key={v}>
+            <line x1={YPAD} y1={py(v)} x2={400} y2={py(v)} stroke="#f1f5f9" strokeWidth="1"/>
+            <text x={YPAD-3} y={py(v)+3} textAnchor="end" fontSize="7" fill="#9ca3af">{fmtTick(v)}</text>
+          </g>
+        ))}
+        {/* Y axis line */}
+        <line x1={YPAD} y1={4} x2={YPAD} y2={H-12} stroke="#e2e8f0" strokeWidth="1"/>
+        {/* X axis line */}
+        <line x1={YPAD} y1={H-12} x2={400} y2={H-12} stroke="#e2e8f0" strokeWidth="1"/>
         {series.map((s,si)=>{
           const pts=s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" ");
-          const areaPath=`M${px(0)},${H} L${s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" L")} L${px(n-1)},${H} Z`;
+          const areaPath=`M${px(0)},${py(0)} L${s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" L")} L${px(n-1)},${py(0)} Z`;
           return (
             <g key={si}>
               {showArea&&<path d={areaPath} fill={s.color} opacity="0.08"/>}
               <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-              {s.data.map((v,i)=>v>0&&<circle key={i} cx={px(i)} cy={py(v)} r="3" fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+              {s.data.map((v,i)=>v>0&&<circle key={i} cx={px(i)} cy={py(v)} r="2.5" fill={s.color} stroke="white" strokeWidth="1.5"/>)}
             </g>
           );
         })}
         {series[0].labels&&series[0].labels.map((l,i)=>(
-          <text key={i} x={px(i)} y={H+13} textAnchor="middle" fontSize="7" fill="#6b7280">{l}</text>
+          <text key={i} x={px(i)} y={H+13} textAnchor="middle" fontSize="8" fill="#6b7280">{l}</text>
         ))}
       </svg>
     );
   };
 
-  const BarChart2 = ({data,color="#6366f1",height=72,color2,data2})=>{
+  const BarChart2 = ({data,color="#6366f1",height=80,color2,data2})=>{
     const maxV=Math.max(1,...data.map(d=>d.value),...(data2||[]).map(d=>d.value));
+    // Nice round y-axis ticks
+    const getRoundTick = (max) => {
+      const mag = Math.pow(10,Math.floor(Math.log10(max||1)));
+      const nice = [1,2,2.5,5,10].map(f=>f*mag).find(v=>v>=max/4)||mag;
+      return nice;
+    };
+    const tick = getRoundTick(maxV);
+    const topVal = Math.ceil(maxV/tick)*tick||1;
+    const ticks = [];
+    for(let v=0;v<=topVal;v+=tick) ticks.push(v);
+    const fmtTick = (v) => v>=100000?`${(v/100000).toFixed(0)}L`:v>=1000?`${(v/1000).toFixed(0)}K`:v>=100?`${v}`:String(v);
+    const yLabelW = 28;
     return (
-      <div className="flex items-end gap-0.5" style={{height:height+12}}>
-        {data.map((d,i)=>(
-          <div key={d.label} className="flex-1 flex flex-col items-center gap-0.5" title={`${d.label}: ${fmt(d.value)}`}>
-            <div className="w-full flex items-end justify-center gap-px" style={{height:height}}>
-              <div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round((d.value/maxV)*height))}px`,background:typeof color==="function"?color(i):color}}/>
-              {data2&&<div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round(((data2[i]?.value||0)/maxV)*height))}px`,background:color2||"#f59e0b",opacity:0.7}}/>}
-            </div>
-            <p className="text-[7px] text-gray-500 leading-none">{d.label}</p>
+      <div className="flex gap-1">
+        {/* Y-axis */}
+        <div className="flex flex-col justify-between shrink-0 pb-5" style={{width:yLabelW,height:height}}>
+          {[...ticks].reverse().map(v=>(
+            <span key={v} className="text-[9px] text-gray-400 text-right leading-none">{fmtTick(v)}</span>
+          ))}
+        </div>
+        {/* Chart area */}
+        <div className="flex-1">
+          <div className="flex items-end gap-0.5 border-b border-l border-gray-200 relative" style={{height}}>
+            {/* Gridlines */}
+            {ticks.slice(1).map(v=>(
+              <div key={v} className="absolute w-full border-t border-gray-100" style={{bottom:`${(v/topVal)*100}%`,left:0}}/>
+            ))}
+            {data.map((d,i)=>(
+              <div key={d.label} className="flex-1 flex items-end justify-center gap-px h-full" title={`${d.label}: ${fmt(d.value)}`}>
+                <div className="w-full flex items-end gap-px h-full">
+                  <div className="flex-1 rounded-t-sm transition-all" style={{height:`${Math.max(0,Math.round((d.value/topVal)*100))}%`,background:typeof color==="function"?color(i):color,minHeight:d.value>0?"2px":"0"}}/>
+                  {data2&&<div className="flex-1 rounded-t-sm" style={{height:`${Math.max(0,Math.round(((data2[i]?.value||0)/topVal)*100))}%`,background:color2||"#f59e0b",opacity:0.7,minHeight:(data2[i]?.value||0)>0?"2px":"0"}}/>}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+          <div className="flex gap-0.5 mt-1">
+            {data.map(d=><p key={d.label} className="flex-1 text-[9px] text-gray-500 text-center leading-none">{d.label}</p>)}
+          </div>
+        </div>
       </div>
     );
   };
@@ -3286,18 +3335,37 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               if(!hasData)return <p className="text-xs text-gray-300 text-center py-4">Not enough data yet</p>;
               return (
                 <>
-                  <div className="flex items-end gap-0.5" style={{height:80}}>
-                    {growthRates.map((v,i)=>(
-                      <div key={i} className="flex-1 flex flex-col items-center justify-center gap-0.5" style={{height:80}}>
-                        {v>0&&<div style={{height:`${Math.min(36,Math.abs(v)/2)}px`,background:"#10b981",width:"100%",borderRadius:"2px 2px 0 0",marginTop:"auto"}}/>}
-                        <div className="h-px w-full bg-gray-200"/>
-                        {v<0&&<div style={{height:`${Math.min(36,Math.abs(v)/2)}px`,background:"#f43f5e",width:"100%",borderRadius:"0 0 2px 2px"}}/>}
+                  {(()=>{
+                    const maxAbs = Math.max(5,...growthRates.map(Math.abs));
+                    const halfH = 48;
+                    return (
+                      <div className="flex gap-1">
+                        <div className="flex flex-col justify-between shrink-0" style={{width:24,height:halfH*2}}>
+                          <span className="text-[9px] text-gray-400 text-right">+{maxAbs}%</span>
+                          <span className="text-[9px] text-gray-400 text-right">0%</span>
+                          <span className="text-[9px] text-gray-400 text-right">-{maxAbs}%</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-0.5 border-l border-gray-200" style={{height:halfH*2}}>
+                            {growthRates.map((v,i)=>(
+                              <div key={i} className="flex-1 flex flex-col h-full" title={`${MONTHS[i]}: ${v>=0?"+":""}${v}%`}>
+                                <div className="flex-1 flex items-end">
+                                  {v>0&&<div className="w-full rounded-t-sm" style={{height:`${Math.round((v/maxAbs)*halfH)}px`,background:"#10b981"}}/>}
+                                </div>
+                                <div className="h-px w-full bg-gray-200"/>
+                                <div className="flex-1 flex items-start">
+                                  {v<0&&<div className="w-full rounded-b-sm" style={{height:`${Math.round((Math.abs(v)/maxAbs)*halfH)}px`,background:"#f43f5e"}}/>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex gap-0.5 mt-1 border-t border-transparent">
+                            {MONTHS.map(m=><p key={m} className="flex-1 text-[9px] text-gray-500 text-center">{m}</p>)}
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-0.5 mt-0.5">
-                    {MONTHS.map(m=><p key={m} className="flex-1 text-[7px] text-gray-500 text-center">{m}</p>)}
-                  </div>
+                    );
+                  })()}
                 </>
               );
             })()}
@@ -3364,20 +3432,28 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Card>
-              <Sec icon="👥" title="B2B vs B2C"/>
-              <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v)} colors={["#6366f1","#22d3ee"]}/>
-            </Card>
-            <Card>
-              <Sec icon="🧾" title="GST Status"/>
-              <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v)} colors={["#10b981","#f59e0b"]}/>
-            </Card>
-            <Card>
-              <Sec icon="🛒" title="Sales Channel"/>
-              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE}/>
-            </Card>
-          </div>
+          <Card>
+            <Sec icon="🔍" title="Order Mix"/>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">B2B vs B2C</p>
+                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v)} colors={["#6366f1","#22d3ee"]} size={64}/>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">GST Status</p>
+                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v)} colors={["#10b981","#f59e0b"]} size={64}/>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Sales Channel</p>
+                <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={64}/>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-100">
+              <div className="text-center"><p className="text-[10px] text-gray-400">B2B Revenue</p><p className="text-sm font-black text-indigo-600">{fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0))}</p></div>
+              <div className="text-center"><p className="text-[10px] text-gray-400">Avg B2B Order</p><p className="text-sm font-black text-indigo-600">{fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0)}</p></div>
+              <div className="text-center"><p className="text-[10px] text-gray-400">Online Orders</p><p className="text-sm font-black text-sky-600">{activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length}</p></div>
+            </div>
+          </Card>
 
           <Card>
             <Sec icon="🚦" title="Order Status Distribution"/>
@@ -3504,10 +3580,24 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan your next order"/>
             {filCombEntries.length===0?<p className="text-xs text-gray-300 text-center py-6">No filament usage recorded</p>:(
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Donut data={filCombEntries.slice(0,8)} colors={PALETTE} size={100} centerText={`${filCombEntries.length} types`}/>
+                <div className="flex items-center gap-3 mb-4">
+                  <svg viewBox="0 0 100 100" style={{width:90,height:90}} className="shrink-0">
+                    {(()=>{let cum=0;return filCombEntries.slice(0,8).map(([k,v],i)=>{const pct=v/totalFilUsed,r=38,cx=50,cy=50,sa=cum*2*Math.PI-Math.PI/2;cum+=pct;const ea=cum*2*Math.PI-Math.PI/2,x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);return <path key={i} d={`M${cx} ${cy}L${x1} ${y1}A${r} ${r} 0 ${pct>.5?1:0} 1 ${x2} ${y2}Z`} fill={bc(i)} stroke="white" strokeWidth="1.5"/>;});})()}
+                    <circle cx="50" cy="50" r="22" fill="white"/>
+                    <text x="50" y="49" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#475569">{filCombEntries.length}</text>
+                    <text x="50" y="59" textAnchor="middle" fontSize="7" fill="#94a3b8">types</text>
+                  </svg>
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    {filCombEntries.slice(0,8).map(([k,v],i)=>(
+                      <div key={k} className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-2 h-2 rounded-sm shrink-0" style={{background:bc(i)}}/>
+                        <span className="text-[10px] text-gray-600 truncate flex-1">{k}</span>
+                        <span className="text-[10px] font-bold text-slate-700 shrink-0">{Math.round(v/totalFilUsed*100)}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 border-t border-gray-100 pt-3">
                   {filCombEntries.map(([k,v],i)=>(
                     <HBar key={k} label={k} value={v>=1000?`${(v/1000).toFixed(1)}kg`:`${Math.round(v)}g`} total={totalFilUsed} color={bc(i)} pct={Math.round(v/totalFilUsed*100)}/>
                   ))}
