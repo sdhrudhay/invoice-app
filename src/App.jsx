@@ -2892,17 +2892,19 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const activeOrders = orders.filter(o=>o.status!=="Cancelled");
   const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
   const getVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+  // For cancelled orders use what was actually collected, not invoice value
+  const getEffVal = (o) => o.status==="Cancelled" ? Math.max(0,getPaid(o)) : getVal(o);
   const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
   // KPIs
-  const totalRev = activeOrders.reduce((s,o)=>s+getVal(o),0);
+  const totalRev = orders.reduce((s,o)=>s+getEffVal(o),0);
   const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
   const pendingOrders = activeOrders.filter(o=>o.status==="Pending").length;
   const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
-  const avgOrder = totalOrders?totalRev/totalOrders:0;
+  const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getEffVal(o),0)/totalOrders):0;
   const collectionRate = totalRev?Math.round(totalPaid/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
@@ -2917,7 +2919,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const monthlyData = (yr) => MONTHS.map((m,i)=>{
     const ords = activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
     const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
-    const rev = ords.reduce((s,o)=>s+getVal(o),0);
+    const rev = ords.reduce((s,o)=>s+getEffVal(o),0);
     const exp = exps.reduce((s,e)=>s+num(e.amount),0);
     return {label:m, month:i+1, rev, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
   });
@@ -3524,19 +3526,23 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Card>
-              <Sec icon="👥" title="B2B vs B2C"/>
-              <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={150}/>
-            </Card>
-            <Card>
-              <Sec icon="🧾" title="GST Status"/>
-              <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={150}/>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Sales Channel — 50% */}
             <Card>
               <Sec icon="🛒" title="Sales Channel"/>
-              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={150}/>
+              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={160}/>
             </Card>
+            {/* B2B/B2C + GST — 25% each stacked */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card>
+                <Sec icon="👥" title="B2B vs B2C"/>
+                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={100}/>
+              </Card>
+              <Card>
+                <Sec icon="🧾" title="GST Status"/>
+                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={100}/>
+              </Card>
+            </div>
           </div>
 
           <Card>
