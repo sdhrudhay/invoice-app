@@ -2896,7 +2896,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   // KPIs
   const totalRev = activeOrders.reduce((s,o)=>s+getVal(o),0);
-  const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // include cancelled (advances + payments received)
+  const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
+  const netProfit_check = totalPaid - totalExp; // profit based on actual cash received
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
@@ -2904,8 +2905,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
   const avgOrder = totalOrders?totalRev/totalOrders:0;
   const collectionRate = totalRev?Math.round(totalPaid/totalRev*100):0;
-  const netProfit = totalRev - totalExp;
-  const profitMargin = totalRev?Math.round(netProfit/totalRev*100):0;
+  const netProfit = totalPaid - totalExp;
+  const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
 
   // Filament
   const allUsage = orders.flatMap(o=>o.filamentUsage||[]);
@@ -3048,10 +3049,10 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
         </svg>
         <div className="space-y-0.5 min-w-0 flex-1">
           {slices.map((s,i)=>(
-            <div key={i} className="flex items-center gap-1.5 min-w-0">
+            <div key={i} className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-sm shrink-0" style={{background:s.color}}/>
-              <span className="text-[10px] text-gray-500 truncate flex-1">{s.label}</span>
-              <span className="text-[10px] font-bold text-slate-600 shrink-0">{Math.round(s.pct*100)}%</span>
+              <span className="text-[10px] text-gray-600 font-medium">{s.label}</span>
+              <span className="text-[10px] font-black text-slate-700 ml-1">{Math.round(s.pct*100)}%</span>
             </div>
           ))}
         </div>
@@ -3508,26 +3509,10 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Left: three donuts stacked */}
-            <Card>
-              <Sec icon="🔍" title="Order Mix"/>
-              <div className="space-y-4">
-                {[
-                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v), colors:["#6366f1","#22d3ee"]},
-                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v), colors:["#10b981","#f59e0b"]},
-                  {title:"Sales Channel", data:Object.entries(channelMap).sort((a,b)=>b[1]-a[1]), colors:PALETTE},
-                ].map(({title,data,colors})=>(
-                  <div key={title}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{title}</p>
-                    <Donut data={data} colors={colors} size={100}/>
-                  </div>
-                ))}
-              </div>
-            </Card>
-            {/* Right: stats */}
+            {/* Left: stats — now first/bigger */}
             <Card>
               <Sec icon="📊" title="Order Stats"/>
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   ["Total Orders", totalOrders, "#6366f1"],
                   ["Completed", completedOrders, "#10b981"],
@@ -3540,9 +3525,25 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
                   ["Avg Order Value", fmtK(avgOrder), "#f59e0b"],
                 ].map(([l,v,c])=>(
-                  <div key={l} className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                    <span className="text-xs text-gray-500">{l}</span>
-                    <span className="text-sm font-black" style={{color:c}}>{v}</span>
+                  <div key={l} className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 font-medium">{l}</p>
+                    <p className="text-lg font-black mt-0.5" style={{color:c}}>{v}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+            {/* Right: donuts — now right/second */}
+            <Card>
+              <Sec icon="🔍" title="Order Mix"/>
+              <div className="space-y-5">
+                {[
+                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v), colors:["#6366f1","#22d3ee"]},
+                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v), colors:["#10b981","#f59e0b"]},
+                  {title:"Sales Channel", data:Object.entries(channelMap).sort((a,b)=>b[1]-a[1]), colors:PALETTE},
+                ].map(({title,data,colors})=>(
+                  <div key={title}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{title}</p>
+                    <Donut data={data} colors={colors} size={110}/>
                   </div>
                 ))}
               </div>
