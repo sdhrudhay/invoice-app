@@ -3074,8 +3074,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const tick = getRoundTick(maxV);
     const ticks = [];
     for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const W=700, H=280;
-    const YPAD=44, TOP=28, BOT=24, XPAD=8;
+    const W=720, H=280;
+    const YPAD=44, TOP=28, BOT=24, XPAD=24;
     const chartH = H-TOP-BOT;
     const chartW = W-YPAD-XPAD;
     const n = data.length;
@@ -3125,8 +3125,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const tick = getRoundTick(maxV);
     const ticks = [];
     for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const W=700, H=280;
-    const YPAD=44, TOP=28, BOT=24, XPAD=8;
+    const W=720, H=280;
+    const YPAD=44, TOP=28, BOT=24, XPAD=24;
     const chartH = H-TOP-BOT;
     const chartW = W-YPAD-XPAD;
     const px = (i) => YPAD + (n>1?i/(n-1):0.5)*chartW;
@@ -3164,6 +3164,70 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           <text key={i} x={px(i)} y={H-4} textAnchor="middle" fontSize="11" fill="#64748b" fontWeight="500">{l}</text>
         ))}
       </svg>
+    );
+  };
+
+
+  const ChartCard = ({title, icon, sub, children, legend, extra}) => {
+    const [fullscreen, setFullscreen] = useState(false);
+    const ref = useRef(null);
+
+    const downloadChart = () => {
+      const svg = ref.current?.querySelector("svg");
+      if (!svg) return;
+      const data = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([data], {type:"image/svg+xml"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${title.replace(/[^a-z0-9]/gi,"-")}.svg`;
+      a.click(); URL.revokeObjectURL(url);
+    };
+
+    const inner = (
+      <div ref={ref}>
+        {children}
+        {legend&&<div className="flex flex-wrap gap-3 mt-2">{legend}</div>}
+      </div>
+    );
+
+    return (
+      <>
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><span>{icon}</span>{title}{sub&&<span className="text-[10px] text-gray-300 font-normal normal-case tracking-normal ml-1">{sub}</span>}</p>
+            </div>
+            <div className="flex gap-1 shrink-0 ml-2">
+              {extra}
+              <button onClick={downloadChart} title="Download SVG" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button onClick={()=>setFullscreen(true)} title="Fullscreen" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              </button>
+            </div>
+          </div>
+          {inner}
+        </div>
+        {fullscreen&&(
+          <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={()=>setFullscreen(false)}>
+            <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-auto" onClick={e=>e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-bold text-slate-800 flex items-center gap-2"><span>{icon}</span>{title}</p>
+                <div className="flex gap-2">
+                  <button onClick={downloadChart} className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                  </button>
+                  <button onClick={()=>setFullscreen(false)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg">✕ Close</button>
+                </div>
+              </div>
+              {inner}
+              {legend&&<div className="flex flex-wrap gap-3 mt-3">{legend}</div>}
+            </div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -3243,15 +3307,14 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
           {/* Revenue + expense overview bars */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Card>
-              <Sec icon="📊" title="Revenue This Year" sub={String(year)}/>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1" height={160}
+            <ChartCard icon="📊" title="Revenue This Year" sub={String(year)}
+              legend={[
+                <span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,
+                <span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#6366f144"}}/>{year-1}</span>
+              ]}>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1"
                 data2={prevYearData.map(d=>({label:d.label,value:d.rev}))} color2="#6366f144"/>
-              <div className="flex gap-4 mt-1">
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#6366f144"}}/>{year-1}</span>
-              </div>
-            </Card>
+            </ChartCard>
             <Card>
               <Sec icon="💸" title="Expense Categories"/>
               <div className="space-y-1.5">
@@ -3269,22 +3332,25 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="trends"&&(
         <div className="space-y-3">
           {/* Cumulative revenue line */}
-          <Card>
-            <Sec icon="📈" title="Cumulative Revenue & Profit" sub={`${year} — running total`}/>
-            <LineChart
-              series={[
-                {data:cumulativeRev, color:"#6366f1", labels:MONTHS},
-                {data:cumulativeExp, color:"#f59e0b"},
-                {data:cumulativeProfit.map(v=>Math.max(0,v)), color:"#10b981"},
-              ]}
-              height={180}
-            />
-            <div className="flex gap-4 mt-1">
-              {[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
-                <span key={l} className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:c}}/>{l}</span>
-              ))}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <ChartCard icon="📈" title="Cumulative Revenue & Profit" sub={`${year}`}
+                legend={[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
+                  <span key={l} className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:c}}/>{l}</span>
+                ))}>
+                <LineChart series={[{data:cumulativeRev,color:"#6366f1",labels:MONTHS},{data:cumulativeExp,color:"#f59e0b"},{data:cumulativeProfit.map(v=>Math.max(0,v)),color:"#10b981"}]}/>
+              </ChartCard>
             </div>
-          </Card>
+            <Card>
+              <Sec icon="📋" title="Year Summary"/>
+              <div className="space-y-3">
+                {[["Revenue",cumulativeRev[cumulativeRev.length-1]||0,"#6366f1"],["Expenses",cumulativeExp[cumulativeExp.length-1]||0,"#f59e0b"],["Profit",(cumulativeRev[cumulativeRev.length-1]||0)-(cumulativeExp[cumulativeExp.length-1]||0),((cumulativeRev[cumulativeRev.length-1]||0)-(cumulativeExp[cumulativeExp.length-1]||0))>=0?"#10b981":"#f43f5e"]].map(([l,v,c])=>(
+                  <div key={l} className="flex items-center justify-between py-1 border-b border-gray-50"><span className="text-xs text-gray-500">{l}</span><span className="text-sm font-black" style={{color:c}}>{fmtK(v)}</span></div>
+                ))}
+                <div className="pt-1">{yoyGrowth!==null?<><p className="text-[10px] text-gray-400">YoY Growth</p><p className={`text-xl font-black ${yoyGrowth>=0?"text-emerald-600":"text-red-500"}`}>{yoyGrowth>=0?"+":""}{yoyGrowth}%</p></>:<p className="text-xs text-gray-300">No prev year</p>}</div>
+              </div>
+            </Card>
+          </div>
 
           {/* MoM trend */}
           <Card>
@@ -3319,22 +3385,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue line YoY comparison */}
-          <Card>
-            <Sec icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}/>
-            <LineChart
-              series={[
-                {data:thisYearData.map(d=>d.rev), color:"#6366f1", labels:MONTHS},
-                {data:prevYearData.map(d=>d.rev), color:"#6366f144"},
-              ]}
-              height={180}
-              showArea={false}
-            />
-            <div className="flex gap-4 mt-1">
-              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>
-              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>
-              {yoyGrowth!==null&&<span className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <ChartCard icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}
+                legend={[<span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,<span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>,yoyGrowth!==null&&<span key="c" className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>].filter(Boolean)}>
+                <LineChart series={[{data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},{data:prevYearData.map(d=>d.rev),color:"#6366f144"}]} showArea={false}/>
+              </ChartCard>
             </div>
-          </Card>
+            <Card>
+              <Sec icon="📊" title="Best vs Worst"/>
+              {(()=>{const best=thisYearData.reduce((b,d)=>d.rev>b.rev?d:b,{rev:0,label:"—"});const nonZero=thisYearData.filter(d=>d.rev>0);const worst=nonZero.length?nonZero.reduce((b,d)=>d.rev<b.rev?d:b):{rev:0,label:"—"};return(<div className="space-y-3"><div><p className="text-[10px] text-gray-400 uppercase">Best Month</p><p className="text-xl font-black text-emerald-600">{best.label}</p><p className="text-xs text-gray-500">{fmtK(best.rev)}</p></div><div><p className="text-[10px] text-gray-400 uppercase">Lowest Month</p><p className="text-xl font-black text-orange-500">{worst.label}</p><p className="text-xs text-gray-500">{fmtK(worst.rev)}</p></div><div className="pt-2 border-t border-gray-100"><p className="text-[10px] text-gray-400 uppercase">Prev Year Total</p><p className="text-sm font-black text-gray-600">{fmtK(prevYearRev)}</p></div></div>);})()}
+            </Card>
+          </div>
 
           {/* Revenue growth rate line */}
           <Card>
