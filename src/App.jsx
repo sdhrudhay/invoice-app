@@ -3060,101 +3060,110 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
 
   // Line chart SVG with y-axis
+  const fmtTick = (v) => v>=10000000?`${(v/10000000).toFixed(1)}Cr`:v>=100000?`${(v/100000).toFixed(1)}L`:v>=1000?`${(v/1000).toFixed(1)}K`:v>=100?`${Math.round(v)}`:String(v);
+  const getRoundTick = (max) => {
+    if (!max||max<=0) return 1;
+    const mag = Math.pow(10,Math.floor(Math.log10(max)));
+    return [1,2,2.5,5,10].map(f=>f*mag).find(v=>v>=max/4)||mag;
+  };
+  const getTopVal = (max) => { const t=getRoundTick(max); return Math.ceil(max/t)*t||1; };
+
+  const BarChart2 = ({data, color="#6366f1", height=160, color2, data2}) => {
+    const maxV = Math.max(1,...data.map(d=>d.value),...(data2||[]).map(d=>d.value));
+    const topVal = getTopVal(maxV);
+    const tick = getRoundTick(maxV);
+    const ticks = [];
+    for(let v=0;v<=topVal;v+=tick) ticks.push(v);
+    const W=560, H=height;
+    const YPAD=38, TOP=22, BOT=20, XPAD=6;
+    const chartH = H-TOP-BOT;
+    const chartW = W-YPAD-XPAD;
+    const n = data.length;
+    const slotW = chartW/n;
+    const barW = data2 ? slotW*0.35 : slotW*0.55;
+    const barX = (i) => YPAD + i*slotW + (slotW-(data2?barW*2+3:barW))/2;
+    const barH = (v) => Math.max(0,(v/topVal)*chartH);
+    const barY = (v) => TOP+chartH-barH(v);
+    const barColor = (i) => typeof color==="function"?color(i):color;
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height:H}}>
+        {ticks.map(v=>{
+          const y=TOP+chartH-(v/topVal)*chartH;
+          return (
+            <g key={v}>
+              <line x1={YPAD} y1={y} x2={W-XPAD} y2={y} stroke={v===0?"#94a3b8":"#e2e8f0"} strokeWidth={v===0?1.5:1} strokeDasharray={v===0?"none":"4 2"}/>
+              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="10" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
+            </g>
+          );
+        })}
+        <line x1={YPAD} y1={TOP} x2={YPAD} y2={TOP+chartH} stroke="#64748b" strokeWidth="1.5"/>
+        {data.map((d,i)=>{
+          const h=barH(d.value), x=barX(i), y=barY(d.value);
+          const c=barColor(i);
+          return (
+            <g key={d.label}>
+              {h>0&&<rect x={x} y={y} width={barW} height={h} fill={c} rx="2" opacity="0.88"/>}
+              {d.value>0&&<text x={x+barW/2} y={y-5} textAnchor="middle" fontSize="9" fill="#1e293b" fontWeight="700">{fmtTick(d.value)}</text>}
+              {data2&&(()=>{
+                const h2=barH(data2[i]?.value||0), x2=x+barW+3, y2=barY(data2[i]?.value||0);
+                return h2>0?<rect x={x2} y={y2} width={barW} height={h2} fill={color2||"#f59e0b"} rx="2" opacity="0.65"/>:null;
+              })()}
+              <text x={YPAD+i*slotW+slotW/2} y={H-4} textAnchor="middle" fontSize="9" fill="#64748b" fontWeight="500">{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  };
+
   const LineChart = ({series, height=160, showArea=true}) => {
     if (!series.length||!series[0].data.length) return null;
     const n = series[0].data.length;
     const allVals = series.flatMap(s=>s.data);
     const maxV = Math.max(1,...allVals);
-    const getRoundTick = (max) => {
-      const mag = Math.pow(10,Math.floor(Math.log10(max||1)));
-      return [1,2,2.5,5,10].map(f=>f*mag).find(v=>v>=max/4)||mag;
-    };
+    const topVal = getTopVal(maxV);
     const tick = getRoundTick(maxV);
-    const topVal = Math.ceil(maxV/tick)*tick||1;
     const ticks = [];
     for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const fmtTick = (v) => v>=100000?`${(v/100000).toFixed(0)}L`:v>=1000?`${(v/1000).toFixed(0)}K`:v>=100?`${v}`:String(v);
-    const YPAD=24, H=height;
-    const px=(i)=>YPAD+(i/(n-1))*(400-YPAD);
-    const py=(v)=>(H-12)-(v/topVal)*(H-12-4)+4;
+    const W=560, H=height;
+    const YPAD=38, TOP=22, BOT=20, XPAD=6;
+    const chartH = H-TOP-BOT;
+    const chartW = W-YPAD-XPAD;
+    const px = (i) => YPAD + (n>1?i/(n-1):0.5)*chartW;
+    const py = (v) => TOP + chartH - (v/topVal)*chartH;
     return (
-      <svg viewBox={`0 0 400 ${H+16}`} className="w-full" style={{height:height+16}}>
-        {/* Y gridlines + labels */}
-        {ticks.map(v=>(
-          <g key={v}>
-            <line x1={YPAD} y1={py(v)} x2={400} y2={py(v)} stroke="#f1f5f9" strokeWidth="1"/>
-            <text x={YPAD-3} y={py(v)+3} textAnchor="end" fontSize="7" fill="#9ca3af">{fmtTick(v)}</text>
-          </g>
-        ))}
-        {/* Y axis line */}
-        <line x1={YPAD} y1={4} x2={YPAD} y2={H-12} stroke="#e2e8f0" strokeWidth="1"/>
-        {/* X axis line */}
-        <line x1={YPAD} y1={H-12} x2={400} y2={H-12} stroke="#e2e8f0" strokeWidth="1"/>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height:H}}>
+        {ticks.map(v=>{
+          const y=py(v);
+          return (
+            <g key={v}>
+              <line x1={YPAD} y1={y} x2={W-XPAD} y2={y} stroke={v===0?"#94a3b8":"#e2e8f0"} strokeWidth={v===0?1.5:1} strokeDasharray={v===0?"none":"4 2"}/>
+              <text x={YPAD-5} y={y+4} textAnchor="end" fontSize="10" fill="#475569" fontWeight="600">{fmtTick(v)}</text>
+            </g>
+          );
+        })}
+        <line x1={YPAD} y1={TOP} x2={YPAD} y2={TOP+chartH} stroke="#64748b" strokeWidth="1.5"/>
+        <line x1={YPAD} y1={TOP+chartH} x2={W-XPAD} y2={TOP+chartH} stroke="#64748b" strokeWidth="1.5"/>
         {series.map((s,si)=>{
           const pts=s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" ");
-          const areaPath=`M${px(0)},${py(0)} L${s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" L")} L${px(n-1)},${py(0)} Z`;
+          const area=`M${px(0)},${py(0)} ${s.data.map((v,i)=>`L${px(i)},${py(v)}`).join(" ")} L${px(n-1)},${py(0)} Z`;
           return (
             <g key={si}>
-              {showArea&&<path d={areaPath} fill={s.color} opacity="0.08"/>}
-              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-              {s.data.map((v,i)=>v>0&&<circle key={i} cx={px(i)} cy={py(v)} r="2.5" fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+              {showArea&&<path d={area} fill={s.color} opacity="0.1"/>}
+              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+              {s.data.map((v,i)=>v>0&&(
+                <g key={i}>
+                  <circle cx={px(i)} cy={py(v)} r="3.5" fill={s.color} stroke="white" strokeWidth="1.5"/>
+                  {si===0&&<text x={px(i)} y={py(v)-8} textAnchor="middle" fontSize="9" fill={s.color} fontWeight="700">{fmtTick(v)}</text>}
+                </g>
+              ))}
             </g>
           );
         })}
         {series[0].labels&&series[0].labels.map((l,i)=>(
-          <text key={i} x={px(i)} y={H+13} textAnchor="middle" fontSize="8" fill="#6b7280">{l}</text>
+          <text key={i} x={px(i)} y={H-4} textAnchor="middle" fontSize="9" fill="#64748b" fontWeight="500">{l}</text>
         ))}
       </svg>
-    );
-  };
-
-  const BarChart2 = ({data,color="#6366f1",height=160,color2,data2})=>{
-    const maxV=Math.max(1,...data.map(d=>d.value),...(data2||[]).map(d=>d.value));
-    // Nice round y-axis ticks
-    const getRoundTick = (max) => {
-      const mag = Math.pow(10,Math.floor(Math.log10(max||1)));
-      const nice = [1,2,2.5,5,10].map(f=>f*mag).find(v=>v>=max/4)||mag;
-      return nice;
-    };
-    const tick = getRoundTick(maxV);
-    const topVal = Math.ceil(maxV/tick)*tick||1;
-    const ticks = [];
-    for(let v=0;v<=topVal;v+=tick) ticks.push(v);
-    const fmtTick = (v) => v>=100000?`${(v/100000).toFixed(0)}L`:v>=1000?`${(v/1000).toFixed(0)}K`:v>=100?`${v}`:String(v);
-    const yLabelW = 28;
-    return (
-      <div className="flex gap-1">
-        {/* Y-axis */}
-        <div className="flex flex-col justify-between shrink-0 pb-5" style={{width:yLabelW,height:height}}>
-          {[...ticks].reverse().map(v=>(
-            <span key={v} className="text-[9px] text-gray-400 text-right leading-none">{fmtTick(v)}</span>
-          ))}
-        </div>
-        {/* Chart area */}
-        <div className="flex-1">
-          <div className="flex items-end gap-0.5 border-b border-l border-gray-200 relative" style={{height,paddingTop:"18px"}}>
-            {/* Gridlines */}
-            {ticks.slice(1).map(v=>(
-              <div key={v} className="absolute w-full border-t border-gray-100" style={{bottom:`${(v/topVal)*100}%`,left:0}}/>
-            ))}
-            {data.map((d,i)=>(
-              <div key={d.label} className="flex-1 flex items-end justify-center gap-px h-full relative" title={`${d.label}: ${fmt(d.value)}`}>
-                <div className="w-full flex items-end gap-px h-full relative">
-                  <div className="flex-1 relative rounded-t-sm transition-all" style={{height:`${Math.max(0,Math.round((d.value/topVal)*100))}%`,background:typeof color==="function"?color(i):color,minHeight:d.value>0?"2px":"0"}}>
-                    {d.value>0&&<span className="absolute -top-4 left-0 right-0 text-center text-[8px] font-bold text-slate-600 leading-none whitespace-nowrap">{fmtTick(d.value)}</span>}
-                  </div>
-                  {data2&&<div className="flex-1 relative rounded-t-sm" style={{height:`${Math.max(0,Math.round(((data2[i]?.value||0)/topVal)*100))}%`,background:color2||"#f59e0b",opacity:0.7,minHeight:(data2[i]?.value||0)>0?"2px":"0"}}>
-                    {(data2[i]?.value||0)>0&&<span className="absolute -top-4 left-0 right-0 text-center text-[8px] font-bold text-amber-600 leading-none whitespace-nowrap">{fmtTick(data2[i].value)}</span>}
-                  </div>}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-0.5 mt-1">
-            {data.map(d=><p key={d.label} className="flex-1 text-[9px] text-gray-500 text-center leading-none">{d.label}</p>)}
-          </div>
-        </div>
-      </div>
     );
   };
 
