@@ -3029,7 +3029,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     );
   };
 
-  const Donut = ({data,colors,size=80,centerText})=>{
+  const Donut = ({data,colors,size=80,centerText,compact=false})=>{
     const total=data.reduce((s,[_k,v])=>s+v,0);
     if(!total)return <p className="text-xs text-gray-300 text-center py-2">No data</p>;
     let cum=0;
@@ -3042,18 +3042,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       return {path:`M${cx} ${cy}L${x1} ${y1}A${r} ${r} 0 ${pct>.5?1:0} 1 ${x2} ${y2}Z`,color:colors[i%colors.length],label,value,pct};
     });
     return (
-      <div className="flex items-center gap-3">
+      <div className={compact?"flex items-center gap-2":"flex items-center gap-3"}>
         <svg viewBox="0 0 100 100" style={{width:size,height:size}} className="shrink-0">
           {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="1.5"/>)}
           <circle cx="50" cy="50" r="22" fill="white"/>
           {centerText&&<text x="50" y="53" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#475569">{centerText}</text>}
         </svg>
-        <div className="space-y-0.5 min-w-0 flex-1">
+        <div className={compact?"flex flex-col gap-0.5":"space-y-0.5 min-w-0 flex-1"}>
           {slices.map((s,i)=>(
             <div key={i} className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-sm shrink-0" style={{background:s.color}}/>
               <span className="text-[10px] text-gray-600 font-medium">{s.label}</span>
-              <span className="text-[10px] font-black text-slate-700 ml-1">{Math.round(s.pct*100)}%</span>
+              <span className="text-[10px] font-black text-slate-700 ml-0.5">{Math.round(s.pct*100)}%</span>
             </div>
           ))}
         </div>
@@ -3156,7 +3156,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               {s.data.map((v,i)=>v>0&&(
                 <g key={i}>
                   <circle cx={px(i)} cy={py(v)} r="3.5" fill={s.color} stroke="white" strokeWidth="1.5"/>
-                  {si===0&&<text x={px(i)} y={py(v)-8} textAnchor="middle" fontSize="9" fill={s.color} fontWeight="700">{fmtTick(v)}</text>}
+                  <text x={px(i)} y={py(v)-8} textAnchor="middle" fontSize="9" fill={s.color} fontWeight="700">{fmtTick(v)}</text>
                 </g>
               ))}
             </g>
@@ -3185,13 +3185,6 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       a.click(); URL.revokeObjectURL(url);
     };
 
-    const inner = (
-      <div ref={ref}>
-        {children}
-        {legend&&<div className="flex flex-wrap gap-3 mt-2">{legend}</div>}
-      </div>
-    );
-
     return (
       <>
         <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
@@ -3209,7 +3202,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               </button>
             </div>
           </div>
-          {inner}
+          <div ref={ref}>{children}{legend&&<div className="flex flex-wrap gap-3 mt-2">{legend}</div>}</div>
         </div>
         {fullscreen&&(
           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={()=>setFullscreen(false)}>
@@ -3224,8 +3217,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   <button onClick={()=>setFullscreen(false)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg">✕ Close</button>
                 </div>
               </div>
-              {inner}
-              {legend&&<div className="flex flex-wrap gap-3 mt-3">{legend}</div>}
+              <div>{children}{legend&&<div className="flex flex-wrap gap-3 mt-3">{legend}</div>}</div>
             </div>
           </div>
         )}
@@ -3510,20 +3502,12 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Card>
-              <Sec icon="📈" title="Orders Over Time"/>
-              <BarChart2
-                data={thisYearData.map(d=>({label:d.label,value:d.orders}))}
-                color={(i)=>bc(i)} height={160}
-              />
-            </Card>
-            <Card>
-              <Sec icon="💹" title="Avg Order Value Trend"/>
-              <LineChart
-                series={[{data:thisYearData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:MONTHS}]}
-                height={160}
-              />
-            </Card>
+            <ChartCard icon="📈" title="Orders Over Time">
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)}/>
+            </ChartCard>
+            <ChartCard icon="💹" title="Avg Order Value Trend">
+              <LineChart series={[{data:thisYearData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:MONTHS}]}/>
+            </ChartCard>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3532,15 +3516,15 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <Sec icon="🛒" title="Sales Channel"/>
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={160}/>
             </Card>
-            {/* B2B/B2C + GST — 25% each stacked */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* B2B/B2C + GST stacked vertically */}
+            <div className="flex flex-col gap-3">
               <Card>
                 <Sec icon="👥" title="B2B vs B2C"/>
-                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={100}/>
+                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={120} compact/>
               </Card>
               <Card>
                 <Sec icon="🧾" title="GST Status"/>
-                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={100}/>
+                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={120} compact/>
               </Card>
             </div>
           </div>
