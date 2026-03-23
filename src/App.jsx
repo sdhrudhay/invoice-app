@@ -2883,11 +2883,12 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   const num = (v) => Number(v||0);
   const fmt = (n) => Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:0});
-  const fmtK = (n) => n>=100000?`₹${(n/100000).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(1)}K`:`₹${fmt(n)}`;
+  const fmtK = (n) => n>=10000000?`₹${(n/10000000).toFixed(1)}Cr`:n>=100000?`₹${(n/100000).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(1)}K`:`₹${fmt(n)}`;
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16","#0ea5e9","#ec4899"];
+  const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16","#0ea5e9","#ec4899","#14b8a6","#a855f7"];
   const bc = (i) => PALETTE[i%PALETTE.length];
 
+  const curYear = new Date().getFullYear();
   const activeOrders = orders.filter(o=>o.status!=="Cancelled");
   const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
   const getVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
@@ -2912,144 +2913,112 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const totalWasteG = wastageLog.reduce((s,w)=>s+num(w.weightG),0);
   const wasteRate = (totalUsedG+totalWasteG)?((totalWasteG/(totalUsedG+totalWasteG))*100).toFixed(1):0;
 
-  // Buckets
-  const getBuckets = () => {
-    if (period==="year") {
-      const yrs = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort();
-      return yrs.map(y=>({label:y, ords:activeOrders.filter(o=>o.orderDate?.startsWith(y)), exps:expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(y))}));
-    }
-    return MONTHS.map((m,i)=>({
-      label:m,
-      ords:activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;}),
-      exps:expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1)
-    }));
-  };
-  const buckets = getBuckets();
-  const maxRev = Math.max(1,...buckets.map(b=>b.ords.reduce((s,o)=>s+getVal(o),0)));
-  const maxOrd = Math.max(1,...buckets.map(b=>b.ords.length));
-  const maxExp2 = Math.max(1,...buckets.map(b=>b.exps.reduce((s,e)=>s+num(e.amount),0)));
+  // Monthly data builder
+  const monthlyData = (yr) => MONTHS.map((m,i)=>{
+    const ords = activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
+    const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
+    const rev = ords.reduce((s,o)=>s+getVal(o),0);
+    const exp = exps.reduce((s,e)=>s+num(e.amount),0);
+    return {label:m, month:i+1, rev, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
+  });
 
-  // Breakdowns
+  const thisYearData = monthlyData(year);
+  const prevYearData = monthlyData(year-1);
+
+  // Cumulative
+  const cumulativeRev = thisYearData.reduce((acc,d,i)=>{acc.push((acc[i-1]||0)+d.rev);return acc;},[]);
+  const cumulativeExp = thisYearData.reduce((acc,d,i)=>{acc.push((acc[i-1]||0)+d.exp);return acc;},[]);
+  const cumulativeProfit = cumulativeRev.map((r,i)=>r-cumulativeExp[i]);
+
+  // Projection: linear regression on last 3 months with data
+  const nonZeroMonths = thisYearData.filter(d=>d.rev>0);
+  let projNextMonth = 0;
+  if (nonZeroMonths.length>=2) {
+    const last3 = nonZeroMonths.slice(-3);
+    const avgGrowth = last3.length>1?last3.slice(1).reduce((s,d,i)=>{const prev=last3[i];return s+(prev.rev>0?(d.rev-prev.rev)/prev.rev:0);},0)/(last3.length-1):0;
+    projNextMonth = Math.round((last3[last3.length-1].rev)*(1+avgGrowth));
+  }
+
+  // YoY
+  const prevYearRev = prevYearData.reduce((s,d)=>s+d.rev,0);
+  const yoyGrowth = prevYearRev>0?Math.round((thisYearData.reduce((s,d)=>s+d.rev,0)-prevYearRev)/prevYearRev*100):null;
+
+  // Channel
+  const channelMap = {};
+  activeOrders.forEach(o=>{const c=o.channel||"Offline";channelMap[c]=(channelMap[c]||0)+1;});
+
+  // Expenses
   const expByCat = {};
   expenses.filter(e=>!e.isDeleted).forEach(e=>{expByCat[e.category||"Other"]=(expByCat[e.category||"Other"]||0)+num(e.amount);});
   const expCats = Object.entries(expByCat).sort((a,b)=>b[1]-a[1]);
 
-  const channelMap = {};
-  activeOrders.forEach(o=>{const c=o.channel||"Offline";channelMap[c]=(channelMap[c]||0)+1;});
-
-  const usageMap = {mat:{},brand:{},color:{}};
-  allUsage.filter(u=>!u.isWaste).forEach(u=>{
-    const inv=inventory.find(i=>i.id===u.inventoryId); if(!inv)return;
-    usageMap.mat[inv.material]=(usageMap.mat[inv.material]||0)+num(u.weightUsedG);
-    usageMap.brand[inv.brand||"—"]=(usageMap.brand[inv.brand||"—"]||0)+num(u.weightUsedG);
-    usageMap.color[inv.color||"—"]=(usageMap.color[inv.color||"—"]||0)+num(u.weightUsedG);
-  });
-  const wasteMap = {mat:{},brand:{},color:{}};
-  wastageLog.forEach(w=>{
-    wasteMap.mat[w.material||"?"]=(wasteMap.mat[w.material||"?"]||0)+num(w.weightG);
-    wasteMap.brand[w.brand||"—"]=(wasteMap.brand[w.brand||"—"]||0)+num(w.weightG);
-    wasteMap.color[w.color||"—"]=(wasteMap.color[w.color||"—"]||0)+num(w.weightG);
-  });
-
+  // Customers
   const custMap = {};
   activeOrders.forEach(o=>{
-    if(!custMap[o.customerName])custMap[o.customerName]={name:o.customerName,orders:0,value:0,paid:0,type:o.type};
+    if(!custMap[o.customerName])custMap[o.customerName]={name:o.customerName,orders:0,value:0,paid:0,type:o.type,lastDate:""};
     custMap[o.customerName].orders++;
     custMap[o.customerName].value+=getVal(o);
     custMap[o.customerName].paid+=getPaid(o);
+    if((o.orderDate||"")>custMap[o.customerName].lastDate)custMap[o.customerName].lastDate=o.orderDate||"";
   });
-  const topCustomers = Object.values(custMap).sort((a,b)=>b.value-a.value).slice(0,5);
+  const topCustomers = Object.values(custMap).sort((a,b)=>b.value-a.value).slice(0,7);
 
+  // Payment modes
   const modeMap = {};
   activeOrders.forEach(o=>{
     if(num(o.advance)>0)modeMap[o.paymentMode||"?"]=(modeMap[o.paymentMode||"?"]||0)+1;
     (o.payments||[]).filter(p=>!p.isRefund).forEach(p=>{modeMap[p.mode||"?"]=(modeMap[p.mode||"?"]||0)+1;});
   });
 
-  // ── Reusable components ───────────────────────────────────────────────────
+  // Filament combined: brand||material||color
+  const filamentCombined = {};
+  allUsage.filter(u=>!u.isWaste).forEach(u=>{
+    const inv=inventory.find(i=>i.id===u.inventoryId);if(!inv)return;
+    const key=`${inv.brand||"—"} · ${inv.material} · ${inv.color||"—"}`;
+    filamentCombined[key]=(filamentCombined[key]||0)+num(u.weightUsedG);
+  });
+  const filCombEntries = Object.entries(filamentCombined).sort((a,b)=>b[1]-a[1]);
+  const totalFilUsed = filCombEntries.reduce((s,[,v])=>s+v,0);
+
+  const maxOrd = Math.max(1,...thisYearData.map(d=>d.orders));
+  const maxRev2 = Math.max(1,...thisYearData.map(d=>d.rev),...prevYearData.map(d=>d.rev));
+  const maxCumRev = Math.max(1,...cumulativeRev);
+  const maxExp3 = Math.max(1,...thisYearData.map(d=>d.exp));
+
+  // ── Shared components ─────────────────────────────────────────────────────
   const Card = ({children,className=""})=><div className={`bg-white border border-gray-100 rounded-2xl p-4 shadow-sm ${className}`}>{children}</div>;
-  const Sec = ({icon,title})=><p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5"><span>{icon}</span>{title}</p>;
-
-  const BarChart = ({data, maxVal, height=80, color="#6366f1", showLabel=true}) => (
-    <div className="flex items-end gap-0.5" style={{height:height+16}}>
-      {data.map(({label,value},i)=>(
-        <div key={label} className="flex-1 flex flex-col items-center gap-0.5 group" title={label+": "+value}>
-          <div className="w-full rounded-t-sm" style={{height:`${Math.max(2,Math.round((value/maxVal)*height))}px`,background:typeof color==="function"?color(i):color,marginTop:`${height-Math.max(2,Math.round((value/maxVal)*height))}px`}}/>
-          {showLabel&&<p className="text-[7px] text-gray-500 leading-none">{label}</p>}
-        </div>
-      ))}
+  const Sec = ({icon,title,sub})=>(
+    <div className="flex items-baseline gap-2 mb-3">
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><span>{icon}</span>{title}</p>
+      {sub&&<span className="text-[10px] text-gray-300">{sub}</span>}
     </div>
   );
 
-  const StackedBar = ({data, maxVal, height=80}) => (
-    <div className="flex items-end gap-0.5" style={{height:height+16}}>
-      {data.map(({label,segments},i)=>{
-        const total=segments.reduce((s,sg)=>s+sg.v,0);
-        return (
-          <div key={label} className="flex-1 flex flex-col items-center gap-0.5" title={label+": "+total}>
-            <div className="w-full flex flex-col justify-end rounded-t-sm overflow-hidden" style={{height:`${Math.max(2,Math.round((total/maxVal)*height))}px`,marginTop:`${height-Math.max(2,Math.round((total/maxVal)*height))}px`}}>
-              {segments.map((sg,si)=><div key={si} style={{height:`${sg.v?Math.round(sg.v/total*100):0}%`,background:sg.c,minHeight:sg.v?"2px":"0"}}/>)}
-            </div>
-            <p className="text-[7px] text-gray-500 leading-none">{label}</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  const Donut = ({data, colors, size=80}) => {
-    const total = data.reduce((s,[,v])=>s+v,0);
-    if (!total) return <p className="text-xs text-gray-300 text-center py-2">No data</p>;
-    let cum = 0;
-    const r=36, cx=50, cy=50;
-    const slices = data.filter(([,v])=>v>0).map(([label,value],i)=>{
-      const pct=value/total, sa=cum*2*Math.PI-Math.PI/2;
-      cum+=pct;
-      const ea=cum*2*Math.PI-Math.PI/2;
-      const x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);
-      return {path:`M${cx} ${cy}L${x1} ${y1}A${r} ${r} 0 ${pct>.5?1:0} 1 ${x2} ${y2}Z`,color:colors[i%colors.length],label,value,pct};
-    });
-    return (
-      <div className="flex items-center gap-3">
-        <svg viewBox="0 0 100 100" style={{width:size,height:size}} className="shrink-0">
-          {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="2"/>)}
-          <circle cx="50" cy="50" r="20" fill="white"/>
-          <text x="50" y="53" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1e293b">{data.length}</text>
-        </svg>
-        <div className="space-y-1 min-w-0 flex-1">
-          {slices.map((s,i)=>(
-            <div key={i} className="flex items-center gap-1.5 min-w-0">
-              <div className="w-2 h-2 rounded-sm shrink-0" style={{background:s.color}}/>
-              <span className="text-xs text-gray-500 truncate flex-1">{s.label}</span>
-              <span className="text-[10px] font-bold text-slate-600 shrink-0">{Math.round(s.pct*100)}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const KPITile = ({label,value,sub,accent,icon}) => (
+  const KPITile = ({label,value,sub,accent,icon,badge})=>(
     <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
       <div className="flex items-start justify-between">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{label}</p>
-          <p className="text-lg font-black leading-tight mt-0.5" style={{color:accent}}>{value}</p>
+          <p className="text-lg font-black leading-tight mt-0.5 truncate" style={{color:accent}}>{value}</p>
           {sub&&<p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{sub}</p>}
         </div>
-        <span className="text-xl shrink-0 ml-1">{icon}</span>
+        <div className="flex flex-col items-end gap-1 shrink-0 ml-1">
+          <span className="text-xl">{icon}</span>
+          {badge&&<span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${badge.pos?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>{badge.label}</span>}
+        </div>
       </div>
     </div>
   );
 
-  const HBar = ({label,value,total,color,suffix="",pct}) => {
-    const p = pct!==undefined?pct:(total?Math.round(value/total*100):0);
+  const HBar = ({label,value,total,color,suffix="",pct,sub})=>{
+    const p=pct!==undefined?pct:(total?Math.round(value/total*100):0);
     return (
       <div className="space-y-0.5">
         <div className="flex justify-between items-baseline gap-1">
-          <span className="text-xs text-gray-600 truncate flex-1">{label}</span>
+          <span className="text-xs text-gray-600 truncate flex-1" title={label}>{label}</span>
+          {sub&&<span className="text-[10px] text-gray-400 shrink-0">{sub}</span>}
           <span className="text-[10px] text-gray-400 shrink-0">{p}%</span>
-          <span className="text-xs font-bold text-slate-700 shrink-0">{suffix}{typeof value==="number"&&value>=1000?fmt(value):value}</span>
+          <span className="text-xs font-bold text-slate-700 shrink-0">{suffix}{typeof value==="number"?fmt(value):value}</span>
         </div>
         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{width:`${p}%`,background:color}}/>
@@ -3058,18 +3027,97 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     );
   };
 
+  const Donut = ({data,colors,size=80,centerText})=>{
+    const total=data.reduce((s,[,v])=>s+v,0);
+    if(!total)return <p className="text-xs text-gray-300 text-center py-2">No data</p>;
+    let cum=0;
+    const r=38,cx=50,cy=50;
+    const slices=data.filter(([,v])=>v>0).map(([label,value],i)=>{
+      const pct=value/total,sa=cum*2*Math.PI-Math.PI/2;
+      cum+=pct;
+      const ea=cum*2*Math.PI-Math.PI/2;
+      const x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);
+      return {path:`M${cx} ${cy}L${x1} ${y1}A${r} ${r} 0 ${pct>.5?1:0} 1 ${x2} ${y2}Z`,color:colors[i%colors.length],label,value,pct};
+    });
+    return (
+      <div className="flex items-center gap-3">
+        <svg viewBox="0 0 100 100" style={{width:size,height:size}} className="shrink-0">
+          {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+          <circle cx="50" cy="50" r="22" fill="white"/>
+          {centerText&&<text x="50" y="53" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#475569">{centerText}</text>}
+        </svg>
+        <div className="space-y-0.5 min-w-0 flex-1">
+          {slices.map((s,i)=>(
+            <div key={i} className="flex items-center gap-1.5 min-w-0">
+              <div className="w-2 h-2 rounded-sm shrink-0" style={{background:s.color}}/>
+              <span className="text-[10px] text-gray-500 truncate flex-1">{s.label}</span>
+              <span className="text-[10px] font-bold text-slate-600 shrink-0">{Math.round(s.pct*100)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Line chart SVG
+  const LineChart = ({series, height=80, showArea=true}) => {
+    if (!series.length||!series[0].data.length) return null;
+    const n = series[0].data.length;
+    const allVals = series.flatMap(s=>s.data);
+    const minV = Math.min(0,...allVals), maxV = Math.max(1,...allVals);
+    const W=400, H=height;
+    const px=(i)=>i/(n-1)*W;
+    const py=(v)=>H-(((v-minV)/(maxV-minV))*H*0.85+H*0.05);
+    return (
+      <svg viewBox={`0 0 ${W} ${H+16}`} className="w-full" style={{height:height+16}}>
+        {series.map((s,si)=>{
+          const pts=s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" ");
+          const areaPath=`M${px(0)},${H} L${s.data.map((v,i)=>`${px(i)},${py(v)}`).join(" L")} L${px(n-1)},${H} Z`;
+          return (
+            <g key={si}>
+              {showArea&&<path d={areaPath} fill={s.color} opacity="0.08"/>}
+              <polyline points={pts} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+              {s.data.map((v,i)=>v>0&&<circle key={i} cx={px(i)} cy={py(v)} r="3" fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+            </g>
+          );
+        })}
+        {series[0].labels&&series[0].labels.map((l,i)=>(
+          <text key={i} x={px(i)} y={H+13} textAnchor="middle" fontSize="7" fill="#6b7280">{l}</text>
+        ))}
+      </svg>
+    );
+  };
+
+  const BarChart2 = ({data,color="#6366f1",height=72,color2,data2})=>{
+    const maxV=Math.max(1,...data.map(d=>d.value),...(data2||[]).map(d=>d.value));
+    return (
+      <div className="flex items-end gap-0.5" style={{height:height+12}}>
+        {data.map((d,i)=>(
+          <div key={d.label} className="flex-1 flex flex-col items-center gap-0.5" title={`${d.label}: ${fmt(d.value)}`}>
+            <div className="w-full flex items-end justify-center gap-px" style={{height:height}}>
+              <div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round((d.value/maxV)*height))}px`,background:typeof color==="function"?color(i):color}}/>
+              {data2&&<div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round(((data2[i]?.value||0)/maxV)*height))}px`,background:color2||"#f59e0b",opacity:0.7}}/>}
+            </div>
+            <p className="text-[7px] text-gray-500 leading-none">{d.label}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   // ── Sections ──────────────────────────────────────────────────────────────
   const SECTIONS = [
-    {id:"overview", label:"Overview", icon:"⚡"},
-    {id:"orders",   label:"Orders",   icon:"📋"},
-    {id:"finance",  label:"Finance",  icon:"💰"},
-    {id:"filament", label:"Filament", icon:"🧵"},
-    {id:"customers",label:"Clients",  icon:"👥"},
+    {id:"overview",  label:"Overview",  icon:"⚡"},
+    {id:"trends",    label:"Trends",    icon:"📉"},
+    {id:"orders",    label:"Orders",    icon:"📋"},
+    {id:"finance",   label:"Finance",   icon:"💰"},
+    {id:"filament",  label:"Filament",  icon:"🧵"},
+    {id:"customers", label:"Clients",   icon:"👥"},
   ];
 
   return (
     <div className="space-y-4">
-      {/* Section nav */}
+      {/* Nav */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
         {SECTIONS.map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
@@ -3079,8 +3127,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
         ))}
       </div>
 
-      {/* Period controls — shown on orders/finance */}
-      {(section==="orders"||section==="finance")&&(
+      {(section==="trends"||section==="orders"||section==="finance")&&(
         <div className="flex items-center gap-2 justify-end">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {["month","year"].map(p=><button key={p} onClick={()=>setPeriod(p)} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${period===p?"bg-white text-indigo-700 shadow-sm":"text-gray-500"}`}>{p==="month"?"Monthly":"Yearly"}</button>)}
@@ -3094,101 +3141,237 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
       {section==="overview"&&(
         <div className="space-y-3">
-          {/* KPI grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <KPITile label="Total Revenue" value={fmtK(totalRev)} sub={`${totalOrders} orders`} accent="#6366f1" icon="💰"/>
+            <KPITile label="Total Revenue" value={fmtK(totalRev)} sub={`${totalOrders} active orders`} accent="#6366f1" icon="💰" badge={yoyGrowth!==null?{pos:yoyGrowth>=0,label:`${yoyGrowth>=0?"+":""}${yoyGrowth}% YoY`}:null}/>
             <KPITile label="Collected" value={fmtK(totalPaid)} sub={`${collectionRate}% collection rate`} accent="#10b981" icon="✅"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon={netProfit>=0?"📈":"📉"}/>
             <KPITile label="Total Expenses" value={fmtK(totalExp)} sub={`${expCats.length} categories`} accent="#f59e0b" icon="💸"/>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub={`${completedOrders} completed`} accent="#8b5cf6" icon="🎯"/>
-            <KPITile label="Pending Orders" value={fmt(pendingOrders)} sub={`${cancelledOrders} cancelled`} accent="#f59e0b" icon="⏳"/>
+            <KPITile label="Outstanding" value={fmtK(Math.max(0,totalRev-totalPaid))} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Filament Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub={`${wasteRate}% waste rate`} accent="#22d3ee" icon="🧵"/>
-            <KPITile label="Inventory" value={`${inventory.length} spools`} sub={`${(inventory.reduce((s,i)=>s+num(i.weightG),0)/1000).toFixed(1)}kg total`} accent="#84cc16" icon="📦"/>
+            <KPITile label="Projected Next Month" value={projNextMonth>0?fmtK(projNextMonth):"—"} sub="based on trend" accent="#84cc16" icon="🔮"/>
           </div>
 
-          {/* Revenue vs Expense comparison */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Card>
-              <Sec icon="📊" title="Revenue vs Expenses (Monthly)"/>
-              <BarChart data={MONTHS.map((m,i)=>({label:m,value:activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;}).reduce((s,o)=>s+getVal(o),0)}))} maxVal={Math.max(1,...MONTHS.map((_,i)=>activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;}).reduce((s,o)=>s+getVal(o),0)))} color="#6366f1" height={72}/>
-              <div className="mt-2 h-px bg-gray-100"/>
-              <BarChart data={MONTHS.map((m,i)=>({label:m,value:expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1).reduce((s,e)=>s+num(e.amount),0)}))} maxVal={Math.max(1,...MONTHS.map((_,i)=>expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1).reduce((s,e)=>s+num(e.amount),0)))} color="#f59e0b" height={48}/>
-              <div className="flex gap-4 mt-1">
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block"/>Expenses</span>
-              </div>
-            </Card>
-            <Card>
-              <Sec icon="🥧" title="Expense Breakdown"/>
-              {expCats.length===0?<p className="text-xs text-gray-300 text-center py-4">No expense data</p>:(
-                <div className="space-y-1.5">
-                  {expCats.slice(0,6).map(([cat,amt],i)=>(
-                    <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} suffix="₹" pct={totalExp?Math.round(amt/totalExp*100):0}/>
-                  ))}
-                  {expCats.length>6&&<p className="text-[10px] text-gray-400">+{expCats.length-6} more categories</p>}
-                </div>
-              )}
-            </Card>
-          </div>
-
-          {/* Health indicators */}
+          {/* Health dials */}
           <Card>
-            <Sec icon="🏥" title="Business Health"/>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Sec icon="🏥" title="Business Health Score"/>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                {label:"Collection Rate",value:collectionRate,color:collectionRate>=80?"#10b981":collectionRate>=50?"#f59e0b":"#f43f5e"},
-                {label:"Profit Margin",value:Math.max(0,profitMargin),color:profitMargin>=30?"#10b981":profitMargin>=10?"#f59e0b":"#f43f5e"},
-                {label:"Completion Rate",value:totalOrders?Math.round(completedOrders/totalOrders*100):0,color:"#6366f1"},
-                {label:"Waste Efficiency",value:Math.round((100-Number(wasteRate))*10)/10,color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e"},
-              ].map(({label,value,color})=>(
-                <div key={label} className="text-center space-y-1">
-                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{label}</p>
+                {label:"Collection Rate",value:collectionRate,color:collectionRate>=80?"#10b981":collectionRate>=50?"#f59e0b":"#f43f5e",desc:collectionRate>=80?"Excellent":collectionRate>=50?"Fair":"Needs attention"},
+                {label:"Profit Margin",value:Math.max(0,profitMargin),color:profitMargin>=30?"#10b981":profitMargin>=10?"#f59e0b":"#f43f5e",desc:profitMargin>=30?"Healthy":profitMargin>=10?"Moderate":"Thin"},
+                {label:"Completion Rate",value:totalOrders?Math.round(completedOrders/totalOrders*100):0,color:"#6366f1",desc:`${completedOrders}/${totalOrders} orders`},
+                {label:"Waste Efficiency",value:Math.round((100-Number(wasteRate))*10)/10,color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e",desc:`${wasteRate}% waste`},
+              ].map(({label,value,color,desc})=>(
+                <div key={label} className="text-center">
                   <div className="relative w-16 h-16 mx-auto">
                     <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" strokeWidth="3"/>
-                      <circle cx="18" cy="18" r="15.9" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${value} ${100-value}`} strokeLinecap="round"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#f1f5f9" strokeWidth="3"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${value*87.96/100} 87.96`} strokeLinecap="round"/>
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-sm font-black" style={{color}}>{value}%</span>
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-black" style={{color}}>{value}%</span>
                   </div>
+                  <p className="text-[10px] font-bold text-gray-500 mt-1">{label}</p>
+                  <p className="text-[9px] text-gray-300">{desc}</p>
                 </div>
               ))}
             </div>
           </Card>
+
+          {/* Revenue + expense overview bars */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Card>
+              <Sec icon="📊" title="Revenue This Year" sub={String(year)}/>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1" height={72}
+                data2={prevYearData.map(d=>({label:d.label,value:d.rev}))} color2="#6366f144"/>
+              <div className="flex gap-4 mt-1">
+                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>
+                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#6366f144"}}/>{year-1}</span>
+              </div>
+            </Card>
+            <Card>
+              <Sec icon="💸" title="Expense Categories"/>
+              <div className="space-y-1.5">
+                {expCats.slice(0,6).map(([cat,amt],i)=>(
+                  <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} suffix="₹" pct={totalExp?Math.round(amt/totalExp*100):0}/>
+                ))}
+                {expCats.length>6&&<p className="text-[10px] text-gray-400">+{expCats.length-6} more</p>}
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ── TRENDS ───────────────────────────────────────────────────────── */}
+      {section==="trends"&&(
+        <div className="space-y-3">
+          {/* Cumulative revenue line */}
+          <Card>
+            <Sec icon="📈" title="Cumulative Revenue & Profit" sub={`${year} — running total`}/>
+            <LineChart
+              series={[
+                {data:cumulativeRev, color:"#6366f1", labels:MONTHS},
+                {data:cumulativeExp, color:"#f59e0b"},
+                {data:cumulativeProfit.map(v=>Math.max(0,v)), color:"#10b981"},
+              ]}
+              height={100}
+            />
+            <div className="flex gap-4 mt-1">
+              {[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
+                <span key={l} className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:c}}/>{l}</span>
+              ))}
+            </div>
+          </Card>
+
+          {/* MoM trend */}
+          <Card>
+            <Sec icon="📉" title="Month-over-Month Revenue Trend" sub={String(year)}/>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead><tr className="border-b border-gray-100">
+                  {["Month","Revenue","vs Prev Year","Expenses","Profit","MoM Δ"].map(h=>(
+                    <th key={h} className={`py-1.5 font-semibold text-gray-400 ${h==="Month"?"text-left":"text-right"}`}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {thisYearData.map((d,i)=>{
+                    const prev=i>0?thisYearData[i-1].rev:null;
+                    const mom=prev!==null&&prev>0?((d.rev-prev)/prev*100):null;
+                    const yoy=prevYearData[i].rev>0?((d.rev-prevYearData[i].rev)/prevYearData[i].rev*100):null;
+                    const profit=d.rev-d.exp;
+                    return (
+                      <tr key={d.label} className="border-b border-gray-50 hover:bg-slate-50">
+                        <td className="py-1.5 font-semibold text-slate-700">{d.label}</td>
+                        <td className="py-1.5 text-right font-semibold text-indigo-700">{d.rev>0?fmtK(d.rev):"—"}</td>
+                        <td className="py-1.5 text-right">{yoy!==null&&d.rev>0?<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${yoy>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>{yoy>=0?"+":""}{yoy.toFixed(1)}%</span>:<span className="text-gray-200">—</span>}</td>
+                        <td className="py-1.5 text-right text-amber-600">{d.exp>0?fmtK(d.exp):"—"}</td>
+                        <td className={`py-1.5 text-right font-semibold ${profit>0?"text-emerald-600":profit<0?"text-red-500":"text-gray-300"}`}>{d.rev>0||d.exp>0?fmtK(profit):"—"}</td>
+                        <td className="py-1.5 text-right">{mom!==null&&d.rev>0?<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${mom>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>{mom>=0?"+":""}{mom.toFixed(1)}%</span>:<span className="text-gray-200">—</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Revenue line YoY comparison */}
+          <Card>
+            <Sec icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}/>
+            <LineChart
+              series={[
+                {data:thisYearData.map(d=>d.rev), color:"#6366f1", labels:MONTHS},
+                {data:prevYearData.map(d=>d.rev), color:"#6366f144"},
+              ]}
+              height={88}
+              showArea={false}
+            />
+            <div className="flex gap-4 mt-1">
+              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>
+              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>
+              {yoyGrowth!==null&&<span className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>}
+            </div>
+          </Card>
+
+          {/* Revenue growth rate line */}
+          <Card>
+            <Sec icon="🚀" title="Monthly Revenue Growth Rate" sub={String(year)}/>
+            {(()=>{
+              const growthRates = thisYearData.map((d,i)=>{
+                if(i===0||thisYearData[i-1].rev===0)return 0;
+                return Math.round((d.rev-thisYearData[i-1].rev)/thisYearData[i-1].rev*100);
+              });
+              const hasData = growthRates.some(v=>v!==0);
+              if(!hasData)return <p className="text-xs text-gray-300 text-center py-4">Not enough data yet</p>;
+              return (
+                <>
+                  <div className="flex items-end gap-0.5" style={{height:80}}>
+                    {growthRates.map((v,i)=>(
+                      <div key={i} className="flex-1 flex flex-col items-center justify-center gap-0.5" style={{height:80}}>
+                        {v>0&&<div style={{height:`${Math.min(36,Math.abs(v)/2)}px`,background:"#10b981",width:"100%",borderRadius:"2px 2px 0 0",marginTop:"auto"}}/>}
+                        <div className="h-px w-full bg-gray-200"/>
+                        {v<0&&<div style={{height:`${Math.min(36,Math.abs(v)/2)}px`,background:"#f43f5e",width:"100%",borderRadius:"0 0 2px 2px"}}/>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-0.5 mt-0.5">
+                    {MONTHS.map(m=><p key={m} className="flex-1 text-[7px] text-gray-500 text-center">{m}</p>)}
+                  </div>
+                </>
+              );
+            })()}
+          </Card>
+
+          {/* Projection */}
+          {projNextMonth>0&&(
+            <Card>
+              <Sec icon="🔮" title="Revenue Projection"/>
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-3xl font-black text-indigo-700">{fmtK(projNextMonth)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Projected next month</p>
+                  <p className="text-[10px] text-gray-300 mt-0.5">Based on last 3-month avg growth rate</p>
+                </div>
+                <div className="flex-1 space-y-2">
+                  {nonZeroMonths.slice(-3).map((m,i)=>(
+                    <div key={m.label} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-8 shrink-0">{m.label}</span>
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-indigo-400" style={{width:`${Math.round(m.rev/Math.max(projNextMonth,...nonZeroMonths.slice(-3).map(x=>x.rev))*100)}%`}}/>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600 shrink-0">{fmtK(m.rev)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-indigo-600 w-8 shrink-0">Next</span>
+                    <div className="flex-1 h-2 bg-indigo-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-indigo-500" style={{width:"100%"}}/>
+                    </div>
+                    <span className="text-xs font-bold text-indigo-700 shrink-0">{fmtK(projNextMonth)}</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
       {/* ── ORDERS ───────────────────────────────────────────────────────── */}
       {section==="orders"&&(
         <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <KPITile label="Total Orders" value={fmt(totalOrders)} sub={`${pendingOrders} pending`} accent="#6366f1" icon="📋"/>
+            <KPITile label="Completed" value={fmt(completedOrders)} sub={`${totalOrders?Math.round(completedOrders/totalOrders*100):0}% rate`} accent="#10b981" icon="✅"/>
+            <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub="per order" accent="#8b5cf6" icon="🎯"/>
+            <KPITile label="Cancelled" value={fmt(cancelledOrders)} sub={`${orders.length?Math.round(cancelledOrders/orders.length*100):0}% of all`} accent="#f43f5e" icon="❌"/>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
               <Sec icon="📈" title="Orders Over Time"/>
-              <StackedBar data={buckets.map(b=>({label:b.label,segments:[{v:b.ords.filter(o=>o.type==="B2B").length,c:"#6366f1"},{v:b.ords.filter(o=>o.type==="B2C").length,c:"#22d3ee"}]}))} maxVal={maxOrd} height={80}/>
-              <div className="flex gap-4 mt-1">
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>B2B</span>
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-cyan-400 inline-block"/>B2C</span>
-              </div>
+              <BarChart2
+                data={thisYearData.map(d=>({label:d.label,value:d.orders}))}
+                color={(i)=>bc(i)} height={72}
+              />
             </Card>
             <Card>
-              <Sec icon="💹" title="Revenue Over Time"/>
-              <StackedBar data={buckets.map(b=>({label:b.label,segments:[{v:b.ords.filter(o=>(o.channel||"Offline")==="Offline").reduce((s,o)=>s+getVal(o),0),c:"#10b981"},{v:b.ords.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getVal(o),0),c:"#0ea5e9"}]}))} maxVal={maxRev} height={80}/>
-              <div className="flex gap-4 mt-1">
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-emerald-500 inline-block"/>Offline</span>
-                <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-sky-500 inline-block"/>Online</span>
-              </div>
+              <Sec icon="💹" title="Avg Order Value Trend"/>
+              <LineChart
+                series={[{data:thisYearData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:MONTHS}]}
+                height={72}
+              />
             </Card>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card>
               <Sec icon="👥" title="B2B vs B2C"/>
-              <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]]} colors={["#6366f1","#22d3ee"]}/>
+              <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v)} colors={["#6366f1","#22d3ee"]}/>
             </Card>
             <Card>
               <Sec icon="🧾" title="GST Status"/>
-              <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]]} colors={["#10b981","#f59e0b"]}/>
+              <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v)} colors={["#10b981","#f59e0b"]}/>
             </Card>
             <Card>
               <Sec icon="🛒" title="Sales Channel"/>
@@ -3197,7 +3380,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
 
           <Card>
-            <Sec icon="🚦" title="Order Status"/>
+            <Sec icon="🚦" title="Order Status Distribution"/>
             <div className="grid grid-cols-3 gap-3">
               {[["Pending",pendingOrders,"#f59e0b"],["Completed",completedOrders,"#10b981"],["Cancelled",cancelledOrders,"#f43f5e"]].map(([s,cnt,c])=>{
                 const p=orders.length?Math.round(cnt/orders.length*100):0;
@@ -3220,7 +3403,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
               <div className="space-y-1.5">
                 {Object.entries(modeMap).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>{
-                  const tot = Object.values(modeMap).reduce((s,v)=>s+v,0);
+                  const tot=Object.values(modeMap).reduce((s,v)=>s+v,0);
                   return <HBar key={mode} label={mode} value={cnt} total={tot} color={bc(i)} pct={Math.round(cnt/tot*100)}/>;
                 })}
               </div>
@@ -3243,7 +3426,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <Card>
               <Sec icon="💸" title="Expenses by Category"/>
               {expCats.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {expCats.map(([cat,amt],i)=>(
                     <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} suffix="₹" pct={totalExp?Math.round(amt/totalExp*100):0}/>
                   ))}
@@ -3251,85 +3434,57 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               )}
             </Card>
             <Card>
-              <Sec icon="📅" title="Monthly Expenses"/>
-              <BarChart data={MONTHS.map((m,i)=>({label:m,value:expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1).reduce((s,e)=>s+num(e.amount),0)}))} maxVal={maxExp2||1} color="#f59e0b" height={80}/>
+              <Sec icon="📅" title="Monthly Expense Trend" sub={String(year)}/>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={72}/>
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
-                <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total Expenses</p>
-                  <p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Avg / Month</p>
-                  <p className="text-base font-black text-slate-700">{fmtK(totalExp/12)}</p>
-                </div>
+                <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p><p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p></div>
+                <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Avg/Month</p><p className="text-base font-black text-slate-700">{fmtK(totalExp/12)}</p></div>
               </div>
             </Card>
           </div>
 
           <Card>
-            <Sec icon="📉" title="Month-over-Month Revenue Trend"/>
-            {(()=>{
-              const monthRevs = MONTHS.map((m,i)=>({
-                label:m,
-                rev:activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;}).reduce((s,o)=>s+getVal(o),0),
-                exp:expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(year))&&Number((e.date||"").slice(5,7))===i+1).reduce((s,e)=>s+num(e.amount),0),
-              }));
-              return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead><tr className="border-b border-gray-100">
-                      <th className="text-left py-1.5 text-gray-400 font-semibold">Month</th>
-                      <th className="text-right py-1.5 text-gray-400 font-semibold">Revenue</th>
-                      <th className="text-right py-1.5 text-gray-400 font-semibold">Expenses</th>
-                      <th className="text-right py-1.5 text-gray-400 font-semibold">Profit</th>
-                      <th className="text-right py-1.5 text-gray-400 font-semibold">MoM</th>
-                    </tr></thead>
-                    <tbody>
-                      {monthRevs.map((m,i)=>{
-                        const prev = i>0?monthRevs[i-1].rev:null;
-                        const mom = prev!==null&&prev>0?((m.rev-prev)/prev*100):null;
-                        const profit = m.rev-m.exp;
-                        return (
-                          <tr key={m.label} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-1.5 font-semibold text-slate-700">{m.label}</td>
-                            <td className="py-1.5 text-right text-indigo-700 font-semibold">{fmtK(m.rev)}</td>
-                            <td className="py-1.5 text-right text-amber-600">{fmtK(m.exp)}</td>
-                            <td className={`py-1.5 text-right font-semibold ${profit>=0?"text-emerald-600":"text-red-500"}`}>{fmtK(profit)}</td>
-                            <td className="py-1.5 text-right">
-                              {mom!==null?<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${mom>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>{mom>=0?"+":""}{mom.toFixed(1)}%</span>:<span className="text-gray-300">—</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-          </Card>
-
-          <Card>
-            <Sec icon="📊" title="Revenue vs Expenses by Period"/>
-            <div className="flex items-end gap-0.5" style={{height:112}}>
-              {buckets.map((b,i)=>{
-                const rev=b.ords.reduce((s,o)=>s+getVal(o),0);
-                const exp=b.exps.reduce((s,e)=>s+num(e.amount),0);
-                const mx=Math.max(maxRev,maxExp2,1);
-                return (
-                  <div key={b.label} className="flex-1 flex items-end gap-0.5">
-                    <div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round((rev/mx)*96))}px`,background:"#6366f1",marginTop:`${96-Math.max(2,Math.round((rev/mx)*96))}px`}} title={`Rev: ₹${fmt(rev)}`}/>
-                    <div className="flex-1 rounded-t-sm" style={{height:`${Math.max(2,Math.round((exp/mx)*96))}px`,background:"#f59e0b",marginTop:`${96-Math.max(2,Math.round((exp/mx)*96))}px`}} title={`Exp: ₹${fmt(exp)}`}/>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-1 mt-1">
-              {buckets.map(b=><p key={b.label} className="flex-1 text-[7px] text-gray-500 text-center leading-none">{b.label}</p>)}
-            </div>
+            <Sec icon="🔁" title="Expense vs Revenue Line" sub={String(year)}/>
+            <LineChart
+              series={[
+                {data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},
+                {data:thisYearData.map(d=>d.exp),color:"#f59e0b"},
+              ]}
+              height={80}
+            />
             <div className="flex gap-4 mt-1">
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block"/>Expenses</span>
             </div>
+          </Card>
+
+          {/* Outstanding aging */}
+          <Card>
+            <Sec icon="⏰" title="Outstanding Orders"/>
+            {(()=>{
+              const today = new Date();
+              const outstanding = activeOrders.filter(o=>{
+                const bal = getVal(o)-getPaid(o);
+                return bal>0.01;
+              }).map(o=>({
+                ...o,
+                balance:getVal(o)-getPaid(o),
+                daysOld:Math.floor((today-new Date(o.orderDate||today))/(1000*60*60*24))
+              })).sort((a,b)=>b.daysOld-a.daysOld).slice(0,8);
+              if(!outstanding.length)return <p className="text-xs text-emerald-500 text-center py-3 font-semibold">✓ No outstanding balances</p>;
+              return (
+                <div className="space-y-1.5">
+                  {outstanding.map((o,i)=>(
+                    <div key={o.orderNo} className="flex items-center gap-3">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${o.daysOld>60?"bg-red-100 text-red-600":o.daysOld>30?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>{o.daysOld}d</span>
+                      <span className="text-xs text-slate-700 font-medium flex-1 truncate">{o.customerName}</span>
+                      <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
+                      <span className="text-xs font-bold text-orange-500 shrink-0">{fmtK(o.balance)}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </Card>
         </div>
       )}
@@ -3341,127 +3496,77 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Total Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub="across all orders" accent="#6366f1" icon="🧵"/>
             <KPITile label="Total Waste" value={`${fmt(totalWasteG)}g`} sub={`${wasteRate}% waste rate`} accent="#f43f5e" icon="♻️"/>
             <KPITile label="Spools" value={inventory.length} sub={`${[...new Set(inventory.map(i=>i.material))].length} materials`} accent="#10b981" icon="📦"/>
-            <KPITile label="Stock Left" value={`${(inventory.reduce((s,i)=>s+num(i.weightG),0)/1000).toFixed(1)}kg`} sub="total remaining" accent="#f59e0b" icon="🏪"/>
+            <KPITile label="Stock Left" value={`${(inventory.reduce((s,i)=>s+num(i.weightG),0)/1000).toFixed(1)}kg`} sub="total" accent="#f59e0b" icon="🏪"/>
           </div>
 
-          {/* Usage donut row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {[
-              {title:"Usage by Material",data:usageMap.mat,icon:"🧪"},
-              {title:"Usage by Brand",data:usageMap.brand,icon:"🏷️"},
-              {title:"Usage by Color",data:usageMap.color,icon:"🎨"},
-            ].map(({title,data,icon})=>{
-              const entries = Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,6);
-              const total = entries.reduce((s,[,v])=>s+v,0);
-              return (
-                <Card key={title}>
-                  <Sec icon={icon} title={title}/>
-                  {entries.length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
-                    <div className="space-y-1.5">
-                      {entries.map(([k,v],i)=>(
-                        <HBar key={k} label={k} value={v>=1000?`${(v/1000).toFixed(1)}kg`:`${Math.round(v)}g`} total={total} color={bc(i)} pct={total?Math.round(v/total*100):0}/>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Filament planning pie */}
+          {/* Combined brand·material·color */}
           <Card>
-            <Sec icon="📊" title="Filament Usage Mix — Plan Your Next Order"/>
-            {totalUsedG===0?<p className="text-xs text-gray-300 text-center py-4">No filament usage data</p>:(()=>{
-              const matEntries = Object.entries(usageMap.mat).sort((a,b)=>b[1]-a[1]);
-              const brandEntries = Object.entries(usageMap.brand).sort((a,b)=>b[1]-a[1]).slice(0,6);
-              const totalMat = matEntries.reduce((s,[,v])=>s+v,0);
-              const totalBrand = brandEntries.reduce((s,[,v])=>s+v,0);
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">By Material</p>
-                    <Donut data={matEntries} colors={PALETTE} size={100}/>
-                    <div className="mt-3 space-y-1">
-                      {matEntries.map(([k,v],i)=>(
-                        <div key={k} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-sm shrink-0" style={{background:bc(i)}}/>
-                          <span className="text-xs text-gray-600 flex-1">{k}</span>
-                          <span className="text-[10px] text-gray-400">{totalUsedG>=1000?(v/1000).toFixed(1)+"kg":Math.round(v)+"g"}</span>
-                          <span className="text-xs font-bold text-slate-700 w-8 text-right">{Math.round(v/totalMat*100)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">By Brand</p>
-                    <Donut data={brandEntries} colors={PALETTE.slice(4)} size={100}/>
-                    <div className="mt-3 space-y-1">
-                      {brandEntries.map(([k,v],i)=>(
-                        <div key={k} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-sm shrink-0" style={{background:PALETTE[(i+4)%PALETTE.length]}}/>
-                          <span className="text-xs text-gray-600 flex-1">{k}</span>
-                          <span className="text-[10px] text-gray-400">{v>=1000?(v/1000).toFixed(1)+"kg":Math.round(v)+"g"}</span>
-                          <span className="text-xs font-bold text-slate-700 w-8 text-right">{Math.round(v/totalBrand*100)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan your next order"/>
+            {filCombEntries.length===0?<p className="text-xs text-gray-300 text-center py-6">No filament usage recorded</p>:(
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Donut data={filCombEntries.slice(0,8)} colors={PALETTE} size={100} centerText={`${filCombEntries.length} types`}/>
                 </div>
-              );
-            })()}
-          </Card>
-
-          {/* Wastage */}
-          <Card>
-            <Sec icon="🗑️" title="Wastage Breakdown"/>
-            {wastageLog.length===0?<p className="text-xs text-gray-300 text-center py-4">No wastage recorded</p>:(
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  {title:"By Material",data:wasteMap.mat},
-                  {title:"By Brand",data:wasteMap.brand},
-                  {title:"By Color",data:wasteMap.color},
-                ].map(({title,data})=>{
-                  const entries=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,5);
-                  const total=entries.reduce((s,[,v])=>s+v,0);
-                  return (
-                    <div key={title}>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{title}</p>
-                      <div className="space-y-1.5">
-                        {entries.map(([k,v],i)=>(
-                          <HBar key={k} label={k} value={`${Math.round(v)}g`} total={total} color="#fb923c" pct={total?Math.round(v/total*100):0}/>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                <div className="space-y-1.5">
+                  {filCombEntries.map(([k,v],i)=>(
+                    <HBar key={k} label={k} value={v>=1000?`${(v/1000).toFixed(1)}kg`:`${Math.round(v)}g`} total={totalFilUsed} color={bc(i)} pct={Math.round(v/totalFilUsed*100)}/>
+                  ))}
+                </div>
               </div>
             )}
           </Card>
 
-          {/* Inventory by material */}
+          {/* Usage over time */}
           <Card>
-            <Sec icon="📦" title="Inventory by Material"/>
-            {inventory.length===0?<p className="text-xs text-gray-300 text-center py-4">No inventory</p>:(()=>{
-              const byMat={};
-              inventory.forEach(i=>{byMat[i.material]=(byMat[i.material]||{cnt:0,wt:0});byMat[i.material].cnt++;byMat[i.material].wt+=num(i.weightG);});
-              const entries=Object.entries(byMat).sort((a,b)=>b[1].wt-a[1].wt);
-              const totalWt=entries.reduce((s,[,v])=>s+v.wt,0);
-              return (
-                <div className="space-y-2">
-                  {entries.map(([mat,{cnt,wt}],i)=>(
-                    <div key={mat} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-600 w-20 shrink-0 truncate">{mat}</span>
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{width:`${Math.round(wt/totalWt*100)}%`,background:bc(i)}}/>
-                      </div>
-                      <span className="text-xs font-bold text-slate-600 shrink-0 w-8 text-right">{cnt}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0 w-12 text-right">{(wt/1000).toFixed(1)}kg</span>
-                    </div>
-                  ))}
-                </div>
-              );
+            <Sec icon="📈" title="Filament Usage Over Time"/>
+            {(()=>{
+              const usageByMonth = MONTHS.map((m,i)=>{
+                const ordersThatMonth = orders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;});
+                const used = ordersThatMonth.flatMap(o=>o.filamentUsage||[]).filter(u=>!u.isWaste).reduce((s,u)=>s+num(u.weightUsedG),0);
+                return {label:m, value:used};
+              });
+              const maxU = Math.max(1,...usageByMonth.map(d=>d.value));
+              return <BarChart2 data={usageByMonth} color="#6366f1" height={64}/>;
             })()}
           </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Card>
+              <Sec icon="🗑️" title="Wastage by Brand · Material · Color"/>
+              {wastageLog.length===0?<p className="text-xs text-gray-300 text-center py-4">No wastage recorded</p>:(()=>{
+                const wComb = {};
+                wastageLog.forEach(w=>{
+                  const k=`${w.brand||"—"} · ${w.material||"?"} · ${w.color||"—"}`;
+                  wComb[k]=(wComb[k]||0)+num(w.weightG);
+                });
+                const entries = Object.entries(wComb).sort((a,b)=>b[1]-a[1]);
+                const total = entries.reduce((s,[,v])=>s+v,0);
+                return (
+                  <div className="space-y-1.5">
+                    {entries.map(([k,v],i)=>(
+                      <HBar key={k} label={k} value={`${Math.round(v)}g`} total={total} color="#fb923c" pct={Math.round(v/total*100)}/>
+                    ))}
+                  </div>
+                );
+              })()}
+            </Card>
+            <Card>
+              <Sec icon="📦" title="Inventory by Material"/>
+              {inventory.length===0?<p className="text-xs text-gray-300 text-center py-4">No inventory</p>:(()=>{
+                const byMat={};
+                inventory.forEach(i=>{byMat[i.material]=(byMat[i.material]||{cnt:0,wt:0});byMat[i.material].cnt++;byMat[i.material].wt+=num(i.weightG);});
+                const entries=Object.entries(byMat).sort((a,b)=>b[1].wt-a[1].wt);
+                const totalWt=entries.reduce((s,[,v])=>s+v.wt,0);
+                return (
+                  <div className="space-y-1.5">
+                    {entries.map(([mat,{cnt,wt}],i)=>(
+                      <HBar key={mat} label={mat} value={`${cnt} spools · ${(wt/1000).toFixed(1)}kg`} total={totalWt} color={bc(i)} pct={Math.round(wt/totalWt*100)}/>
+                    ))}
+                  </div>
+                );
+              })()}
+            </Card>
+          </div>
         </div>
       )}
 
@@ -3472,7 +3577,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Total Clients" value={Object.keys(custMap).length} sub={`${activeOrders.filter(o=>o.type==="B2B").length} B2B orders`} accent="#6366f1" icon="👥"/>
             <KPITile label="Repeat Clients" value={Object.values(custMap).filter(c=>c.orders>1).length} sub="2+ orders" accent="#10b981" icon="🔄"/>
             <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub="per order" accent="#8b5cf6" icon="🎯"/>
-            <KPITile label="Top Client" value={topCustomers[0]?.name||"—"} sub={topCustomers[0]?fmtK(topCustomers[0].value):""} accent="#f59e0b" icon="🏆"/>
+            <KPITile label="Top Client" value={topCustomers[0]?.name.split(" ")[0]||"—"} sub={topCustomers[0]?fmtK(topCustomers[0].value):""} accent="#f59e0b" icon="🏆"/>
           </div>
 
           <Card>
@@ -3485,17 +3590,17 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   return (
                     <div key={c.name} className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-gray-200 w-5 shrink-0">{i+1}</span>
+                        <span className="text-xs font-black text-gray-200 w-4 shrink-0">{i+1}</span>
                         <span className="text-xs font-semibold text-slate-700 flex-1 truncate">{c.name}</span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${c.type==="B2B"?"bg-indigo-100 text-indigo-700":"bg-cyan-100 text-cyan-700"}`}>{c.type}</span>
                         <span className="text-xs font-bold text-slate-700 shrink-0">{fmtK(c.value)}</span>
                         <span className="text-[10px] text-gray-400 shrink-0">{c.orders} orders</span>
+                        <span className={`text-[10px] font-bold shrink-0 ${cr>=80?"text-emerald-500":cr>=50?"text-amber-500":"text-red-400"}`}>{cr}% paid</span>
                       </div>
-                      <div className="flex items-center gap-2 pl-7">
+                      <div className="flex items-center gap-2 pl-6">
                         <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full rounded-full" style={{width:`${Math.round(c.value/maxV*100)}%`,background:bc(i)}}/>
                         </div>
-                        <span className="text-[10px] text-gray-400 shrink-0 w-14 text-right">{cr}% collected</span>
                       </div>
                     </div>
                   );
@@ -3506,32 +3611,28 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
-              <Sec icon="🗓️" title="Orders per Customer"/>
+              <Sec icon="🗓️" title="Order Frequency Distribution"/>
               {(()=>{
-                const dist={1:0,2:0,3:0,"4+":0};
+                const dist={"1 order":0,"2 orders":0,"3 orders":0,"4+ orders":0};
                 Object.values(custMap).forEach(c=>{
-                  if(c.orders===1)dist[1]++;
-                  else if(c.orders===2)dist[2]++;
-                  else if(c.orders===3)dist[3]++;
-                  else dist["4+"]++;
+                  if(c.orders===1)dist["1 order"]++;
+                  else if(c.orders===2)dist["2 orders"]++;
+                  else if(c.orders===3)dist["3 orders"]++;
+                  else dist["4+ orders"]++;
                 });
                 const total=Object.values(custMap).length||1;
                 return (
                   <div className="space-y-2">
                     {Object.entries(dist).map(([k,v],i)=>(
-                      <HBar key={k} label={`${k} order${k==="1"?"":"s"}`} value={v} total={total} color={bc(i)} pct={Math.round(v/total*100)}/>
+                      <HBar key={k} label={k} value={v} total={total} color={bc(i)} pct={Math.round(v/total*100)}/>
                     ))}
                   </div>
                 );
               })()}
             </Card>
             <Card>
-              <Sec icon="🗓️" title="Order Frequency"/>
-              {(()=>{
-                const monthlyOrders = MONTHS.map((m,i)=>({label:m, value:activeOrders.filter(o=>{const d=o.orderDate||""; return d.startsWith(String(year))&&Number(d.slice(5,7))===i+1;}).length}));
-                const maxM = Math.max(1,...monthlyOrders.map(m=>m.value));
-                return <BarChart data={monthlyOrders} maxVal={maxM} color={(i)=>bc(i)} height={80}/>;
-              })()}
+              <Sec icon="📅" title="Orders per Month" sub={String(year)}/>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)} height={72}/>
             </Card>
           </div>
         </div>
