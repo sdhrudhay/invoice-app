@@ -2897,7 +2897,6 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   // KPIs
   const totalRev = activeOrders.reduce((s,o)=>s+getVal(o),0);
   const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
-  const netProfit_check = totalPaid - totalExp; // profit based on actual cash received
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
@@ -2979,7 +2978,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     filamentCombined[key]=(filamentCombined[key]||0)+num(u.weightUsedG);
   });
   const filCombEntries = Object.entries(filamentCombined).sort((a,b)=>b[1]-a[1]);
-  const totalFilUsed = filCombEntries.reduce((s,[,v])=>s+v,0);
+  const totalFilUsed = filCombEntries.reduce((s,[_k,v])=>s+v,0);
 
   const maxOrd = Math.max(1,...thisYearData.map(d=>d.orders));
   const maxRev2 = Math.max(1,...thisYearData.map(d=>d.rev),...prevYearData.map(d=>d.rev));
@@ -3029,11 +3028,11 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
 
   const Donut = ({data,colors,size=80,centerText})=>{
-    const total=data.reduce((s,[,v])=>s+v,0);
+    const total=data.reduce((s,[_k,v])=>s+v,0);
     if(!total)return <p className="text-xs text-gray-300 text-center py-2">No data</p>;
     let cum=0;
     const r=38,cx=50,cy=50;
-    const slices=data.filter(([,v])=>v>0).map(([label,value],i)=>{
+    const slices=data.filter(([_k,v])=>v>0).map(([label,value],i)=>{
       const pct=value/total,sa=cum*2*Math.PI-Math.PI/2;
       cum+=pct;
       const ea=cum*2*Math.PI-Math.PI/2;
@@ -3537,8 +3536,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <Sec icon="🔍" title="Order Mix"/>
               <div className="space-y-5">
                 {[
-                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v), colors:["#6366f1","#22d3ee"]},
-                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v), colors:["#10b981","#f59e0b"]},
+                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v), colors:["#6366f1","#22d3ee"]},
+                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v), colors:["#10b981","#f59e0b"]},
                   {title:"Sales Channel", data:Object.entries(channelMap).sort((a,b)=>b[1]-a[1]), colors:PALETTE},
                 ].map(({title,data,colors})=>(
                   <div key={title}>
@@ -3725,7 +3724,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   wComb[k]=(wComb[k]||0)+num(w.weightG);
                 });
                 const entries = Object.entries(wComb).sort((a,b)=>b[1]-a[1]);
-                const total = entries.reduce((s,[,v])=>s+v,0);
+                const total = entries.reduce((s,[_k,v])=>s+v,0);
                 return (
                   <div className="space-y-1.5">
                     {entries.map(([k,v],i)=>(
@@ -3741,7 +3740,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 const byMat={};
                 inventory.forEach(i=>{byMat[i.material]=(byMat[i.material]||{cnt:0,wt:0});byMat[i.material].cnt++;byMat[i.material].wt+=num(i.weightG);});
                 const entries=Object.entries(byMat).sort((a,b)=>b[1].wt-a[1].wt);
-                const totalWt=entries.reduce((s,[,v])=>s+v.wt,0);
+                const totalWt=entries.reduce((s,[_k,v])=>s+v.wt,0);
                 return (
                   <div className="space-y-1.5">
                     {entries.map(([mat,{cnt,wt}],i)=>(
