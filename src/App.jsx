@@ -3268,8 +3268,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="overview"&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <KPITile label="Total Revenue" value={fmtK(totalRev)} sub={`${totalOrders} active orders`} accent="#6366f1" icon="💰" badge={yoyGrowth!==null?{pos:yoyGrowth>=0,label:`${yoyGrowth>=0?"+":""}${yoyGrowth}% YoY`}:null}/>
-            <KPITile label="Collected" value={fmtK(totalPaid)} sub={`${collectionRate}% collection rate`} accent="#10b981" icon="✅"/>
+            <KPITile label="Total Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰" badge={yoyGrowth!==null?{pos:yoyGrowth>=0,label:`${yoyGrowth>=0?"+":""}${yoyGrowth}% YoY`}:null}/>
+            <KPITile label="Order Value" value={fmtK(totalRev)} sub={`${totalOrders} orders`} accent="#10b981" icon="📋"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon={netProfit>=0?"📈":"📉"}/>
             <KPITile label="Total Expenses" value={fmtK(totalExp)} sub={`${expCats.length} categories`} accent="#f59e0b" icon="💸"/>
           </div>
@@ -3483,12 +3483,29 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {/* ── ORDERS ───────────────────────────────────────────────────────── */}
       {section==="orders"&&(
         <div className="space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <KPITile label="Total Orders" value={fmt(totalOrders)} sub={`${pendingOrders} pending`} accent="#6366f1" icon="📋"/>
-            <KPITile label="Completed" value={fmt(completedOrders)} sub={`${totalOrders?Math.round(completedOrders/totalOrders*100):0}% rate`} accent="#10b981" icon="✅"/>
-            <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub="per order" accent="#8b5cf6" icon="🎯"/>
-            <KPITile label="Cancelled" value={fmt(cancelledOrders)} sub={`${orders.length?Math.round(cancelledOrders/orders.length*100):0}% of all`} accent="#f43f5e" icon="❌"/>
-          </div>
+          {/* Order Stats at top — full width grid */}
+          <Card>
+            <Sec icon="📊" title="Order Stats"/>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {[
+                ["Total Orders", totalOrders, "#6366f1"],
+                ["Completed", completedOrders, "#10b981"],
+                ["Pending", pendingOrders, "#f59e0b"],
+                ["Cancelled", cancelledOrders, "#f43f5e"],
+                ["Avg Order Value", fmtK(avgOrder), "#8b5cf6"],
+                ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)), "#6366f1"],
+                ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getVal(o),0)), "#22d3ee"],
+                ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
+                ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
+                ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
+              ].map(([l,v,c])=>(
+                <div key={l} className="bg-gray-50 rounded-xl p-3">
+                  <p className="text-[10px] text-gray-400 font-medium">{l}</p>
+                  <p className="text-lg font-black mt-0.5" style={{color:c}}>{v}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
@@ -3507,45 +3524,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Left: stats — now first/bigger */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card>
-              <Sec icon="📊" title="Order Stats"/>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["Total Orders", totalOrders, "#6366f1"],
-                  ["Completed", completedOrders, "#10b981"],
-                  ["Pending", pendingOrders, "#f59e0b"],
-                  ["Cancelled", cancelledOrders, "#f43f5e"],
-                  ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)), "#6366f1"],
-                  ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getVal(o),0)), "#22d3ee"],
-                  ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
-                  ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
-                  ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
-                  ["Avg Order Value", fmtK(avgOrder), "#f59e0b"],
-                ].map(([l,v,c])=>(
-                  <div key={l} className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-[10px] text-gray-400 font-medium">{l}</p>
-                    <p className="text-lg font-black mt-0.5" style={{color:c}}>{v}</p>
-                  </div>
-                ))}
-              </div>
+              <Sec icon="👥" title="B2B vs B2C"/>
+              <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={150}/>
             </Card>
-            {/* Right: donuts — now right/second */}
             <Card>
-              <Sec icon="🔍" title="Order Mix"/>
-              <div className="space-y-5">
-                {[
-                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v), colors:["#6366f1","#22d3ee"]},
-                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v), colors:["#10b981","#f59e0b"]},
-                  {title:"Sales Channel", data:Object.entries(channelMap).sort((a,b)=>b[1]-a[1]), colors:PALETTE},
-                ].map(({title,data,colors})=>(
-                  <div key={title}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{title}</p>
-                    <Donut data={data} colors={colors} size={110}/>
-                  </div>
-                ))}
-              </div>
+              <Sec icon="🧾" title="GST Status"/>
+              <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={150}/>
+            </Card>
+            <Card>
+              <Sec icon="🛒" title="Sales Channel"/>
+              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={150}/>
             </Card>
           </div>
 
@@ -3586,8 +3576,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="finance"&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <KPITile label="Revenue" value={fmtK(totalRev)} sub="gross" accent="#6366f1" icon="📈"/>
-            <KPITile label="Collected" value={fmtK(totalPaid)} sub={`${collectionRate}% rate`} accent="#10b981" icon="✅"/>
+            <KPITile label="Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰"/>
+            <KPITile label="Order Value" value={fmtK(totalRev)} sub={`${collectionRate}% collected`} accent="#10b981" icon="📋"/>
             <KPITile label="Outstanding" value={fmtK(Math.max(0,totalRev-totalPaid))} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
