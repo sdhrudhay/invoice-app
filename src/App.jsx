@@ -3132,16 +3132,20 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
         </div>
         {/* Chart area */}
         <div className="flex-1">
-          <div className="flex items-end gap-0.5 border-b border-l border-gray-200 relative" style={{height}}>
+          <div className="flex items-end gap-0.5 border-b border-l border-gray-200 relative" style={{height,paddingTop:"18px"}}>
             {/* Gridlines */}
             {ticks.slice(1).map(v=>(
               <div key={v} className="absolute w-full border-t border-gray-100" style={{bottom:`${(v/topVal)*100}%`,left:0}}/>
             ))}
             {data.map((d,i)=>(
-              <div key={d.label} className="flex-1 flex items-end justify-center gap-px h-full" title={`${d.label}: ${fmt(d.value)}`}>
-                <div className="w-full flex items-end gap-px h-full">
-                  <div className="flex-1 rounded-t-sm transition-all" style={{height:`${Math.max(0,Math.round((d.value/topVal)*100))}%`,background:typeof color==="function"?color(i):color,minHeight:d.value>0?"2px":"0"}}/>
-                  {data2&&<div className="flex-1 rounded-t-sm" style={{height:`${Math.max(0,Math.round(((data2[i]?.value||0)/topVal)*100))}%`,background:color2||"#f59e0b",opacity:0.7,minHeight:(data2[i]?.value||0)>0?"2px":"0"}}/>}
+              <div key={d.label} className="flex-1 flex items-end justify-center gap-px h-full relative" title={`${d.label}: ${fmt(d.value)}`}>
+                <div className="w-full flex items-end gap-px h-full relative">
+                  <div className="flex-1 relative rounded-t-sm transition-all" style={{height:`${Math.max(0,Math.round((d.value/topVal)*100))}%`,background:typeof color==="function"?color(i):color,minHeight:d.value>0?"2px":"0"}}>
+                    {d.value>0&&<span className="absolute -top-4 left-0 right-0 text-center text-[8px] font-bold text-slate-600 leading-none whitespace-nowrap">{fmtTick(d.value)}</span>}
+                  </div>
+                  {data2&&<div className="flex-1 relative rounded-t-sm" style={{height:`${Math.max(0,Math.round(((data2[i]?.value||0)/topVal)*100))}%`,background:color2||"#f59e0b",opacity:0.7,minHeight:(data2[i]?.value||0)>0?"2px":"0"}}>
+                    {(data2[i]?.value||0)>0&&<span className="absolute -top-4 left-0 right-0 text-center text-[8px] font-bold text-amber-600 leading-none whitespace-nowrap">{fmtTick(data2[i].value)}</span>}
+                  </div>}
                 </div>
               </div>
             ))}
