@@ -2896,7 +2896,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   // KPIs
   const totalRev = activeOrders.reduce((s,o)=>s+getVal(o),0);
-  const totalPaid = activeOrders.reduce((s,o)=>s+getPaid(o),0);
+  const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // include cancelled (advances + payments received)
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
@@ -3332,8 +3332,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="trends"&&(
         <div className="space-y-3">
           {/* Cumulative revenue line */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
               <ChartCard icon="📈" title="Cumulative Revenue & Profit" sub={`${year}`}
                 legend={[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
                   <span key={l} className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:c}}/>{l}</span>
@@ -3385,8 +3385,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue line YoY comparison */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
               <ChartCard icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}
                 legend={[<span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,<span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>,yoyGrowth!==null&&<span key="c" className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>].filter(Boolean)}>
                 <LineChart series={[{data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},{data:prevYearData.map(d=>d.rev),color:"#6366f144"}]} showArea={false}/>
@@ -3507,28 +3507,47 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
           </div>
 
-          <Card>
-            <Sec icon="🔍" title="Order Mix"/>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">B2B vs B2C</p>
-                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v)} colors={["#6366f1","#22d3ee"]} size={64}/>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Left: three donuts stacked */}
+            <Card>
+              <Sec icon="🔍" title="Order Mix"/>
+              <div className="space-y-4">
+                {[
+                  {title:"B2B vs B2C", data:[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([,v])=>v), colors:["#6366f1","#22d3ee"]},
+                  {title:"GST Status", data:[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v), colors:["#10b981","#f59e0b"]},
+                  {title:"Sales Channel", data:Object.entries(channelMap).sort((a,b)=>b[1]-a[1]), colors:PALETTE},
+                ].map(({title,data,colors})=>(
+                  <div key={title}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{title}</p>
+                    <Donut data={data} colors={colors} size={100}/>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">GST Status</p>
-                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([,v])=>v)} colors={["#10b981","#f59e0b"]} size={64}/>
+            </Card>
+            {/* Right: stats */}
+            <Card>
+              <Sec icon="📊" title="Order Stats"/>
+              <div className="space-y-3">
+                {[
+                  ["Total Orders", totalOrders, "#6366f1"],
+                  ["Completed", completedOrders, "#10b981"],
+                  ["Pending", pendingOrders, "#f59e0b"],
+                  ["Cancelled", cancelledOrders, "#f43f5e"],
+                  ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)), "#6366f1"],
+                  ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getVal(o),0)), "#22d3ee"],
+                  ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
+                  ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
+                  ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
+                  ["Avg Order Value", fmtK(avgOrder), "#f59e0b"],
+                ].map(([l,v,c])=>(
+                  <div key={l} className="flex items-center justify-between py-1.5 border-b border-gray-50">
+                    <span className="text-xs text-gray-500">{l}</span>
+                    <span className="text-sm font-black" style={{color:c}}>{v}</span>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Sales Channel</p>
-                <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={64}/>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-100">
-              <div className="text-center"><p className="text-[10px] text-gray-400">B2B Revenue</p><p className="text-sm font-black text-indigo-600">{fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0))}</p></div>
-              <div className="text-center"><p className="text-[10px] text-gray-400">Avg B2B Order</p><p className="text-sm font-black text-indigo-600">{fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0)}</p></div>
-              <div className="text-center"><p className="text-[10px] text-gray-400">Online Orders</p><p className="text-sm font-black text-sky-600">{activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length}</p></div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           <Card>
             <Sec icon="🚦" title="Order Status Distribution"/>
