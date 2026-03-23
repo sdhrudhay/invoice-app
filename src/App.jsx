@@ -3060,7 +3060,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
 
   // Line chart SVG with y-axis
-  const LineChart = ({series, height=80, showArea=true}) => {
+  const LineChart = ({series, height=160, showArea=true}) => {
     if (!series.length||!series[0].data.length) return null;
     const n = series[0].data.length;
     const allVals = series.flatMap(s=>s.data);
@@ -3108,7 +3108,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     );
   };
 
-  const BarChart2 = ({data,color="#6366f1",height=80,color2,data2})=>{
+  const BarChart2 = ({data,color="#6366f1",height=160,color2,data2})=>{
     const maxV=Math.max(1,...data.map(d=>d.value),...(data2||[]).map(d=>d.value));
     // Nice round y-axis ticks
     const getRoundTick = (max) => {
@@ -3218,7 +3218,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 {label:"Waste Efficiency",value:Math.round((100-Number(wasteRate))*10)/10,color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e",desc:`${wasteRate}% waste`},
               ].map(({label,value,color,desc})=>(
                 <div key={label} className="text-center">
-                  <div className="relative w-16 h-16 mx-auto">
+                  <div className="relative w-20 h-20 mx-auto">
                     <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                       <circle cx="18" cy="18" r="14" fill="none" stroke="#f1f5f9" strokeWidth="3"/>
                       <circle cx="18" cy="18" r="14" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${value*87.96/100} 87.96`} strokeLinecap="round"/>
@@ -3236,7 +3236,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
               <Sec icon="📊" title="Revenue This Year" sub={String(year)}/>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1" height={72}
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1" height={160}
                 data2={prevYearData.map(d=>({label:d.label,value:d.rev}))} color2="#6366f144"/>
               <div className="flex gap-4 mt-1">
                 <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>
@@ -3268,7 +3268,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 {data:cumulativeExp, color:"#f59e0b"},
                 {data:cumulativeProfit.map(v=>Math.max(0,v)), color:"#10b981"},
               ]}
-              height={100}
+              height={180}
             />
             <div className="flex gap-4 mt-1">
               {[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
@@ -3317,7 +3317,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 {data:thisYearData.map(d=>d.rev), color:"#6366f1", labels:MONTHS},
                 {data:prevYearData.map(d=>d.rev), color:"#6366f144"},
               ]}
-              height={88}
+              height={180}
               showArea={false}
             />
             <div className="flex gap-4 mt-1">
@@ -3341,7 +3341,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 <>
                   {(()=>{
                     const maxAbs = Math.max(5,...growthRates.map(Math.abs));
-                    const halfH = 48;
+                    const halfH = 80;
                     return (
                       <div className="flex gap-1">
                         <div className="flex flex-col justify-between shrink-0" style={{width:24,height:halfH*2}}>
@@ -3424,14 +3424,14 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <Sec icon="📈" title="Orders Over Time"/>
               <BarChart2
                 data={thisYearData.map(d=>({label:d.label,value:d.orders}))}
-                color={(i)=>bc(i)} height={72}
+                color={(i)=>bc(i)} height={160}
               />
             </Card>
             <Card>
               <Sec icon="💹" title="Avg Order Value Trend"/>
               <LineChart
                 series={[{data:thisYearData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:MONTHS}]}
-                height={72}
+                height={160}
               />
             </Card>
           </div>
@@ -3515,7 +3515,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
             <Card>
               <Sec icon="📅" title="Monthly Expense Trend" sub={String(year)}/>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={72}/>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={160}/>
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p><p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p></div>
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Avg/Month</p><p className="text-base font-black text-slate-700">{fmtK(totalExp/12)}</p></div>
@@ -3530,7 +3530,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 {data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},
                 {data:thisYearData.map(d=>d.exp),color:"#f59e0b"},
               ]}
-              height={80}
+              height={160}
             />
             <div className="flex gap-4 mt-1">
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
@@ -3620,7 +3620,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 return {label:m, value:used};
               });
               const maxU = Math.max(1,...usageByMonth.map(d=>d.value));
-              return <BarChart2 data={usageByMonth} color="#6366f1" height={64}/>;
+              return <BarChart2 data={usageByMonth} color="#6366f1" height={160}/>;
             })()}
           </Card>
 
@@ -3726,7 +3726,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </Card>
             <Card>
               <Sec icon="📅" title="Orders per Month" sub={String(year)}/>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)} height={72}/>
+              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)} height={160}/>
             </Card>
           </div>
         </div>
