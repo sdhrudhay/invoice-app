@@ -2896,16 +2896,27 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const getEffVal = (o) => o.status==="Cancelled" ? Math.max(0,getPaid(o)) : getVal(o);
   const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
+  // Mirror income tab: use tax invoice amount if exists, else quotation, else order items (no charges)
+  const getInvoicedAmt = (o) => {
+    const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
+    const qt = quotations.find(q=>q.orderId===o.orderNo);
+    const raw = tis.length
+      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
+      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
+    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : raw;
+  };
+  const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getInvoicedAmt(o) - getPaid(o));
+
   // KPIs
-  const totalRev = orders.reduce((s,o)=>s+getEffVal(o),0);
+  const totalRev = orders.reduce((s,o)=>s+getInvoicedAmt(o),0);
   const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
   const pendingOrders = activeOrders.filter(o=>o.status==="Pending").length;
   const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
-  const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getEffVal(o),0)/totalOrders):0;
-  const collectionRate = totalRev?Math.round(totalPaid/totalRev*100):0;
+  const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/totalOrders):0;
+  const collectionRate = totalRev>0?Math.min(100,Math.round(totalPaid/totalRev*100)):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
 
@@ -2919,7 +2930,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const monthlyData = (yr) => MONTHS.map((m,i)=>{
     const ords = activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
     const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
-    const rev = ords.reduce((s,o)=>s+getEffVal(o),0);
+    const rev = ords.reduce((s,o)=>s+getInvoicedAmt(o),0);
     const exp = exps.reduce((s,e)=>s+num(e.amount),0);
     return {label:m, month:i+1, rev, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
   });
@@ -2959,7 +2970,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   activeOrders.forEach(o=>{
     if(!custMap[o.customerName])custMap[o.customerName]={name:o.customerName,orders:0,value:0,paid:0,type:o.type,lastDate:""};
     custMap[o.customerName].orders++;
-    custMap[o.customerName].value+=getVal(o);
+    custMap[o.customerName].value+=getInvoicedAmt(o);
     custMap[o.customerName].paid+=getPaid(o);
     if((o.orderDate||"")>custMap[o.customerName].lastDate)custMap[o.customerName].lastDate=o.orderDate||"";
   });
@@ -3269,7 +3280,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub={`${completedOrders} completed`} accent="#8b5cf6" icon="🎯"/>
-            <KPITile label="Outstanding" value={fmtK(Math.max(0,totalRev-totalPaid))} sub="balance due" accent="#f43f5e" icon="⏰"/>
+            <KPITile label="Outstanding" value={fmtK(orders.reduce((s,o)=>s+getOutstanding(o),0))} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Filament Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub={`${wasteRate}% waste rate`} accent="#22d3ee" icon="🧵"/>
             <KPITile label="Projected Next Month" value={projNextMonth>0?fmtK(projNextMonth):"—"} sub="based on trend" accent="#84cc16" icon="🔮"/>
           </div>
@@ -3487,9 +3498,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 ["Pending", pendingOrders, "#f59e0b"],
                 ["Cancelled", cancelledOrders, "#f43f5e"],
                 ["Avg Order Value", fmtK(avgOrder), "#8b5cf6"],
-                ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)), "#6366f1"],
-                ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getVal(o),0)), "#22d3ee"],
-                ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getVal(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
+                ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#6366f1"],
+                ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#22d3ee"],
+                ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
                 ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
                 ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
               ].map(([l,v,c])=>(
@@ -3511,22 +3522,21 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Sales Channel — 50% */}
             <Card>
               <Sec icon="🛒" title="Sales Channel"/>
-              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={160}/>
+              <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
             </Card>
-            {/* B2B/B2C + GST stacked vertically */}
-            <div className="flex flex-col gap-3">
-              <Card>
-                <Sec icon="👥" title="B2B vs B2C"/>
-                <Donut data={[["B2B",activeOrders.filter(o=>o.type==="B2B").length],["B2C",activeOrders.filter(o=>o.type==="B2C").length]].filter(([_k,v])=>v)} colors={["#6366f1","#22d3ee"]} size={120} compact/>
-              </Card>
-              <Card>
-                <Sec icon="🧾" title="GST Status"/>
-                <Donut data={[["With GST",activeOrders.filter(o=>o.needsGst).length],["No GST",activeOrders.filter(o=>!o.needsGst).length]].filter(([_k,v])=>v)} colors={["#10b981","#f59e0b"]} size={120} compact/>
-              </Card>
-            </div>
+            <Card>
+              <Sec icon="💳" title="Payment Modes"/>
+              {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
+                <div className="space-y-1.5">
+                  {Object.entries(modeMap).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>{
+                    const tot=Object.values(modeMap).reduce((s,v)=>s+v,0);
+                    return <HBar key={mode} label={mode} value={cnt} total={tot} color={bc(i)} pct={Math.round(cnt/tot*100)}/>;
+                  })}
+                </div>
+              )}
+            </Card>
           </div>
 
           <Card>
@@ -3568,7 +3578,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰"/>
             <KPITile label="Order Value" value={fmtK(totalRev)} sub={`${collectionRate}% collected`} accent="#10b981" icon="📋"/>
-            <KPITile label="Outstanding" value={fmtK(Math.max(0,totalRev-totalPaid))} sub="balance due" accent="#f43f5e" icon="⏰"/>
+            <KPITile label="Outstanding" value={fmtK(orders.reduce((s,o)=>s+getOutstanding(o),0))} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
 
@@ -3614,7 +3624,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             {(()=>{
               const today = new Date();
               const outstanding = activeOrders.filter(o=>{
-                const bal = getVal(o)-getPaid(o);
+                const bal = getOutstanding(o);
                 return bal>0.01;
               }).map(o=>({
                 ...o,
