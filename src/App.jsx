@@ -2916,7 +2916,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const pendingOrders = activeOrders.filter(o=>o.status==="Pending").length;
   const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
   const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/totalOrders):0;
-  const collectionRate = totalRev>0?Math.min(100,Math.round(totalPaid/totalRev*100)):0;
+  const totalOutstanding = orders.reduce((s,o)=>s+getOutstanding(o),0);
+  const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
 
@@ -2959,6 +2960,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   // Channel
   const channelMap = {};
   activeOrders.forEach(o=>{const c=o.channel||"Offline";channelMap[c]=(channelMap[c]||0)+1;});
+  // Also build detailed channel map (already using specific platform names like Amazon, Flipkart etc.)
 
   // Expenses
   const expByCat = {};
@@ -3080,7 +3082,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
 
   // Line chart SVG with y-axis
-  const fmtTick = (v) => v>=10000000?`${(v/10000000).toFixed(1)}Cr`:v>=100000?`${(v/100000).toFixed(1)}L`:v>=1000?`${(v/1000).toFixed(1)}K`:v>=100?`${Math.round(v)}`:String(v);
+  const fmtTick = (v) => v>=10000000?`${(v/10000000).toFixed(2)}Cr`:v>=100000?`${(v/100000).toFixed(2)}L`:v>=1000?`${(v/1000).toFixed(2)}K`:Number.isInteger(v)?String(v):`${Number(v).toFixed(2)}`;
   const getRoundTick = (max) => {
     if (!max||max<=0) return 1;
     const mag = Math.pow(10,Math.floor(Math.log10(max)));
@@ -3287,7 +3289,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub={`${completedOrders} completed`} accent="#8b5cf6" icon="🎯"/>
-            <KPITile label="Outstanding" value={fmtK(orders.reduce((s,o)=>s+getOutstanding(o),0))} sub="balance due" accent="#f43f5e" icon="⏰"/>
+            <KPITile label="Outstanding" value={fmtK(totalOutstanding)} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Filament Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub={`${wasteRate}% waste rate`} accent="#22d3ee" icon="🧵"/>
             <KPITile label="Projected Next Month" value={projNextMonth>0?fmtK(projNextMonth):"—"} sub="based on trend" accent="#84cc16" icon="🔮"/>
           </div>
@@ -3298,7 +3300,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 {label:"Collection Rate",value:collectionRate,color:collectionRate>=80?"#10b981":collectionRate>=50?"#f59e0b":"#f43f5e",desc:collectionRate>=80?"Excellent":collectionRate>=50?"Fair":"Needs attention"},
-                {label:"Profit Margin",value:Math.max(0,profitMargin),color:profitMargin>=30?"#10b981":profitMargin>=10?"#f59e0b":"#f43f5e",desc:profitMargin>=30?"Healthy":profitMargin>=10?"Moderate":"Thin"},
+                {label:"Profit Margin",value:profitMargin,color:profitMargin>=30?"#10b981":profitMargin>=10?"#f59e0b":"#f43f5e",desc:profitMargin>=30?"Healthy":profitMargin>=10?"Moderate":profitMargin>=0?"Thin":"Loss"},
                 {label:"Completion Rate",value:totalOrders?Math.round(completedOrders/totalOrders*100):0,color:"#6366f1",desc:`${completedOrders}/${totalOrders} orders`},
                 {label:"Waste Efficiency",value:Math.round((100-Number(wasteRate))*10)/10,color:Number(wasteRate)<5?"#10b981":Number(wasteRate)<15?"#f59e0b":"#f43f5e",desc:`${wasteRate}% waste`},
               ].map(({label,value,color,desc})=>(
@@ -3306,9 +3308,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   <div className="relative w-20 h-20 mx-auto">
                     <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                       <circle cx="18" cy="18" r="14" fill="none" stroke="#f1f5f9" strokeWidth="3"/>
-                      <circle cx="18" cy="18" r="14" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${value*87.96/100} 87.96`} strokeLinecap="round"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${Math.max(0,Math.abs(value))*87.96/100} 87.96`} strokeLinecap="round"/>
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-xs font-black" style={{color}}>{value}%</span>
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-black" style={{color}}>{value<0?"":""}{value}%</span>
                   </div>
                   <p className="text-[10px] font-bold text-gray-500 mt-1">{label}</p>
                   <p className="text-[9px] text-gray-300">{desc}</p>
@@ -3458,6 +3460,47 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             })()}
           </Card>
 
+          {/* Trending products */}
+          <Card>
+            <Sec icon="🔥" title="Top Products This Month" sub={`${MONTHS[new Date().getMonth()]} trending`}/>
+            {(()=>{
+              const curM = new Date().getMonth()+1;
+              const curY = new Date().getFullYear();
+              const itemCount = {};
+              orders.filter(o=>{
+                const d=o.orderDate||"";
+                return d.startsWith(String(curY))&&Number(d.slice(5,7))===curM&&o.status!=="Cancelled";
+              }).forEach(o=>{
+                (o.items||[]).forEach(it=>{
+                  if(!it.item)return;
+                  itemCount[it.item]=(itemCount[it.item]||{count:0,rev:0});
+                  itemCount[it.item].count+=num(it.qty||1);
+                  itemCount[it.item].rev+=num(it.netAmt);
+                });
+              });
+              const topItems=Object.entries(itemCount).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
+              const maxR=Math.max(1,...topItems.map(([_k,v])=>v.rev));
+              if(!topItems.length)return <p className="text-xs text-gray-300 text-center py-4">No orders this month yet</p>;
+              return (
+                <div className="space-y-2">
+                  {topItems.map(([item,{count,rev}],i)=>(
+                    <div key={item} className="space-y-0.5">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[10px] font-black text-gray-300 w-4 shrink-0">{i+1}</span>
+                        <span className="text-xs text-gray-700 font-medium flex-1 truncate">{item}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{count} units</span>
+                        <span className="text-xs font-bold text-indigo-600 shrink-0">{fmtK(rev)}</span>
+                      </div>
+                      <div className="ml-6 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-indigo-400" style={{width:`${Math.round(rev/maxR*100)}%`}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Card>
+
           {/* Projection */}
           {projNextMonth>0&&(
             <Card>
@@ -3533,38 +3576,20 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <Sec icon="🛒" title="Sales Channel"/>
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
             </Card>
+            <Card>
+              <Sec icon="💳" title="Payment Modes"/>
+              {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
+                <div className="space-y-1.5">
+                  {Object.entries(modeMap).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>{
+                    const tot=Object.values(modeMap).reduce((s,v)=>s+v,0);
+                    return <HBar key={mode} label={mode} value={cnt} total={tot} color={bc(i)} pct={Math.round(cnt/tot*100)}/>;
+                  })}
+                </div>
+              )}
+            </Card>
           </div>
 
-          <Card>
-            <Sec icon="🚦" title="Order Status Distribution"/>
-            <div className="grid grid-cols-3 gap-3">
-              {[["Pending",pendingOrders,"#f59e0b"],["Completed",completedOrders,"#10b981"],["Cancelled",cancelledOrders,"#f43f5e"]].map(([s,cnt,c])=>{
-                const p=orders.length?Math.round(cnt/orders.length*100):0;
-                return (
-                  <div key={s} className="text-center p-3 rounded-xl border border-gray-100">
-                    <p className="text-2xl font-black" style={{color:c}}>{cnt}</p>
-                    <p className="text-xs text-gray-500 font-medium">{s}</p>
-                    <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{width:`${p}%`,background:c}}/>
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{p}%</p>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
 
-          <Card>
-            <Sec icon="💳" title="Payment Modes"/>
-            {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
-              <div className="space-y-1.5">
-                {Object.entries(modeMap).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>{
-                  const tot=Object.values(modeMap).reduce((s,v)=>s+v,0);
-                  return <HBar key={mode} label={mode} value={cnt} total={tot} color={bc(i)} pct={Math.round(cnt/tot*100)}/>;
-                })}
-              </div>
-            )}
-          </Card>
         </div>
       )}
 
@@ -3574,7 +3599,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰"/>
             <KPITile label="Order Value" value={fmtK(totalRev)} sub={`${collectionRate}% collected`} accent="#10b981" icon="📋"/>
-            <KPITile label="Outstanding" value={fmtK(orders.reduce((s,o)=>s+getOutstanding(o),0))} sub="balance due" accent="#f43f5e" icon="⏰"/>
+            <KPITile label="Outstanding" value={fmtK(totalOutstanding)} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
 
@@ -3614,34 +3639,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </div>
           </Card>
 
-          {/* Outstanding aging */}
-          <Card>
-            <Sec icon="⏰" title="Outstanding Orders"/>
-            {(()=>{
-              const today = new Date();
-              const outstanding = activeOrders.filter(o=>{
-                const bal = getOutstanding(o);
-                return bal>0.01;
-              }).map(o=>({
-                ...o,
-                balance:getVal(o)-getPaid(o),
-                daysOld:Math.floor((today-new Date(o.orderDate||today))/(1000*60*60*24))
-              })).sort((a,b)=>b.daysOld-a.daysOld).slice(0,8);
-              if(!outstanding.length)return <p className="text-xs text-emerald-500 text-center py-3 font-semibold">✓ No outstanding balances</p>;
-              return (
-                <div className="space-y-1.5">
-                  {outstanding.map((o,i)=>(
-                    <div key={o.orderNo} className="flex items-center gap-3">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${o.daysOld>60?"bg-red-100 text-red-600":o.daysOld>30?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>{o.daysOld}d</span>
-                      <span className="text-xs text-slate-700 font-medium flex-1 truncate">{o.customerName}</span>
-                      <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
-                      <span className="text-xs font-bold text-orange-500 shrink-0">{fmtK(o.balance)}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </Card>
+
         </div>
       )}
 
@@ -3657,12 +3655,12 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
           {/* Combined brand·material·color */}
           <Card>
-            <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan your next order"/>
+            <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan for next month"/>
             {filCombEntries.length===0?<p className="text-xs text-gray-300 text-center py-6">No filament usage recorded</p>:(
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 {/* Left: donut + legend */}
                 <div>
-                  <Donut data={filCombEntries} colors={PALETTE} size={160} centerText={`${filCombEntries.length} types`}/>
+                  <Donut data={filCombEntries.slice(0,12)} colors={PALETTE} size={160} centerText={`${filCombEntries.length} types`}/>
                 </div>
                 {/* Right: HBars */}
                 <div className="space-y-2">
