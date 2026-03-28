@@ -2928,7 +2928,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   // Monthly data builder
   const monthlyData = (yr) => MONTHS.map((m,i)=>{
-    const ords = activeOrders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
+    const ords = orders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
     const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
     const rev = ords.reduce((s,o)=>s+getInvoicedAmt(o),0);
     const exp = exps.reduce((s,e)=>s+num(e.amount),0);
@@ -2986,8 +2986,15 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   // Filament combined: brand||material||color
   const filamentCombined = {};
   allUsage.filter(u=>!u.isWaste).forEach(u=>{
-    const inv=inventory.find(i=>i.id===u.inventoryId);if(!inv)return;
-    const key=`${inv.brand||"—"} · ${inv.material} · ${inv.color||"—"}`;
+    // Try inventory first, fall back to groupKey stored on entry
+    const inv=inventory.find(i=>i.id===u.inventoryId);
+    let key;
+    if(inv){
+      key=`${inv.brand||"—"} · ${inv.material} · ${inv.color||"—"}`;
+    } else if(u.groupKey){
+      const parts=u.groupKey.split("||");
+      key=`${parts[0]||"—"} · ${parts[1]||"?"} · ${parts[2]||"—"}`;
+    } else return;
     filamentCombined[key]=(filamentCombined[key]||0)+num(u.weightUsedG);
   });
   const filCombEntries = Object.entries(filamentCombined).sort((a,b)=>b[1]-a[1]);
@@ -3497,10 +3504,10 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 ["Completed", completedOrders, "#10b981"],
                 ["Pending", pendingOrders, "#f59e0b"],
                 ["Cancelled", cancelledOrders, "#f43f5e"],
-                ["Avg Order Value", fmtK(avgOrder), "#8b5cf6"],
+                ["Without GST", activeOrders.filter(o=>!o.needsGst).length, "#f59e0b"],
                 ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#6366f1"],
                 ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#22d3ee"],
-                ["Avg B2B Order", fmtK(activeOrders.filter(o=>o.type==="B2B").length?activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)/activeOrders.filter(o=>o.type==="B2B").length:0), "#8b5cf6"],
+                ["Offline Orders", activeOrders.filter(o=>(o.channel||"Offline")==="Offline").length, "#84cc16"],
                 ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
                 ["With GST", activeOrders.filter(o=>o.needsGst).length, "#10b981"],
               ].map(([l,v,c])=>(
@@ -3525,17 +3532,6 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <Card>
               <Sec icon="🛒" title="Sales Channel"/>
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
-            </Card>
-            <Card>
-              <Sec icon="💳" title="Payment Modes"/>
-              {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
-                <div className="space-y-1.5">
-                  {Object.entries(modeMap).sort((a,b)=>b[1]-a[1]).map(([mode,cnt],i)=>{
-                    const tot=Object.values(modeMap).reduce((s,v)=>s+v,0);
-                    return <HBar key={mode} label={mode} value={cnt} total={tot} color={bc(i)} pct={Math.round(cnt/tot*100)}/>;
-                  })}
-                </div>
-              )}
             </Card>
           </div>
 
@@ -3663,25 +3659,13 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           <Card>
             <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan your next order"/>
             {filCombEntries.length===0?<p className="text-xs text-gray-300 text-center py-6">No filament usage recorded</p>:(
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <svg viewBox="0 0 100 100" style={{width:90,height:90}} className="shrink-0">
-                    {(()=>{let cum=0;return filCombEntries.slice(0,8).map(([k,v],i)=>{const pct=v/totalFilUsed,r=38,cx=50,cy=50,sa=cum*2*Math.PI-Math.PI/2;cum+=pct;const ea=cum*2*Math.PI-Math.PI/2,x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);return <path key={i} d={`M${cx} ${cy}L${x1} ${y1}A${r} ${r} 0 ${pct>.5?1:0} 1 ${x2} ${y2}Z`} fill={bc(i)} stroke="white" strokeWidth="1.5"/>;});})()}
-                    <circle cx="50" cy="50" r="22" fill="white"/>
-                    <text x="50" y="49" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#475569">{filCombEntries.length}</text>
-                    <text x="50" y="59" textAnchor="middle" fontSize="7" fill="#94a3b8">types</text>
-                  </svg>
-                  <div className="space-y-0.5 flex-1 min-w-0">
-                    {filCombEntries.slice(0,8).map(([k,v],i)=>(
-                      <div key={k} className="flex items-center gap-1.5 min-w-0">
-                        <div className="w-2 h-2 rounded-sm shrink-0" style={{background:bc(i)}}/>
-                        <span className="text-[10px] text-gray-600 truncate flex-1">{k}</span>
-                        <span className="text-[10px] font-bold text-slate-700 shrink-0">{Math.round(v/totalFilUsed*100)}%</span>
-                      </div>
-                    ))}
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Left: donut + legend */}
+                <div>
+                  <Donut data={filCombEntries} colors={PALETTE} size={160} centerText={`${filCombEntries.length} types`}/>
                 </div>
-                <div className="space-y-1.5 border-t border-gray-100 pt-3">
+                {/* Right: HBars */}
+                <div className="space-y-2">
                   {filCombEntries.map(([k,v],i)=>(
                     <HBar key={k} label={k} value={v>=1000?`${(v/1000).toFixed(1)}kg`:`${Math.round(v)}g`} total={totalFilUsed} color={bc(i)} pct={Math.round(v/totalFilUsed*100)}/>
                   ))}
