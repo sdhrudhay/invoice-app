@@ -2939,6 +2939,21 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const thisYearData = monthlyData(year);
   const prevYearData = monthlyData(year-1);
 
+  // Yearly data for period=year mode
+  const allYears = years.length ? years : [String(year)];
+  const yearlyDataArr = allYears.map(yr=>({
+    label:String(yr),
+    rev: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").reduce((s,o)=>s+getInvoicedAmt(o),0),
+    exp: expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))).reduce((s,e)=>s+num(e.amount),0),
+    orders: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").length,
+    paid: orders.filter(o=>o.orderDate?.startsWith(String(yr))).reduce((s,o)=>s+getPaid(o),0),
+  }));
+  yearlyDataArr.forEach(d=>{d.profit=d.rev-d.exp;});
+
+  // Use period-aware data in charts
+  const chartData = period==="year" ? yearlyDataArr : thisYearData;
+  const chartLabel = period==="year" ? "All Years" : String(year);
+
   // Cumulative
   const cumulativeRev = thisYearData.reduce((acc,d,i)=>{acc.push((acc[i-1]||0)+d.rev);return acc;},[]);
   const cumulativeExp = thisYearData.reduce((acc,d,i)=>{acc.push((acc[i-1]||0)+d.exp);return acc;},[]);
@@ -2986,8 +3001,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   });
 
   // Filament combined: brand||material||color
+  // Filter usage by period
+  const curM2=new Date().getMonth()+1, curY2=new Date().getFullYear();
+  const filteredUsage = period==="year"
+    ? allUsage
+    : allUsage.filter(u=>{
+        const o=orders.find(ord=>(ord.filamentUsage||[]).some(fu=>fu.id===u.id));
+        if(!o)return true;
+        const d=o.orderDate||"";
+        return d.startsWith(String(curY2))&&Number(d.slice(5,7))===curM2;
+      });
   const filamentCombined = {};
-  allUsage.filter(u=>!u.isWaste).forEach(u=>{
+  filteredUsage.filter(u=>!u.isWaste).forEach(u=>{
     // Try inventory first, fall back to groupKey stored on entry
     const inv=inventory.find(i=>i.id===u.inventoryId);
     let key;
@@ -3321,13 +3346,13 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
           {/* Revenue + expense overview bars */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <ChartCard icon="📊" title="Revenue This Year" sub={String(year)}
+            <ChartCard icon="📊" title={period==="year"?"Revenue by Year":"Revenue This Year"} sub={chartLabel}
               legend={[
                 <span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,
                 <span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#6366f144"}}/>{year-1}</span>
               ]}>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1"
-                data2={prevYearData.map(d=>({label:d.label,value:d.rev}))} color2="#6366f144"/>
+              <BarChart2 data={chartData.map(d=>({label:d.label,value:d.rev}))} color="#6366f1"
+                data2={period==="month"?prevYearData.map(d=>({label:d.label,value:d.rev})):undefined} color2="#6366f144"/>
             </ChartCard>
             <Card>
               <Sec icon="💸" title="Expense Categories"/>
@@ -3413,8 +3438,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
 
           {/* Revenue growth rate line */}
-          <Card>
-            <Sec icon="🚀" title="Monthly Revenue Growth Rate" sub={String(year)}/>
+          <ChartCard icon="🚀" title="Monthly Revenue Growth Rate" sub={String(year)}>
+            <div>
             {(()=>{
               const growthRates = thisYearData.map((d,i)=>{
                 if(i===0||thisYearData[i-1].rev===0)return 0;
@@ -3458,48 +3483,96 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 </>
               );
             })()}
-          </Card>
+            </div>
+          </ChartCard>
 
-          {/* Trending products */}
-          <Card>
-            <Sec icon="🔥" title="Top Products This Month" sub={`${MONTHS[new Date().getMonth()]} trending`}/>
-            {(()=>{
-              const curM = new Date().getMonth()+1;
-              const curY = new Date().getFullYear();
-              const itemCount = {};
-              orders.filter(o=>{
-                const d=o.orderDate||"";
-                return d.startsWith(String(curY))&&Number(d.slice(5,7))===curM&&o.status!=="Cancelled";
-              }).forEach(o=>{
+          {/* Trending products — top of trends */}
+          {(()=>{
+            const curDate = new Date();
+            const curM = curDate.getMonth()+1, curY = curDate.getFullYear();
+            const filterOrds = period==="year"
+              ? orders.filter(o=>o.status!=="Cancelled")
+              : orders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(year))&&Number(d.slice(5,7))===curM;});
+            const periodLabel = period==="year" ? String(year) : `${MONTHS[curM-1]} ${year}`;
+
+            // Overall top products
+            const itemCount = {};
+            filterOrds.forEach(o=>{
+              (o.items||[]).forEach(it=>{
+                if(!it.item)return;
+                if(!itemCount[it.item])itemCount[it.item]={count:0,rev:0};
+                itemCount[it.item].count+=num(it.qty||1);
+                itemCount[it.item].rev+=num(it.netAmt);
+              });
+            });
+            const topItems=Object.entries(itemCount).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
+            const maxR=Math.max(1,...topItems.map(([_k,v])=>v.rev));
+
+            // By channel
+            const channels=[...new Set(filterOrds.map(o=>o.channel||"Offline"))].sort();
+            const channelItems={};
+            channels.forEach(ch=>{
+              const chMap={};
+              filterOrds.filter(o=>(o.channel||"Offline")===ch).forEach(o=>{
                 (o.items||[]).forEach(it=>{
                   if(!it.item)return;
-                  itemCount[it.item]=(itemCount[it.item]||{count:0,rev:0});
-                  itemCount[it.item].count+=num(it.qty||1);
-                  itemCount[it.item].rev+=num(it.netAmt);
+                  if(!chMap[it.item])chMap[it.item]={count:0,rev:0};
+                  chMap[it.item].count+=num(it.qty||1);
+                  chMap[it.item].rev+=num(it.netAmt);
                 });
               });
-              const topItems=Object.entries(itemCount).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
-              const maxR=Math.max(1,...topItems.map(([_k,v])=>v.rev));
-              if(!topItems.length)return <p className="text-xs text-gray-300 text-center py-4">No orders this month yet</p>;
-              return (
-                <div className="space-y-2">
-                  {topItems.map(([item,{count,rev}],i)=>(
-                    <div key={item} className="space-y-0.5">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-[10px] font-black text-gray-300 w-4 shrink-0">{i+1}</span>
-                        <span className="text-xs text-gray-700 font-medium flex-1 truncate">{item}</span>
-                        <span className="text-[10px] text-gray-400 shrink-0">{count} units</span>
-                        <span className="text-xs font-bold text-indigo-600 shrink-0">{fmtK(rev)}</span>
-                      </div>
-                      <div className="ml-6 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-indigo-400" style={{width:`${Math.round(rev/maxR*100)}%`}}/>
-                      </div>
+              channelItems[ch]=Object.entries(chMap).sort((a,b)=>b[1].rev-a[1].rev).slice(0,5);
+            });
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Card>
+                  <Sec icon="🔥" title="Top Products" sub={periodLabel}/>
+                  {topItems.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
+                    <div className="space-y-2">
+                      {topItems.map(([item,{count,rev}],i)=>(
+                        <div key={item} className="space-y-0.5">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-[10px] font-black text-gray-200 w-4 shrink-0">{i+1}</span>
+                            <span className="text-xs text-gray-700 font-medium flex-1 truncate">{item}</span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{count} units</span>
+                            <span className="text-xs font-bold text-indigo-600 shrink-0">{fmtK(rev)}</span>
+                          </div>
+                          <div className="ml-5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-indigo-400" style={{width:`${Math.round(rev/maxR*100)}%`}}/>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </Card>
+                  )}
+                </Card>
+                <Card>
+                  <Sec icon="📍" title="Top Products by Channel" sub={periodLabel}/>
+                  {channels.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
+                    <div className="space-y-3">
+                      {channels.map(ch=>(
+                        <div key={ch}>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">{ch}</p>
+                          {channelItems[ch].length===0?<p className="text-xs text-gray-200">No orders</p>:(
+                            <div className="space-y-0.5">
+                              {channelItems[ch].map(([item,{count,rev}],i)=>(
+                                <div key={item} className="flex items-center gap-2">
+                                  <span className="text-[9px] text-gray-300 w-3 shrink-0">{i+1}</span>
+                                  <span className="text-[10px] text-gray-600 flex-1 truncate">{item}</span>
+                                  <span className="text-[10px] text-gray-400 shrink-0">{count}×</span>
+                                  <span className="text-[10px] font-bold text-indigo-500 shrink-0">{fmtK(rev)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            );
+          })()}
 
           {/* Projection */}
           {projNextMonth>0&&(
@@ -3564,18 +3637,17 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ChartCard icon="📈" title="Orders Over Time">
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)}/>
+              <BarChart2 data={chartData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)}/>
             </ChartCard>
             <ChartCard icon="💹" title="Avg Order Value Trend">
-              <LineChart series={[{data:thisYearData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:MONTHS}]}/>
+              <LineChart series={[{data:chartData.map(d=>d.orders>0?Math.round(d.rev/d.orders):0),color:"#8b5cf6",labels:chartData.map(d=>d.label)}]}/>
             </ChartCard>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Card>
-              <Sec icon="🛒" title="Sales Channel"/>
+            <ChartCard icon="🛒" title="Sales Channel">
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
-            </Card>
+            </ChartCard>
             <Card>
               <Sec icon="💳" title="Payment Modes"/>
               {Object.keys(modeMap).length===0?<p className="text-xs text-gray-300 text-center py-3">No data</p>:(
@@ -3615,7 +3687,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               )}
             </Card>
             <Card>
-              <Sec icon="📅" title="Monthly Expense Trend" sub={String(year)}/>
+              <Sec icon="📅" title={period==="year"?"Yearly Expense Trend":"Monthly Expense Trend"} sub={chartLabel}/>
               <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={160}/>
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p><p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p></div>
@@ -3654,8 +3726,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </div>
 
           {/* Combined brand·material·color */}
-          <Card>
-            <Sec icon="📊" title="Filament Usage — Brand · Material · Color" sub="plan for next month"/>
+          <ChartCard icon="📊" title="Filament Usage — Brand · Material · Color" sub={period==="year"?String(year):`${MONTHS[new Date().getMonth()]} ${new Date().getFullYear()}`}>
             {filCombEntries.length===0?<p className="text-xs text-gray-300 text-center py-6">No filament usage recorded</p>:(
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                 {/* Left: donut + legend */}
@@ -3670,7 +3741,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 </div>
               </div>
             )}
-          </Card>
+          </ChartCard>
 
           {/* Usage over time */}
           <Card>
@@ -3787,7 +3858,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               })()}
             </Card>
             <Card>
-              <Sec icon="📅" title="Orders per Month" sub={String(year)}/>
+              <Sec icon="📅" title={period==="year"?"Orders per Year":"Orders per Month"} sub={chartLabel}/>
               <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)} height={160}/>
             </Card>
           </div>
