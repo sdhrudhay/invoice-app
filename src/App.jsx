@@ -2345,11 +2345,14 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           enqueue={enqueue}
           onReferralPaidChange={(ord, paid)=>{
             const expId = `referral_${ord.orderNo}`;
+            const baseExp = { id:expId, date:new Date().toISOString().slice(0,10), paidBy:"__company__", amount:Number(ord.referralAmount)||0, category:"Referral", comment:`Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}` };
             if (paid) {
-              const newExp = { id:expId, date:new Date().toISOString().slice(0,10), paidBy:"__company__", amount:Number(ord.referralAmount)||0, category:"Referral", comment:`Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}`, isDeleted:false };
-              setExpenses(prev => { const exists=prev.find(e=>e.id===expId); return exists?prev.map(e=>e.id===expId?{...e,...newExp,isDeleted:false}:e):[...prev,newExp]; });
+              const newExp = {...baseExp, isDeleted:false};
+              setExpenses(prev => { const exists=prev.find(e=>e.id===expId); return exists?prev.map(e=>e.id===expId?{...e,...newExp}:e):[...prev,newExp]; });
+              enqueue({action:"upsert", table:"expenses", row:{ id:expId, date:baseExp.date, paid_by:"__company__", amount:baseExp.amount, category:"Referral", comment:baseExp.comment, is_deleted:false }});
             } else {
               setExpenses(prev => prev.map(e=>e.id===expId?{...e,isDeleted:true}:e));
+              enqueue({action:"upsert", table:"expenses", row:{ id:expId, date:baseExp.date, paid_by:"__company__", amount:baseExp.amount, category:"Referral", comment:baseExp.comment, is_deleted:true }});
             }
           }}
         />
@@ -2973,6 +2976,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/totalOrders):0;
   const totalOutstanding = orders.reduce((s,o)=>s+getOutstanding(o),0);
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
+  const totalReferralPaid = expenses.filter(e=>!e.isDeleted&&e.category==="Referral").reduce((s,e)=>s+num(e.amount),0);
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
 
@@ -3370,7 +3374,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Total Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰" badge={yoyGrowth!==null?{pos:yoyGrowth>=0,label:`${yoyGrowth>=0?"+":""}${yoyGrowth}% YoY`}:null}/>
             <KPITile label="Order Value" value={fmtK(totalRev)} sub={`${totalOrders} orders`} accent="#10b981" icon="📋"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon={netProfit>=0?"📈":"📉"}/>
-            <KPITile label="Total Expenses" value={fmtK(totalExp)} sub={`${expCats.length} categories`} accent="#f59e0b" icon="💸"/>
+            <KPITile label="Total Expenses" value={fmtK(totalExp)} sub={totalReferralPaid>0?`incl. ₹${fmt(totalReferralPaid)} referrals · ${expCats.length} cats`:`${expCats.length} categories`} accent="#f59e0b" icon="💸"/>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Avg Order Value" value={fmtK(avgOrder)} sub={`${completedOrders} completed`} accent="#8b5cf6" icon="🎯"/>
