@@ -135,6 +135,12 @@ const SUPABASE_SQL = `
 -- alter table orders add column if not exists is_pickup integer default 0;
 -- alter table orders add column if not exists cancel_reason text default '';
 -- alter table orders add column if not exists channel text default 'Offline';
+-- alter table orders add column if not exists is_referred integer default 0;
+-- alter table orders add column if not exists referral_person text default '';
+-- alter table orders add column if not exists referral_amount numeric default 0;
+-- alter table orders add column if not exists referral_paid integer default 0;
+-- alter table orders add column if not exists referral_paid_date text default '';
+-- alter table orders add column if not exists referral_paid_ref text default '';
 -- alter table payments add column if not exists is_refund integer default 0;
 -- alter table payments add column if not exists refund_to text default '';
 -- create table if not exists employees (id text primary key, name text not null, role text default '', is_deleted boolean default false);
@@ -806,6 +812,9 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   const [advanceRecipient,setAdvanceRecipient]=useState("");
   const [advanceTxnRef,setAdvanceTxnRef]=useState("");
   const [channel,setChannel]=useState("Offline");
+  const [isReferred,setIsReferred]=useState(false);
+  const [referralPerson,setReferralPerson]=useState("");
+  const [referralAmount,setReferralAmount]=useState("");
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
   const [selectedClient,setSelectedClient]=useState(null);
   const [lastOrder,setLastOrder]=useState(null);
@@ -840,7 +849,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), channel:channel||"Offline", orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[] };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), channel:channel||"Offline", orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[], isReferred:isReferred?1:0, referralPerson:referralPerson||"", referralAmount:Number(referralAmount)||0, referralPaid:0, referralPaidDate:"", referralPaidRef:"" };
     const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply,isPickup:!!(type==="B2C"&&needsGst&&isPickup)} };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
@@ -851,7 +860,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const reset = () => {
-    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setChannel("Offline"); setItems([{...EMPTY_ITEM}]); setMsg("");
+    setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setChannel("Offline"); setIsReferred(false); setReferralPerson(""); setReferralAmount(""); setItems([{...EMPTY_ITEM}]); setMsg("");
   };
 
   const previewNo = buildOrderNo(series, type, orders);
@@ -975,6 +984,16 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <ItemTable items={items} setItems={setItems} needsGst={needsGst} isIgst={needsGst&&!isPickup&&seller?.stateCode&&!!(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))&&extractStateCode(type==="B2B"?billingStateCode:(shippingStateCode||billingStateCode))!==extractStateCode(seller.stateCode)} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo=""/>
           </div>
           <F label="Comments / Notes" value={comments} onChange={setComments} rows={2}/>
+          <div className="border border-dashed border-indigo-200 rounded-xl p-3 bg-indigo-50/40 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={isReferred} onChange={e=>setIsReferred(e.target.checked)} className="rounded"/>
+              <span className="text-xs font-semibold text-indigo-700">🤝 Referred Order?</span>
+            </label>
+            {isReferred&&<div className="grid grid-cols-2 gap-2">
+              <F label="Referred by" value={referralPerson} onChange={setReferralPerson} placeholder="Person / company name"/>
+              <F label="Referral Amount (₹)" value={referralAmount} onChange={setReferralAmount} placeholder="0"/>
+            </div>}
+          </div>
           <div className="flex gap-3 items-center pt-2 border-t">
             <button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 transition-all">{saving?"Saving…":"Save Order & Generate Quotation"}</button>
             <button onClick={reset} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Clear</button>
@@ -1333,7 +1352,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{} }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -1545,6 +1564,32 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </>}
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2}/>
+              <div className="border border-dashed border-indigo-200 rounded-xl p-3 bg-indigo-50/40 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>upd("isReferred",e.target.checked?1:0)} className="rounded"/>
+                  <span className="text-xs font-semibold text-indigo-700">🤝 Referred Order?</span>
+                </label>
+                {!!(o.isReferred)&&<div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <F label="Referred by" value={o.referralPerson||""} onChange={v=>upd("referralPerson",v)} placeholder="Person / company name"/>
+                    <F label="Referral Amount (₹)" value={o.referralAmount||""} onChange={v=>upd("referralAmount",v)} placeholder="0"/>
+                  </div>
+                  <div className="border-t border-indigo-100 pt-2 space-y-1.5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Referral Payout</p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{const paid=e.target.checked?1:0; upd("referralPaid",paid); onReferralPaidChange({...o,referralPaid:paid},paid);}} className="rounded"/>
+                        <span className="text-xs text-gray-600 font-medium">Paid out</span>
+                      </label>
+                      {!!(o.referralPaid)&&<>
+                        <input type="date" value={o.referralPaidDate||""} onChange={e=>upd("referralPaidDate",e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                        <input type="text" value={o.referralPaidRef||""} onChange={e=>upd("referralPaidRef",e.target.value)} placeholder="Txn ref (optional)" className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-0"/>
+                      </>}
+                    </div>
+                    {!!(o.isReferred)&&!!( o.referralAmount)&&<p className="text-[10px] text-indigo-600 font-semibold">Due: ₹{Number(o.referralAmount||0).toLocaleString("en-IN")}</p>}
+                  </div>
+                </div>}
+              </div>
               {/* Other Charges — saved on order, carried into Tax Invoice */}
               <div className="border-t pt-4 space-y-2">
                 <div className="flex items-center justify-between">
@@ -1947,7 +1992,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[] }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -2297,6 +2342,18 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           allRecipients={allRecipients}
           products={products}
           enqueue={enqueue}
+          onReferralPaidChange={(ord, paid)=>{
+            const expId = `referral_${ord.orderNo}`;
+            const baseExp = { id:expId, date:new Date().toISOString().slice(0,10), paidBy:"__company__", amount:Number(ord.referralAmount)||0, category:"Referral", comment:`Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}` };
+            if (paid) {
+              const newExp = {...baseExp, isDeleted:false};
+              setExpenses(prev => { const ex=prev.find(e=>e.id===expId); return ex?prev.map(e=>e.id===expId?{...e,...newExp}:e):[...prev,newExp]; });
+              enqueue({action:"upsert", table:"expenses", row:{ id:expId, date:baseExp.date, paid_by:"__company__", amount:baseExp.amount, category:"Referral", comment:baseExp.comment, is_deleted:false }});
+            } else {
+              setExpenses(prev => prev.map(e=>e.id===expId?{...e,isDeleted:true}:e));
+              enqueue({action:"upsert", table:"expenses", row:{ id:expId, date:baseExp.date, paid_by:"__company__", amount:baseExp.amount, category:"Referral", comment:baseExp.comment, is_deleted:true }});
+            }
+          }}
         />
       )}
     </div>
@@ -3291,6 +3348,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     {id:"finance",   label:"Finance",   icon:"💰"},
     {id:"filament",  label:"Filament",  icon:"🧵"},
     {id:"customers", label:"Clients",   icon:"👥"},
+    {id:"referrals", label:"Referrals",  icon:"🤝"},
   ];
 
   return (
@@ -3877,6 +3935,107 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)} height={160}/>
             </Card>
           </div>
+        </div>
+      )}
+
+      {/* ── REFERRALS ─────────────────────────────────────────────────────── */}
+      {section==="referrals"&&(
+        <div className="space-y-3">
+          {(()=>{
+            const refOrders = orders.filter(o=>o.isReferred);
+            const paidRefs = refOrders.filter(o=>o.referralPaid);
+            const unpaidRefs = refOrders.filter(o=>!o.referralPaid&&o.isReferred);
+            const totalRefAmt = refOrders.reduce((s,o)=>s+num(o.referralAmount),0);
+            const paidRefAmt = paidRefs.reduce((s,o)=>s+num(o.referralAmount),0);
+            const unpaidRefAmt = unpaidRefs.reduce((s,o)=>s+num(o.referralAmount),0);
+            const personMap = {};
+            refOrders.forEach(o=>{
+              const p=o.referralPerson||"Unknown";
+              if(!personMap[p])personMap[p]={name:p,orders:0,amount:0,paid:0,channels:{}};
+              personMap[p].orders++;
+              personMap[p].amount+=num(o.referralAmount);
+              if(o.referralPaid)personMap[p].paid+=num(o.referralAmount);
+              const ch=o.channel||"Offline";
+              personMap[p].channels[ch]=(personMap[p].channels[ch]||0)+1;
+            });
+            const persons=Object.values(personMap).sort((a,b)=>b.amount-a.amount);
+            const chRefMap = {};
+            refOrders.forEach(o=>{
+              const ch=o.channel||"Offline";
+              if(!chRefMap[ch])chRefMap[ch]={count:0,amount:0,paid:0};
+              chRefMap[ch].count++;
+              chRefMap[ch].amount+=num(o.referralAmount);
+              if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
+            });
+            return (<>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <KPITile label="Referred Orders" value={refOrders.length} sub={`of ${orders.length} total`} accent="#8b5cf6" icon="🤝"/>
+                <KPITile label="Total Referral Due" value={fmtK(totalRefAmt)} sub="across all referrals" accent="#6366f1" icon="💰"/>
+                <KPITile label="Paid Out" value={fmtK(paidRefAmt)} sub={`${paidRefs.length} referrals`} accent="#10b981" icon="✅"/>
+                <KPITile label="Pending Payout" value={fmtK(unpaidRefAmt)} sub={`${unpaidRefs.length} unpaid`} accent="#f43f5e" icon="⏰"/>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Card>
+                  <Sec icon="👤" title="Referrals by Person"/>
+                  {persons.length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
+                    <div className="space-y-3">
+                      {persons.map((p,i)=>(
+                        <div key={p.name} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-700 flex-1 truncate">{p.name}</span>
+                            <span className="text-[10px] text-gray-400">{p.orders} orders</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${p.paid>=p.amount&&p.amount>0?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{p.paid>=p.amount&&p.amount>0?"Paid":"Pending"}</span>
+                            <span className="text-xs font-black text-indigo-600">{fmtK(p.amount)}</span>
+                          </div>
+                          <div className="flex gap-1 flex-wrap">
+                            {Object.entries(p.channels).map(([ch,cnt])=>(
+                              <span key={ch} className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{ch}: {cnt}</span>
+                            ))}
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-indigo-400" style={{width:`${p.amount?Math.round(p.paid/p.amount*100):0}%`}}/>
+                          </div>
+                          <p className="text-[9px] text-gray-400">{fmtK(p.paid)} paid · {fmtK(p.amount-p.paid)} pending</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+                <Card>
+                  <Sec icon="📍" title="Referrals by Channel"/>
+                  {Object.keys(chRefMap).length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
+                    <div className="space-y-3">
+                      {Object.entries(chRefMap).sort((a,b)=>b[1].amount-a[1].amount).map(([ch,{count,amount,paid}])=>(
+                        <div key={ch} className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-700 flex-1">{ch}</span>
+                            <span className="text-[10px] text-gray-400">{count} orders</span>
+                            <span className="text-xs font-bold text-indigo-600">{fmtK(amount)}</span>
+                          </div>
+                          <HBar label="" value={paid} total={amount} color="#10b981" pct={amount?Math.round(paid/amount*100):0}/>
+                          <p className="text-[9px] text-gray-400">{fmtK(paid)} paid · {fmtK(amount-paid)} pending</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
+              {unpaidRefs.length>0&&<Card>
+                <Sec icon="⚠️" title="Pending Referral Payouts"/>
+                <div className="space-y-1.5">
+                  {unpaidRefs.sort((a,b)=>num(b.referralAmount)-num(a.referralAmount)).map(o=>(
+                    <div key={o.orderNo} className="flex items-center gap-3 py-1.5 border-b border-gray-50">
+                      <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
+                      <span className="text-xs text-gray-700 flex-1 truncate">{o.customerName}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold shrink-0">{o.referralPerson||"?"}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0">{o.channel||"Offline"}</span>
+                      <span className="text-sm font-black text-orange-500 shrink-0">₹{Number(o.referralAmount||0).toLocaleString("en-IN")}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>}
+            </>);
+          })()}
         </div>
       )}
     </div>
@@ -6394,7 +6553,7 @@ function App() {
       // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", items:getItems("order",r.order_no), payments:[] });
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", isReferred:r.is_referred||0, referralPerson:r.referral_person||"", referralAmount:r.referral_amount||0, referralPaid:r.referral_paid||0, referralPaidDate:r.referral_paid_date||"", referralPaidRef:r.referral_paid_ref||"", items:getItems("order",r.order_no), payments:[] });
       const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
@@ -6492,7 +6651,13 @@ function App() {
       charges:JSON.stringify(o.charges||[]),
       is_pickup:o.isPickup?1:0,
       ...(o.cancelReason?{cancel_reason:o.cancelReason}:{}),
-      channel:o.channel||"Offline"
+      channel:o.channel||"Offline",
+      is_referred:o.isReferred?1:0,
+      referral_person:o.referralPerson||"",
+      referral_amount:o.referralAmount||0,
+      referral_paid:o.referralPaid?1:0,
+      referral_paid_date:o.referralPaidDate||"",
+      referral_paid_ref:o.referralPaidRef||""
     }});
     syncItems("order", o.orderNo, o.items);
   };
@@ -6738,7 +6903,7 @@ function App() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
