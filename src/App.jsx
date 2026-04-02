@@ -1353,7 +1353,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{} }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{} }) {
   const [tab, setTab] = useState("details");
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
@@ -1580,7 +1580,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Referral Payment</p>
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>upd("referralPaid",e.target.checked?1:0)} className="rounded"/>
+                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{const paid=e.target.checked?1:0;upd("referralPaid",paid);onReferralPaidChange(o,paid);}} className="rounded"/>
                         <span className="text-xs text-gray-600">Paid out</span>
                       </label>
                       {!!(o.referralPaid)&&<>
@@ -2343,6 +2343,27 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           allRecipients={allRecipients}
           products={products}
           enqueue={enqueue}
+          onReferralPaidChange={(ord, paid)=>{
+            // Auto-create or soft-delete a "Referral" expense
+            const expId = `referral_${ord.orderNo}`;
+            if (paid) {
+              const newExp = {
+                id: expId,
+                date: new Date().toISOString().slice(0,10),
+                paidBy: "__company__",
+                amount: Number(ord.referralAmount)||0,
+                category: "Referral",
+                comment: `Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}`,
+                isDeleted: false
+              };
+              syncSetExpenses(prev => {
+                const exists = prev.find(e=>e.id===expId);
+                return exists ? prev.map(e=>e.id===expId?{...e,...newExp,isDeleted:false}:e) : [...prev, newExp];
+              });
+            } else {
+              syncSetExpenses(prev => prev.map(e=>e.id===expId?{...e,isDeleted:true}:e));
+            }
+          }}
         />
       )}
     </div>
@@ -6580,40 +6601,42 @@ function App() {
     const batch = [...syncQueue.current];
     syncQueue.current = [];
     const errors = [];
-    for (const job of batch) {
-      try {
-        if (job.action==="upsert") {
-          const res = await sb().from(job.table).upsert(job.row);
-          if (res?.error) throw res.error;
-        } else if (job.action==="delete") {
-          const res = await sb().from(job.table).delete(job.col, job.val);
-          if (res?.error) throw res.error;
-        } else if (job.action==="deleteMany") {
-          const res = await sb().from(job.table).deleteMany(job.col, [job.val]);
-          if (res?.error) throw res.error;
-        } else if (job.action==="saveSettings") {
-          for (const [k,v] of Object.entries(job.data)) {
-            const res = await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+    try {
+      for (const job of batch) {
+        try {
+          if (job.action==="upsert") {
+            const res = await sb().from(job.table).upsert(job.row);
             if (res?.error) throw res.error;
+          } else if (job.action==="delete") {
+            const res = await sb().from(job.table).delete(job.col, job.val);
+            if (res?.error) throw res.error;
+          } else if (job.action==="deleteMany") {
+            const res = await sb().from(job.table).deleteMany(job.col, [job.val]);
+            if (res?.error) throw res.error;
+          } else if (job.action==="saveSettings") {
+            for (const [k,v] of Object.entries(job.data)) {
+              const res = await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+              if (res?.error) throw res.error;
+            }
           }
+        } catch(e) {
+          const msg = e?.message||e?.details||String(e);
+          const hint = msg.toLowerCase().includes("column")
+            ? " (run DB migration — new column missing)"
+            : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")
+            ? " (check Supabase RLS policy)"
+            : "";
+          errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
+          console.error("[DB Error]", job.table, job.action, e);
         }
-      } catch(e) {
-        const msg = e?.message||e?.details||String(e);
-        const hint = msg.toLowerCase().includes("column")
-          ? " (run DB migration — new column missing)"
-          : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")
-          ? " (check Supabase RLS policy)"
-          : "";
-        errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
-        console.error("[DB Error]", job.table, job.action, e);
       }
-    }
-    if (errors.length===0) {
-      setSyncStatus("saved");
-    } else {
-      setSyncStatus("error");
-      toast(`DB save failed: ${errors[0]}`, "error");
-      console.error("[DB Errors]", errors);
+      if (errors.length===0) {
+        setSyncStatus("saved");
+      } else {
+        setSyncStatus("error");
+        toast(`DB save failed: ${errors[0]}`, "error");
+        console.error("[DB Errors]", errors);
+      }
     } finally {
       syncing.current = false;
       setTimeout(()=>setSyncStatus(""),3000);
