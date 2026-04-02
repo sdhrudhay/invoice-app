@@ -1993,7 +1993,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[] }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{} }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -2344,24 +2344,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           products={products}
           enqueue={enqueue}
           onReferralPaidChange={(ord, paid)=>{
-            // Auto-create or soft-delete a "Referral" expense
             const expId = `referral_${ord.orderNo}`;
             if (paid) {
-              const newExp = {
-                id: expId,
-                date: new Date().toISOString().slice(0,10),
-                paidBy: "__company__",
-                amount: Number(ord.referralAmount)||0,
-                category: "Referral",
-                comment: `Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}`,
-                isDeleted: false
-              };
-              syncSetExpenses(prev => {
-                const exists = prev.find(e=>e.id===expId);
-                return exists ? prev.map(e=>e.id===expId?{...e,...newExp,isDeleted:false}:e) : [...prev, newExp];
-              });
+              const newExp = { id:expId, date:new Date().toISOString().slice(0,10), paidBy:"__company__", amount:Number(ord.referralAmount)||0, category:"Referral", comment:`Referral payout to ${ord.referralPerson||"?"} for order ${ord.orderNo}`, isDeleted:false };
+              setExpenses(prev => { const exists=prev.find(e=>e.id===expId); return exists?prev.map(e=>e.id===expId?{...e,...newExp,isDeleted:false}:e):[...prev,newExp]; });
             } else {
-              syncSetExpenses(prev => prev.map(e=>e.id===expId?{...e,isDeleted:true}:e));
+              setExpenses(prev => prev.map(e=>e.id===expId?{...e,isDeleted:true}:e));
             }
           }}
         />
@@ -6936,7 +6924,7 @@ function App() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products}/>}
+          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
