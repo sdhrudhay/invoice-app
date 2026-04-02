@@ -1377,16 +1377,27 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     ? (o.billingStateCode||order.billingStateCode)
     : (o.shippingStateCode||order.shippingStateCode||o.billingStateCode||order.billingStateCode);
   const _pickupFromO = o.isPickup !== undefined ? o.isPickup : order.isPickup;
-  const isIgst = !_pickupFromO && (o.needsGst??order.needsGst) && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
+  const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
+  const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
   // Local editable items
-  const [orderItems, setOrderItems] = useState((order.items||[]).map(i=>({...i})));
+  // If a tax invoice exists, items must show GST even if order.needsGst=false
+  const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
+  const initItems = (items) => {
+    const effGst = !!(order.needsGst || hasTaxInv);
+    return (items||[]).map(i =>
+      effGst && num(i.cgstAmt)===0 && num(i.sgstAmt)===0 && num(i.cgstRate)>0
+        ? calcItem(i, true)
+        : {...i}
+    );
+  };
+  const [orderItems, setOrderItems] = useState(initItems(order.items));
   // Sync orderItems when order.items prop changes (e.g. after initial load from Supabase)
   const prevOrderNo = useRef(order.orderNo);
   useEffect(() => {
     if (prevOrderNo.current !== order.orderNo) {
       // Different order opened — re-init everything from prop
-      setOrderItems((order.items||[]).map(i=>({...i})));
+      setOrderItems(initItems(order.items));
       setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
       setCharges((order.charges||[]).map(c=>({...c})));
       prevOrderNo.current = order.orderNo;
@@ -1610,7 +1621,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={!!(o.needsGst || taxInvoices.some(t=>t.orderId===order.orderNo))} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={taxInvoices.some(t=>t.orderId===order.orderNo)&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={effectiveNeedsGst} isIgst={isIgst} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
                   onSpoolAdded={(entry)=>{ const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{
                     const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
