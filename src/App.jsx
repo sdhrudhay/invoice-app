@@ -2949,18 +2949,21 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const curYear = new Date().getFullYear();
   const activeOrders = orders.filter(o=>o.status!=="Cancelled");
   const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
-  const getVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-  // For cancelled orders use what was actually collected, not invoice value
+  // Revenue = grossAmt only (excludes GST/CGST/SGST)
+  const getVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
   const getEffVal = (o) => o.status==="Cancelled" ? Math.max(0,getPaid(o)) : getVal(o);
   const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
   // Mirror income tab: use tax invoice amount if exists, else quotation, else order items (no charges)
+  // getInvoicedAmt: revenue excluding GST — uses grossAmt from items
   const getInvoicedAmt = (o) => {
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt = quotations.find(q=>q.orderId===o.orderNo);
     const raw = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
-      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
+      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.grossAmt),0)||0),0)
+      : (qt
+        ? (qt.items?.reduce((a,i)=>a+num(i.grossAmt),0) || num(qt.amount))
+        : (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0));
     return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : raw;
   };
   const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getInvoicedAmt(o) - getPaid(o));
@@ -4808,9 +4811,12 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const qt = quotations.find(q=>q.orderId===o.orderNo);
     // Income: items only, no charges
+    // Revenue excl. GST — use grossAmt
     const rawInvoicedAmt = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
-      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
+      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.grossAmt),0)||0),0)
+      : (qt
+        ? (qt.items?.reduce((a,i)=>a+num(i.grossAmt),0) || num(qt.amount))
+        : (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0));
     // For cancelled orders show net collected instead of invoice amount
     const invoicedAmt = o.status==="Cancelled"
       ? Math.max(0, (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0) + num(o.advance))
