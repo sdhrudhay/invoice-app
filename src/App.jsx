@@ -6579,21 +6579,41 @@ function App() {
     setSyncStatus("saving");
     const batch = [...syncQueue.current];
     syncQueue.current = [];
-    try {
-      for (const job of batch) {
-        if (job.action==="upsert") await sb().from(job.table).upsert(job.row);  // row can be single obj or array
-        else if (job.action==="delete") await sb().from(job.table).delete(job.col, job.val);
-        else if (job.action==="deleteMany") await sb().from(job.table).deleteMany(job.col, [job.val]);
-        else if (job.action==="saveSettings") {
+    const errors = [];
+    for (const job of batch) {
+      try {
+        if (job.action==="upsert") {
+          const res = await sb().from(job.table).upsert(job.row);
+          if (res?.error) throw res.error;
+        } else if (job.action==="delete") {
+          const res = await sb().from(job.table).delete(job.col, job.val);
+          if (res?.error) throw res.error;
+        } else if (job.action==="deleteMany") {
+          const res = await sb().from(job.table).deleteMany(job.col, [job.val]);
+          if (res?.error) throw res.error;
+        } else if (job.action==="saveSettings") {
           for (const [k,v] of Object.entries(job.data)) {
-            await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+            const res = await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+            if (res?.error) throw res.error;
           }
         }
+      } catch(e) {
+        const msg = e?.message||e?.details||String(e);
+        const hint = msg.toLowerCase().includes("column")
+          ? " (run DB migration — new column missing)"
+          : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")
+          ? " (check Supabase RLS policy)"
+          : "";
+        errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
+        console.error("[DB Error]", job.table, job.action, e);
       }
+    }
+    if (errors.length===0) {
       setSyncStatus("saved");
-    } catch(e) {
+    } else {
       setSyncStatus("error");
-      toast("Failed to save changes — check your connection", "error");
+      toast(`DB save failed: ${errors[0]}`, "error");
+      console.error("[DB Errors]", errors);
     } finally {
       syncing.current = false;
       setTimeout(()=>setSyncStatus(""),3000);
