@@ -3222,8 +3222,11 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               {h>0&&<rect x={x} y={y} width={barW} height={h} fill={c} rx="2" opacity="0.88"/>}
               {d.value>0&&<text x={x+barW/2} y={y-5} textAnchor="middle" fontSize="9" fill="#1e293b" fontWeight="700">{fmtTick(d.value)}</text>}
               {data2&&(()=>{
-                const h2=barH(data2[i]?.value||0), x2=x+barW+3, y2=barY(data2[i]?.value||0);
-                return h2>0?<rect x={x2} y={y2} width={barW} height={h2} fill={color2||"#f59e0b"} rx="2" opacity="0.65"/>:null;
+                const v2=data2[i]?.value||0, h2=barH(v2), x2=x+barW+3, y2=barY(v2);
+                return h2>0?(<g>
+                  <rect x={x2} y={y2} width={barW} height={h2} fill={color2||"#6366f144"} rx="2" opacity="0.65"/>
+                  <text x={x2+barW/2} y={y2-5} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="600">{fmtTick(v2)}</text>
+                </g>):null;
               })()}
               <text x={YPAD+i*slotW+slotW/2} y={H-4} textAnchor="middle" fontSize="11" fill="#64748b" fontWeight="500">{d.label}</text>
             </g>
@@ -3363,7 +3366,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
         ))}
       </div>
 
-      {(section==="trends"||section==="orders"||section==="finance")&&(
+      {(section==="trends"||section==="orders"||section==="finance"||section==="overview"||section==="filament"||section==="customers"||section==="referrals")&&(
         <div className="flex items-center gap-2 justify-end">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {["month","year"].map(p=><button key={p} onClick={()=>setPeriod(p)} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${period===p?"bg-white text-indigo-700 shadow-sm":"text-gray-500"}`}>{p==="month"?"Monthly":"Yearly"}</button>)}
