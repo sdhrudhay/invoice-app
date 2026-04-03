@@ -1379,7 +1379,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const _pickupFromO = o.isPickup !== undefined ? o.isPickup : order.isPickup;
   // hasTaxInv must be declared before effectiveNeedsGst which depends on it
   const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
-  const locked = hasTaxInv || order.status==="Completed";
+  const locked = hasTaxInv || o.status==="Completed";
   const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
   const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
@@ -1562,8 +1562,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
                 {o.status==="Cancelled"&&<F label="Reason for Cancellation" value={o.cancelReason||""} onChange={v=>upd("cancelReason",v)} placeholder="e.g. Customer changed mind, Out of stock…" className="col-span-2"/>}
               </div>
-              {o.type==="B2C"&&<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-1">
-                <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} className="rounded accent-indigo-600 w-4 h-4"/>
+              {o.type==="B2C"&&<label className={"flex items-center gap-2 text-sm text-gray-600 mt-1 "+(locked?"opacity-50 cursor-not-allowed":"cursor-pointer")}>
+                <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ if(locked)return; upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} disabled={locked} className="rounded accent-indigo-600 w-4 h-4"/>
                 <span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects — CGST+SGST, no address on invoice)</span></span>
               </label>}
               {!o.isPickup&&<>
@@ -1618,16 +1618,16 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               <div className="border-t pt-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling — included in Tax Invoice)</span></p>
-                  <button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>
+                  {!locked&&<button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>}
                 </div>
                 {charges.map((c,i)=>(
                   <div key={i} className="flex items-center gap-2">
-                    <input value={c.label} onChange={e=>updCharge(i,"label",e.target.value)} placeholder="Label (e.g. Shipping)"
+                    <input value={c.label} onChange={e=>!locked&&updCharge(i,"label",e.target.value)} disabled={locked} placeholder="Label (e.g. Shipping)"
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                     <span className="text-gray-400 text-sm shrink-0">₹</span>
                     <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
                       placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                  {!locked&&<button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
                   </div>
                 ))}
                 {charges.length>0&&<p className="text-xs text-gray-400 text-right">Total: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>}
