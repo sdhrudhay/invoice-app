@@ -1379,7 +1379,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const _pickupFromO = o.isPickup !== undefined ? o.isPickup : order.isPickup;
   // hasTaxInv must be declared before effectiveNeedsGst which depends on it
   const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
-  const locked = hasTaxInv || o.status==="Completed";
+  const locked = hasTaxInv || o.status==="Completed" || o.status==="Cancelled";
   const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
   const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
@@ -1522,7 +1522,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <p className="text-xs text-amber-600 mt-0.5">
                       {hasTaxInv
                         ? "A Tax Invoice has been generated. Delete the tax invoice first to edit this order."
-                        : "Order is Completed. Change status back to Pending to edit."}
+                        : o.status==="Cancelled"?"Order is Cancelled. Change status to edit fields.":"Order is Completed. Change status back to Pending to edit fields."}
                     </p>
                   </div>
                 </div>
@@ -1590,13 +1590,13 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2} disabled={locked}/>
               <div className="border border-dashed border-indigo-200 rounded-xl p-3 bg-indigo-50/40 space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>!locked&&upd("isReferred",e.target.checked?1:0)} disabled={locked} className="rounded"/>
+                  <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>upd("isReferred",e.target.checked?1:0)} className="rounded"/>
                   <span className="text-xs font-semibold text-indigo-700">🤝 Referred Order?</span>
                 </label>
                 {!!(o.isReferred)&&<div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
-                    <F label="Referred by" value={o.referralPerson||""} onChange={v=>upd("referralPerson",v)} disabled={locked} placeholder="Person / company name"/>
-                    <F label="Referral Amount (₹)" value={o.referralAmount||""} onChange={v=>upd("referralAmount",v)} disabled={locked} placeholder="0"/>
+                    <F label="Referred by" value={o.referralPerson||""} onChange={v=>upd("referralPerson",v)} placeholder="Person / company name"/>
+                    <F label="Referral Amount (₹)" value={o.referralAmount||""} onChange={v=>upd("referralAmount",v)} placeholder="0"/>
                   </div>
                   <div className="border-t border-indigo-100 pt-2 space-y-1.5">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Referral Payout</p>
@@ -1671,17 +1671,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   }}/>
               </div>
               <div className="pt-3 border-t space-y-3">
-                {locked
-                  ? <div className="w-full py-3 rounded-xl text-center text-sm font-semibold text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed">
-                      🔒 {hasTaxInv?"Delete Tax Invoice to edit":"Change status to Pending to edit"}
-                    </div>
-                  : <button
-                      onClick={()=>handleSaveOrder()}
-                      className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
-                    >
-                      Save Changes
-                    </button>
-                }
+                {locked&&!hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">Fields are locked — you can still change status or referral details</p>}
+                {locked&&hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Delete the Tax Invoice to edit order fields</p>}
+                <button
+                  onClick={()=>handleSaveOrder()}
+                  className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
+                >
+                  Save Changes
+                </button>
                 <button
                   onClick={()=>{
                     if(window.confirm(`Delete order ${order.orderNo} for ${order.customerName}?\n\nThis will permanently delete the order and all its quotations, invoices and payments. This cannot be undone.`))
