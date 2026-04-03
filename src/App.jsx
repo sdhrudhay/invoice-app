@@ -6190,20 +6190,27 @@ function Toast({ toasts }) {
 }
 
 // ─── Bulk Download ────────────────────────────────────────────────────────────
-function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={} }) {
+function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={}, expenses=[] }) {
   const thisMonth = new Date().toISOString().slice(0,7);
   const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
   const [from, setFrom] = useState(threeMonthsAgo);
   const [to, setTo] = useState(thisMonth);
-  const [custTypes, setCustTypes] = useState(['B2B','B2C']);        // B2B / B2C
-  const [orderStatuses, setOrderStatuses] = useState(['Pending','Completed','Cancelled']); // status filter
-  const [balanceFilter, setBalanceFilter] = useState('all');         // all / no_balance / has_balance
-  const [docTypes, setDocTypes] = useState(['quotation','proforma','tax']); // which doc types to include
+  const [custTypes, setCustTypes] = useState(['B2B','B2C']);
+  const [orderStatuses, setOrderStatuses] = useState(['Pending','Completed','Cancelled']);
+  const [balanceFilter, setBalanceFilter] = useState('all');
+  const [docTypes, setDocTypes] = useState(['quotation','proforma','tax']);
   const [status, setStatus] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState({done:0,total:0});
+  const [subTab, setSubTab] = useState('invoices');
+  const [reportPeriod, setReportPeriod] = useState('month');
+  const [reportMonth, setReportMonth] = useState(thisMonth);
+  const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
+  const [fyYear, setFyYear] = useState(String(new Date().getMonth()>=3?new Date().getFullYear():new Date().getFullYear()-1));
 
-  const MONTH_NAMES = {'01':'01-Jan','02':'02-Feb','03':'03-Mar','04':'04-Apr','05':'05-May','06':'06-Jun','07':'07-Jul','08':'08-Aug','09':'09-Sep','10':'10-Oct','11':'11-Nov','12':'12-Dec'};
+  const num = (v) => Number(v||0);
+  const fmt2 = (n) => Number(n||0).toFixed(2);
+  const MONTH_NAMES = {'01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun','07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'};
 
   const inRange = (dateStr) => { if (!dateStr) return false; const ym=dateStr.slice(0,7); return ym>=from&&ym<=to; };
   const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
@@ -6224,6 +6231,146 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     if (balanceFilter==='no_balance' && getOrderBalance(order)>0.01) return false;
     if (balanceFilter==='has_balance' && getOrderBalance(order)<=0.01) return false;
     return true;
+  };
+
+  const reportLabel = reportPeriod==='month'
+    ? `${MONTH_NAMES[reportMonth.slice(5,7)]||''}_${reportMonth.slice(0,4)}`
+    : reportPeriod==='year' ? reportYear
+    : `FY_${fyYear}-${String(Number(fyYear)+1).slice(2)}`;
+
+  const inReportRange = (dateStr) => {
+    if (!dateStr) return false;
+    if (reportPeriod==='month') return dateStr.startsWith(reportMonth);
+    if (reportPeriod==='year') return dateStr.startsWith(reportYear);
+    if (reportPeriod==='fy') {
+      const d=new Date(dateStr), m=d.getMonth()+1, y=d.getFullYear(), fy=Number(fyYear);
+      return (y===fy&&m>=4)||(y===fy+1&&m<=3);
+    }
+    return false;
+  };
+
+  const buildReports = () => {
+    const filteredOrders = orders.filter(o=>inReportRange(o.orderDate));
+    const filteredTIs = taxInvoices.filter(t=>inReportRange(t.invDate));
+    const filteredExp = (expenses||[]).filter(e=>!e.isDeleted&&inReportRange(e.date));
+    const activeOrds = filteredOrders.filter(o=>o.status!=="Cancelled");
+
+    const getGross = (o) => {
+      const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
+      const qt=quotations.find(q=>q.orderId===o.orderNo);
+      if(o.status==="Cancelled")return 0;
+      return tis.length?tis.reduce((a,t)=>a+(t.items?.reduce((b,i)=>b+num(i.grossAmt),0)||0),0)
+        :(qt?(qt.items?.reduce((b,i)=>b+num(i.grossAmt),0)||num(qt.amount))
+          :(o.items||[]).reduce((a,i)=>a+num(i.grossAmt),0));
+    };
+    const getInvoiceVal = (o) => {
+      const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
+      const qt=quotations.find(q=>q.orderId===o.orderNo);
+      return tis.length?tis.reduce((a,t)=>a+(t.amount||t.items?.reduce((b,i)=>b+num(i.netAmt),0)||0),0):(qt?num(qt.amount):(o.items||[]).reduce((a,i)=>a+num(i.netAmt),0));
+    };
+    const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
+
+    const grossRev=activeOrds.reduce((s,o)=>s+getGross(o),0);
+    const orderVal=filteredOrders.reduce((s,o)=>s+(o.status==="Cancelled"?0:getInvoiceVal(o)),0);
+    const collected=filteredOrders.reduce((s,o)=>s+getPaid(o),0);
+    const totalExp=filteredExp.reduce((s,e)=>s+num(e.amount),0);
+    const cgstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.cgstAmt),0)||0),0);
+    const sgstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.sgstAmt),0)||0),0);
+    const igstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)||0),0);
+    const totalGST=cgstTotal+sgstTotal+igstTotal;
+    const netProfit=collected-totalExp;
+    const b2bGross=activeOrds.filter(o=>o.type==="B2B").reduce((s,o)=>s+getGross(o),0);
+    const onlineGross=activeOrds.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getGross(o),0);
+
+    const sheet1 = [
+      {Metric:"Report Period",Value:reportLabel.replace(/_/g," ")},
+      {Metric:"Generated On",Value:new Date().toLocaleDateString("en-IN")},
+      {Metric:""},
+      {Metric:"=== REVENUE (excl. GST) ==="},
+      {Metric:"Gross Revenue",Value:fmt2(grossRev)},
+      {Metric:"Order Value (incl. GST)",Value:fmt2(orderVal)},
+      {Metric:"B2B Revenue",Value:fmt2(b2bGross)},
+      {Metric:"B2C Revenue",Value:fmt2(grossRev-b2bGross)},
+      {Metric:"Online Revenue",Value:fmt2(onlineGross)},
+      {Metric:"Offline Revenue",Value:fmt2(grossRev-onlineGross)},
+      {Metric:""},
+      {Metric:"=== COLLECTIONS ==="},
+      {Metric:"Total Collected",Value:fmt2(collected)},
+      {Metric:"Outstanding Balance",Value:fmt2(Math.max(0,orderVal-collected))},
+      {Metric:"Collection Rate %",Value:orderVal>0?fmt2(collected/orderVal*100)+"%":"0%"},
+      {Metric:""},
+      {Metric:"=== GST / TAX ==="},
+      {Metric:"Total GST Collected",Value:fmt2(totalGST)},
+      {Metric:"CGST",Value:fmt2(cgstTotal)},
+      {Metric:"SGST",Value:fmt2(sgstTotal)},
+      {Metric:"IGST",Value:fmt2(igstTotal)},
+      {Metric:""},
+      {Metric:"=== EXPENSES & PROFIT ==="},
+      {Metric:"Total Expenses",Value:fmt2(totalExp)},
+      {Metric:"Net Profit",Value:fmt2(netProfit)},
+      {Metric:"Profit Margin %",Value:collected>0?fmt2(netProfit/collected*100)+"%":"0%"},
+      {Metric:""},
+      {Metric:"=== ORDERS ==="},
+      {Metric:"Total Orders",Value:filteredOrders.length},
+      {Metric:"Completed",Value:filteredOrders.filter(o=>o.status==="Completed").length},
+      {Metric:"Pending",Value:filteredOrders.filter(o=>o.status==="Pending").length},
+      {Metric:"Cancelled",Value:filteredOrders.filter(o=>o.status==="Cancelled").length},
+      {Metric:"B2B Orders",Value:activeOrds.filter(o=>o.type==="B2B").length},
+      {Metric:"B2C Orders",Value:activeOrds.filter(o=>o.type==="B2C").length},
+      {Metric:"Tax Invoices",Value:filteredTIs.length},
+    ];
+
+    const mapTIRow = (t,type) => {
+      const o=getOrder(t);
+      const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
+      const cgst=t.items?.reduce((s,i)=>s+num(i.cgstAmt),0)||0;
+      const sgst=t.items?.reduce((s,i)=>s+num(i.sgstAmt),0)||0;
+      const igst=t.items?.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0)||0;
+      return {"Invoice No":t.invNo,"Date":t.invDate,"Order No":t.orderId,"Customer":o.customerName||"","GSTIN":o.gstin||"","Taxable Value":fmt2(taxable),"CGST Rate %":cgst>0?t.items?.[0]?.cgstRate||9:"","CGST Amount":fmt2(cgst),"SGST Rate %":sgst>0?t.items?.[0]?.sgstRate||9:"","SGST Amount":fmt2(sgst),"IGST Amount":fmt2(igst),"Total":fmt2(taxable+cgst+sgst+igst)};
+    };
+    const b2bRows=filteredTIs.filter(t=>(getOrder(t).type||"B2B")==="B2B").map(t=>mapTIRow(t,"B2B"));
+    const b2cRows=filteredTIs.filter(t=>(getOrder(t).type||"B2B")!=="B2B").map(t=>mapTIRow(t,"B2C"));
+
+    const hsnMap={};
+    filteredTIs.forEach(t=>{
+      const o=getOrder(t);
+      (t.items||[]).forEach(i=>{
+        const hsn=i.hsn||"—";
+        if(!hsnMap[hsn])hsnMap[hsn]={hsn,desc:i.item||"",b2b_taxable:0,b2c_taxable:0,taxable:0,cgst:0,sgst:0,igst:0,total:0};
+        const ig=num(i.cgstAmt)===0&&num(i.sgstAmt)===0?num(i.netAmt)-num(i.grossAmt):0;
+        hsnMap[hsn].taxable+=num(i.grossAmt);
+        hsnMap[hsn].cgst+=num(i.cgstAmt);
+        hsnMap[hsn].sgst+=num(i.sgstAmt);
+        hsnMap[hsn].igst+=ig;
+        hsnMap[hsn].total+=num(i.netAmt);
+        if(o.type==="B2B")hsnMap[hsn].b2b_taxable+=num(i.grossAmt);
+        else hsnMap[hsn].b2c_taxable+=num(i.grossAmt);
+      });
+    });
+    const hsnRows=Object.values(hsnMap).sort((a,b)=>b.taxable-a.taxable).map(h=>({
+      "HSN":h.hsn,"Description":h.desc,
+      "B2B Taxable":fmt2(h.b2b_taxable),"B2C Taxable":fmt2(h.b2c_taxable),"Total Taxable":fmt2(h.taxable),
+      "CGST":fmt2(h.cgst),"SGST":fmt2(h.sgst),"IGST":fmt2(h.igst),"Total Tax":fmt2(h.cgst+h.sgst+h.igst),
+      "Grand Total":fmt2(h.total)
+    }));
+
+    return {sheet1,b2bRows,b2cRows,hsnRows};
+  };
+
+  const downloadReports = async () => {
+    const {sheet1,b2bRows,b2cRows,hsnRows}=buildReports();
+    const fname=`Financial_Report_${reportLabel}.xlsx`;
+    try {
+      const XLSX=await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs");
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet1),"Financial Summary");
+      if(b2bRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(b2bRows),"B2B Tax Invoices");
+      if(b2cRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(b2cRows),"B2C Tax Invoices");
+      if(hsnRows.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hsnRows),"HSN Summary");
+      XLSX.writeFile(wb,fname);
+    } catch(e){
+      await exportToExcel(sheet1,fname.replace(".xlsx",""));
+    }
   };
 
   const qtFiltered  = docTypes.includes('quotation') ? quotations.filter(q=>inRange(q.invDate)&&orderPassesFilters(getOrder(q))) : [];
@@ -6321,137 +6468,71 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     } finally { setDownloading(false); }
   };
 
+
   return (
-    <div className="space-y-5 max-w-2xl">
+    <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <p className="text-sm font-bold text-slate-700">Bulk Invoice Download</p>
-        <p className="text-xs text-gray-400 mt-0.5">Download filtered invoices as PDFs inside a structured ZIP.</p>
+        <h2 className="font-bold text-lg text-slate-800">Downloads</h2>
+        <p className="text-xs text-gray-400">Download invoices as PDF or export financial reports as Excel.</p>
+      </div>
+      {/* Sub-tab */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"]].map(([id,lb])=>(
+          <button key={id} onClick={()=>setSubTab(id)}
+            className={"flex-1 py-2 rounded-lg text-sm font-semibold transition-all "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
+            {lb}
+          </button>
+        ))}
       </div>
 
-      {/* ── Period ── */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">From</label>
-            <input type="month" value={from} onChange={e=>setFrom(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+      {subTab==="reports"&&(
+        <div className="space-y-4">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Select Period</p>
+            <div className="flex gap-2 flex-wrap">
+              {[["month","Monthly"],["year","Yearly"],["fy","Financial Year (Apr-Mar)"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setReportPeriod(v)}
+                  className={"px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all "+(reportPeriod===v?"bg-indigo-600 text-white border-indigo-600":"border-gray-200 text-gray-600 hover:border-indigo-300")}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {reportPeriod==="month"&&<input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>}
+            {reportPeriod==="year"&&<input type="number" value={reportYear} onChange={e=>setReportYear(e.target.value)} min="2020" max="2099" placeholder="2025" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-400"/>}
+            {reportPeriod==="fy"&&<div className="flex items-center gap-2"><input type="number" value={fyYear} onChange={e=>setFyYear(e.target.value)} min="2020" max="2099" className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-400"/><span className="text-xs text-gray-500">Apr {fyYear} – Mar {Number(fyYear)+1}</span></div>}
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500">To</label>
-            <input type="month" value={to} onChange={e=>setTo(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            ['This month',()=>{setFrom(thisMonth);setTo(thisMonth);}],
-            ['Last 3 months',()=>{const d=new Date();d.setMonth(d.getMonth()-2);setFrom(d.toISOString().slice(0,7));setTo(thisMonth);}],
-            ['This year',()=>{setFrom(new Date().getFullYear()+'-01');setTo(thisMonth);}],
-            ['Last year',()=>{const y=new Date().getFullYear()-1;setFrom(`${y}-01`);setTo(`${y}-12`);}],
-          ].map(([label,fn])=>(
-            <button key={label} onClick={fn} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1 rounded-lg font-medium">{label}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Filters ── */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filters</p>
-
-        {/* Customer type */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-gray-600">Customer Type</p>
-          <div className="flex gap-2">
-            {['B2B','B2C'].map(v=>(
-              <button key={v} onClick={()=>toggleArr(custTypes,setCustTypes,v)} className={chipCls(custTypes.includes(v))}>{v}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Order status */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-gray-600">Order Status</p>
-          <div className="flex flex-wrap gap-2">
-            {['Pending','Completed','Cancelled'].map(v=>(
-              <button key={v} onClick={()=>toggleArr(orderStatuses,setOrderStatuses,v)} className={chipCls(orderStatuses.includes(v))}>{v}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Balance filter */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-gray-600">Payment Status</p>
-          <div className="flex flex-wrap gap-2">
-            {[['all','All orders'],['no_balance','No balance due'],['has_balance','Balance pending']].map(([v,label])=>(
-              <button key={v} onClick={()=>setBalanceFilter(v)} className={chipCls(balanceFilter===v)}>{label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Document types */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-gray-600">Document Types</p>
-          <div className="flex flex-wrap gap-2">
-            {[['quotation','Quotations'],['proforma','Proforma'],['tax','Tax Invoices']].map(([v,label])=>(
-              <button key={v} onClick={()=>toggleArr(docTypes,setDocTypes,v)} className={chipCls(docTypes.includes(v))}>{label}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Preview ── */}
-      {total>0 ? (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{total} invoice{total!==1?'s':''} matched — folder preview</p>
-          <div className="bg-white border border-gray-100 rounded-xl p-4 font-mono text-xs space-y-1 max-h-52 overflow-y-auto">
-            <p className="text-gray-400 mb-1">📦 Invoices_{from}_to_{to}.zip</p>
-            {treeEntries.map((node,ni)=>(
-              <div key={ni} className="ml-2">
-                <p className="text-slate-600 font-semibold">📁 {node.ct} / {node.year} / {node.month}</p>
-                {node.qt>0&&<p className="ml-4 text-gray-400">📁 Quotations ({node.qt})</p>}
-                {node.pf>0&&<p className="ml-4 text-gray-400">📁 Proforma Invoices ({node.pf})</p>}
-                {node.ti>0&&<p className="ml-4 text-gray-400">📁 Tax Invoices ({node.ti})</p>}
+          {(()=>{
+            const {sheet1,b2bRows,b2cRows,hsnRows}=buildReports();
+            const get=(k)=>sheet1.find(r=>r.Metric===k)?.Value||"—";
+            return (
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Preview</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[["Gross Revenue","Gross Revenue","#6366f1"],["Collected","Total Collected","#10b981"],["GST","Total GST Collected","#f59e0b"],["Net Profit","Net Profit","#8b5cf6"]].map(([l,k,c])=>(
+                    <div key={l} className="bg-gray-50 rounded-xl p-3">
+                      <p className="text-[10px] text-gray-400">{l}</p>
+                      <p className="text-sm font-black" style={{color:c}}>₹{get(k)}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">Sheets: Financial Summary · {b2bRows.length} B2B Invoices · {b2cRows.length} B2C Invoices · {hsnRows.length} HSN lines</p>
               </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gray-50 border border-gray-100 rounded-xl p-8 text-center">
-          <p className="text-sm text-gray-400">No invoices match the current filters.</p>
-          <p className="text-xs text-gray-300 mt-1">Adjust the period or filters above.</p>
-        </div>
-      )}
-
-      {/* ── Progress bar ── */}
-      {downloading&&progress.total>0&&(
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-gray-500">
-            <span className="truncate mr-2">{status}</span>
-            <span className="shrink-0">{progress.done}/{progress.total}</span>
-          </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-              style={{width:`${Math.round((progress.done/progress.total)*100)}%`}}/>
-          </div>
+            );
+          })()}
+          <button onClick={downloadReports}
+            className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all">
+            ⬇ Download Excel — {reportLabel.replace(/_/g," ")}
+          </button>
         </div>
       )}
 
-      {/* ── Download button ── */}
-      <div className="flex items-center gap-3">
-        <button onClick={handleDownload} disabled={downloading||total===0}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-semibold text-sm transition-all">
-          {downloading?'Converting…':`⬇ Download PDFs (${total})`}
-        </button>
-        {!downloading&&status&&(
-          <span className={`text-xs font-medium ${status.startsWith('✓')?'text-emerald-600':status.startsWith('Error')?'text-red-500':'text-indigo-500'}`}>{status}</span>
-        )}
-      </div>
+      {subTab==="invoices"&&(
 
-      <p className="text-xs text-gray-400 border-t border-gray-100 pt-3">Each invoice is rendered and converted to PDF client-side. Keep this tab open during conversion.</p>
+      )}
     </div>
   );
 }
+
 
 function App() {
   const [tab,setTab]=useState("new");
@@ -6941,7 +7022,7 @@ function App() {
           {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
           {tab==="salary"&&<SalaryManager employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
-          {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller}/>}
+          {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
         </div>
