@@ -564,8 +564,9 @@ function SpoolPicker({ spoolOptions, onSelect }) {
 
 function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null, onSpoolRemoved=null, onSpoolQtyChanged=null, readOnly=false }) {
   const upd = (i,f,v) => { if(readOnly)return; setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it)); };
-  const add = () => setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]);
+  const add = () => { if(readOnly)return; setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]); };
   const del = (i) => {
+    if(readOnly)return;
     const removed = items[i];
     if (removed?._spoolGroup && removed?._spoolId && onSpoolRemoved) onSpoolRemoved(removed._spoolId, removed._batchKey);
     setItems(items.filter((_,idx)=>idx!==i).map((it,idx)=>({...it,sl:idx+1})));
@@ -744,7 +745,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
           </tr>
         </tfoot>
       </table>
-      <button onClick={add} className="m-3 text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"><span className="text-base font-bold">+</span> Add Item</button>
+      {!readOnly&&<button onClick={add} className="m-3 text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"><span className="text-base font-bold">+</span> Add Item</button>}
     </div>
   );
 }
@@ -1544,7 +1545,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 </div>
-                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS} disabled={hasTaxInv}/>
+                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
                   <div className="flex gap-2 flex-wrap">
@@ -1571,7 +1572,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
                 <div className="grid grid-cols-2 gap-4">
                   <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={locked}/>
-                  <StateSelect value={o.billingStateCode||""} onChange={v=>{ if(locked)return; upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }}/>
+                  <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={locked}/>
                   <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={locked} rows={2} className="col-span-2"/>
                 </div>
               </div>
@@ -1581,7 +1582,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={locked}/>
                   <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={locked}/>
                   {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={locked}/>}
-                  <StateSelect value={o.shippingStateCode||""} onChange={v=>{ if(locked)return; upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }}/>
+                  <StateSelect value={o.shippingStateCode||""} onChange={v=>{ upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }} disabled={locked}/>
                   <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} disabled={locked} rows={2} className="col-span-2"/>
                 </div>
               </div>
