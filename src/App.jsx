@@ -1377,12 +1377,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     ? (o.billingStateCode||order.billingStateCode)
     : (o.shippingStateCode||order.shippingStateCode||o.billingStateCode||order.billingStateCode);
   const _pickupFromO = o.isPickup !== undefined ? o.isPickup : order.isPickup;
+  // hasTaxInv must be declared before effectiveNeedsGst which depends on it
+  const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
   const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
   const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
-  // Local editable items
-  // If a tax invoice exists, items must show GST even if order.needsGst=false
-  const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
   const initItems = (items) => {
     const effGst = !!(order.needsGst || hasTaxInv);
     return (items||[]).map(i =>
