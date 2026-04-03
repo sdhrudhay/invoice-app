@@ -6527,7 +6527,68 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       )}
 
       {subTab==="invoices"&&(
-
+        <div className="space-y-6">
+          {/* Date range */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Date Range</p>
+            <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">From</label>
+                <input type="month" value={from} onChange={e=>setFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/></div>
+              <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">To</label>
+                <input type="month" value={to} onChange={e=>setTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/></div>
+            </div>
+          </div>
+          {/* Filters */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Filters</p>
+            <div className="space-y-3">
+              <div><p className="text-xs text-gray-500 mb-1.5 font-medium">Customer Type</p>
+                <div className="flex gap-2 flex-wrap">{['B2B','B2C'].map(v=><span key={v} onClick={()=>toggleArr(custTypes,setCustTypes,v)} className={chipCls(custTypes.includes(v))}>{v}</span>)}</div></div>
+              <div><p className="text-xs text-gray-500 mb-1.5 font-medium">Order Status</p>
+                <div className="flex gap-2 flex-wrap">{['Pending','Completed','Cancelled'].map(v=><span key={v} onClick={()=>toggleArr(orderStatuses,setOrderStatuses,v)} className={chipCls(orderStatuses.includes(v))}>{v}</span>)}</div></div>
+              <div><p className="text-xs text-gray-500 mb-1.5 font-medium">Document Types</p>
+                <div className="flex gap-2 flex-wrap">{[['quotation','Quotation'],['proforma','Proforma'],['tax','Tax Invoice']].map(([v,l])=><span key={v} onClick={()=>toggleArr(docTypes,setDocTypes,v)} className={chipCls(docTypes.includes(v))}>{l}</span>)}</div></div>
+              <div><p className="text-xs text-gray-500 mb-1.5 font-medium">Balance</p>
+                <div className="flex gap-2 flex-wrap">{[['all','All'],['no_balance','Fully Paid'],['has_balance','Has Balance']].map(([v,l])=><span key={v} onClick={()=>setBalanceFilter(v)} className={chipCls(balanceFilter===v)}>{l}</span>)}</div></div>
+            </div>
+          </div>
+          {/* Preview tree */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
+              Will Download — <span className="text-indigo-600">{total} document{total!==1?'s':''}</span>
+            </p>
+            {total===0
+              ? <p className="text-sm text-gray-400 italic">No documents match the filters.</p>
+              : <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {treeEntries.map(e=>(
+                    <div key={`${e.ct}-${e.year}-${e.month}`} className="flex items-center gap-2 text-xs text-gray-600">
+                      <span className="font-mono text-gray-400 text-[10px] w-24 shrink-0">{e.ct} / {e.year} / {e.month}</span>
+                      <span className="flex gap-1.5">
+                        {e.qt>0&&<span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">{e.qt} QT</span>}
+                        {e.pf>0&&<span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">{e.pf} PF</span>}
+                        {e.ti>0&&<span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-semibold">{e.ti} TI</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+          {/* Progress */}
+          {downloading&&progress.total>0&&(
+            <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-2">
+              <div className="flex justify-between text-xs text-gray-500"><span>Progress</span><span>{progress.done}/{progress.total}</span></div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 rounded-full transition-all" style={{width:`${Math.round(progress.done/progress.total*100)}%`}}/></div>
+            </div>
+          )}
+          {!downloading&&status&&(
+            <p className={`text-sm font-medium px-4 py-2 rounded-xl ${status.startsWith('✓')?'bg-green-50 text-green-700':status.startsWith('Error')?'bg-red-50 text-red-600':'bg-gray-50 text-gray-600'}`}>{status}</p>
+          )}
+          <button onClick={handleDownload} disabled={downloading||total===0}
+            className={`relative w-full py-3 rounded-xl font-bold text-sm tracking-wide text-white shadow-sm transition-all duration-200 ${downloading||total===0?'bg-gray-300 cursor-not-allowed':'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:shadow-md hover:scale-[1.01]'}`}>
+            {downloading?`Converting ${progress.done}/${progress.total}…`:`⬇ Download ${total} PDF${total!==1?'s':''}${total>0?` (${from} → ${to})`:''}`}
+          </button>
+          <p className="text-xs text-gray-400 border-t border-gray-100 pt-3">Each invoice is rendered and converted to PDF client-side. Keep this tab open during conversion.</p>
+        </div>
       )}
     </div>
   );
