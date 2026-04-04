@@ -6207,6 +6207,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const [reportMonth, setReportMonth] = useState(thisMonth);
   const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
   const [fyYear, setFyYear] = useState(String(new Date().getMonth()>=3?new Date().getFullYear():new Date().getFullYear()-1));
+  const [gstrMonth, setGstrMonth] = useState(thisMonth);
 
   const num = (v) => Number(v||0);
   const fmt2 = (n) => Number(n||0).toFixed(2);
@@ -6477,7 +6478,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       </div>
       {/* Sub-tab */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"]].map(([id,lb])=>(
+        {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"],["gstr1","🇮🇳 GSTR-1"]].map(([id,lb])=>(
           <button key={id} onClick={()=>setSubTab(id)}
             className={"flex-1 py-2 rounded-lg text-sm font-semibold transition-all "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
             {lb}
@@ -6526,6 +6527,242 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
         </div>
       )}
 
+
+      {subTab==="gstr1"&&(
+        <div className="space-y-4">
+          {/* Month selector */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">GSTR-1 Period</p>
+            <div className="flex items-center gap-3">
+              <input type="month" value={gstrMonth} onChange={e=>setGstrMonth(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+              <span className="text-xs text-gray-400">GSTIN: <strong>{seller?.gstin||"—"}</strong></span>
+            </div>
+          </div>
+
+          {(()=>{
+            const num = (v) => Number(v||0);
+            const fmt2 = (n) => Number(n||0).toFixed(2);
+            const monthTIs = taxInvoices.filter(t=>t.invDate?.startsWith(gstrMonth));
+            const sellerState = seller?.stateCode||"";
+            const extractSC = (sc) => { if(!sc)return ""; const m=sc.match(/^(\d{2})/); return m?m[1]:sc.slice(0,2); };
+            const isInterState = (order) => {
+              const custState = order.type==="B2B"
+                ? extractSC(order.billingStateCode)
+                : extractSC(order.shippingStateCode||order.billingStateCode);
+              return sellerState && custState && extractSC(sellerState)!==custState;
+            };
+
+            // ── 4A: B2B Regular invoices ──────────────────────────────────────
+            const b2bTIs = monthTIs.filter(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId);
+              return o?.type==="B2B" && o?.needsGst;
+            });
+            const sheet4A = b2bTIs.map(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
+              const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
+              const cgst=t.items?.reduce((s,i)=>s+num(i.cgstAmt),0)||0;
+              const sgst=t.items?.reduce((s,i)=>s+num(i.sgstAmt),0)||0;
+              const igst=t.items?.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0)||0;
+              const cess=0;
+              return {
+                "GSTIN/UIN of Recipient":o.gstin||"",
+                "Receiver Name":o.billingName||o.customerName||"",
+                "Invoice Number":t.invNo,
+                "Invoice Date":t.invDate,
+                "Invoice Value":fmt2(taxable+cgst+sgst+igst),
+                "Place of Supply":o.placeOfSupply||o.billingStateCode||"",
+                "Reverse Charge":"N",
+                "Invoice Type":"Regular",
+                "E-Commerce GSTIN":"",
+                "Rate":t.items?.[0]?.cgstRate&&t.items?.[0]?.sgstRate?(num(t.items[0].cgstRate)+num(t.items[0].sgstRate)).toFixed(0):"18",
+                "Taxable Value":fmt2(taxable),
+                "Integrated Tax":fmt2(igst),
+                "Central Tax":fmt2(cgst),
+                "State/UT Tax":fmt2(sgst),
+                "Cess":fmt2(cess)
+              };
+            });
+
+            // ── 5: B2C Large (inter-state, >₹2.5L invoice value) ─────────────
+            const b2cLargeTIs = monthTIs.filter(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId);
+              if(!o||o.type==="B2B")return false;
+              const val=t.items?.reduce((s,i)=>s+num(i.netAmt),0)||0;
+              return isInterState(o)&&val>250000;
+            });
+            const sheet5 = b2cLargeTIs.map(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
+              const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
+              const igst=t.items?.reduce((s,i)=>s+num(i.netAmt)-num(i.grossAmt),0)||0;
+              return {
+                "Invoice Number":t.invNo,
+                "Invoice Date":t.invDate,
+                "Invoice Value":fmt2(taxable+igst),
+                "Place of Supply":o.placeOfSupply||o.shippingStateCode||o.billingStateCode||"",
+                "Applicable % of Tax Rate":"",
+                "Rate":t.items?.[0]?.cgstRate&&t.items?.[0]?.sgstRate?(num(t.items[0].cgstRate)+num(t.items[0].sgstRate)).toFixed(0):"18",
+                "Taxable Value":fmt2(taxable),
+                "Integrated Tax":fmt2(igst),
+                "Cess":"0.00",
+                "E-Commerce GSTIN":""
+              };
+            });
+
+            // ── 7: B2C Others (intra-state + inter-state ≤₹2.5L) ────────────
+            // Grouped by State and Rate
+            const b2cOtherTIs = monthTIs.filter(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId);
+              if(!o||o.type==="B2B")return false;
+              const val=t.items?.reduce((s,i)=>s+num(i.netAmt),0)||0;
+              return !isInterState(o)||(isInterState(o)&&val<=250000);
+            });
+            const b2cOtherMap={};
+            b2cOtherTIs.forEach(t=>{
+              const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
+              (t.items||[]).forEach(i=>{
+                const rate=(num(i.cgstRate)+num(i.sgstRate)).toFixed(0);
+                const pos=o.placeOfSupply||o.shippingStateCode||o.billingStateCode||"";
+                const key=`${pos}||${rate}`;
+                if(!b2cOtherMap[key])b2cOtherMap[key]={pos,rate,taxable:0,igst:0,cgst:0,sgst:0,cess:0};
+                const ig=num(i.cgstAmt)===0&&num(i.sgstAmt)===0?num(i.netAmt)-num(i.grossAmt):0;
+                b2cOtherMap[key].taxable+=num(i.grossAmt);
+                b2cOtherMap[key].igst+=ig;
+                b2cOtherMap[key].cgst+=num(i.cgstAmt);
+                b2cOtherMap[key].sgst+=num(i.sgstAmt);
+              });
+            });
+            const sheet7=Object.values(b2cOtherMap).map(r=>({
+              "Type":"OE",
+              "Applicable % of Tax Rate":"",
+              "Rate":r.rate,
+              "Taxable Value":fmt2(r.taxable),
+              "Integrated Tax":fmt2(r.igst),
+              "Central Tax":fmt2(r.cgst),
+              "State/UT Tax":fmt2(r.sgst),
+              "Cess":"0.00"
+            }));
+
+            // ── 12: HSN-wise Summary ──────────────────────────────────────────
+            const hsnMap12={};
+            monthTIs.forEach(t=>{
+              (t.items||[]).forEach(i=>{
+                const hsn=i.hsn||"";
+                const rate=(num(i.cgstRate)+num(i.sgstRate)).toFixed(0);
+                const key=`${hsn}||${rate}`;
+                if(!hsnMap12[key])hsnMap12[key]={hsn,desc:i.item||"",uqc:"NOS",qty:0,val:0,taxable:0,igst:0,cgst:0,sgst:0,cess:0,rate};
+                const ig=num(i.cgstAmt)===0&&num(i.sgstAmt)===0?num(i.netAmt)-num(i.grossAmt):0;
+                hsnMap12[key].qty+=num(i.qty);
+                hsnMap12[key].val+=num(i.netAmt);
+                hsnMap12[key].taxable+=num(i.grossAmt);
+                hsnMap12[key].igst+=ig;
+                hsnMap12[key].cgst+=num(i.cgstAmt);
+                hsnMap12[key].sgst+=num(i.sgstAmt);
+              });
+            });
+            const sheet12=Object.values(hsnMap12).sort((a,b)=>b.taxable-a.taxable).map(h=>({
+              "HSN":h.hsn,
+              "Description":h.desc,
+              "UQC":h.uqc,
+              "Total Quantity":h.qty.toFixed(2),
+              "Total Value":fmt2(h.val),
+              "Rate":h.rate,
+              "Taxable Value":fmt2(h.taxable),
+              "Integrated Tax":fmt2(h.igst),
+              "Central Tax":fmt2(h.cgst),
+              "State/UT Tax":fmt2(h.sgst),
+              "Cess":"0.00"
+            }));
+
+            // ── 13: Documents Issued ──────────────────────────────────────────
+            const allMonthTIs = monthTIs;
+            const allMonthQTs = quotations.filter(q=>q.invDate?.startsWith(gstrMonth));
+            const monthLabel = `${MONTH_NAMES[gstrMonth.slice(5,7)]||""} ${gstrMonth.slice(0,4)}`;
+            const sheet13=[
+              {"Nature of Document":"Invoices for outward supply","Sr No From":allMonthTIs[0]?.invNo||"","Sr No To":allMonthTIs[allMonthTIs.length-1]?.invNo||"","Total Number":allMonthTIs.length,"Cancelled":0},
+              {"Nature of Document":"Advance Receipt","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Revised Invoice","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Debit Note","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Credit Note","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Receipt Voucher","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Payment Voucher","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+              {"Nature of Document":"Refund Voucher","Sr No From":"","Sr No To":"","Total Number":0,"Cancelled":0},
+            ];
+
+            const counts = {
+              b2b: sheet4A.length,
+              b2cL: sheet5.length,
+              b2cO: b2cOtherTIs.length,
+              hsn: sheet12.length,
+            };
+
+            const downloadGSTR1 = async () => {
+              try {
+                const XLSX=await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs");
+                const wb=XLSX.utils.book_new();
+                if(sheet4A.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet4A),"4A-B2B");
+                if(sheet5.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet5),"5-B2C Large");
+                if(sheet7.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet7),"7-B2C Others");
+                XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet12),"12-HSN");
+                XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheet13),"13-Docs Issued");
+                XLSX.writeFile(wb,`GSTR1_${seller?.gstin||"GSTIN"}_${gstrMonth}.xlsx`);
+              } catch(e){
+                alert("Error generating GSTR-1: "+e.message);
+              }
+            };
+
+            return (
+              <>
+                {/* Summary tiles */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    ["4A B2B", counts.b2b+" invoices", "#6366f1"],
+                    ["5 B2C Large", counts.b2cL+" invoices", "#f59e0b"],
+                    ["7 B2C Others", counts.b2cO+" invoices", "#22d3ee"],
+                    ["12 HSN Lines", counts.hsn+" rows", "#10b981"],
+                  ].map(([l,v,c])=>(
+                    <div key={l} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
+                      <p className="text-[10px] text-gray-400 font-medium">{l}</p>
+                      <p className="text-sm font-black" style={{color:c}}>{v}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sheet previews */}
+                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Sheets in Export</p>
+                  {[
+                    ["4A — B2B Regular Invoices", sheet4A.length, "All B2B tax invoices with GSTIN, value, CGST/SGST/IGST"],
+                    ["4B — B2B Reverse Charge", 0, "Not applicable (no RCM invoices)"],
+                    ["5 — B2C Large (>₹2.5L inter-state)", sheet5.length, "Inter-state B2C invoices above ₹2.5L"],
+                    ["6A — Exports", 0, "Export invoices (none detected)"],
+                    ["6B/6C — Credit/Debit Notes", 0, "Not applicable"],
+                    ["7 — B2C Others", sheet7.length, "All other B2C grouped by state & rate"],
+                    ["12 — HSN-wise Summary", sheet12.length, "HSN code, qty, taxable value, tax breakup"],
+                    ["13 — Documents Issued", sheet13.length, "Invoice serial number summary"],
+                  ].map(([name, count, desc])=>(
+                    <div key={name} className="flex items-start gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${count>0?"bg-indigo-100 text-indigo-700":"bg-gray-100 text-gray-400"}`}>{count}</span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-700">{name}</p>
+                        <p className="text-[10px] text-gray-400">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                  <strong>Note:</strong> This export uses the GSTN-compatible column format. Import each sheet into the corresponding table in the GSTR-1 offline tool or GST portal JSON uploader. Verify values before filing.
+                </div>
+
+                <button onClick={downloadGSTR1}
+                  className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all">
+                  ⬇ Download GSTR-1 — {gstrMonth} ({(sheet4A.length+sheet5.length+b2cOtherTIs.length)} invoices)
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
       {subTab==="invoices"&&(
         <div className="space-y-6">
           {/* Date range */}
