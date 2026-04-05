@@ -3,6 +3,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // Safe env var access (works in Vite, CRA, and plain browser)
 const getEnv = (key) => { try { return import.meta?.env?.[key] || ""; } catch(e) { return ""; } };
 
+const hashPassword = async (pass) => {
+  const enc = new TextEncoder().encode(pass);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+};
+
+const ALL_TABS = ["analytics","new","orders","clients","expenses","income","dashboard","inventory","products","assets","salary","download","settings","admin"];
+const DEFAULT_PERMS = Object.fromEntries(ALL_TABS.map(t=>[t,"none"]));
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
@@ -135,6 +144,34 @@ const SUPABASE_SQL = `
 -- alter table orders add column if not exists is_pickup integer default 0;
 -- alter table orders add column if not exists cancel_reason text default '';
 -- alter table orders add column if not exists channel text default 'Offline';
+-- ═══ User Management & Audit Log (run once in Supabase) ═══
+-- create table if not exists app_users (
+--   id text primary key,
+--   username text unique not null,
+--   password_hash text not null,
+--   permissions jsonb default '{}',
+--   is_active boolean default true,
+--   created_at timestamptz default now()
+-- );
+-- create table if not exists app_sessions (
+--   id text primary key,
+--   user_id text not null,
+--   username text not null,
+--   login_at timestamptz default now(),
+--   logout_at timestamptz,
+--   ip text default ''
+-- );
+-- create table if not exists app_audit_log (
+--   id text primary key,
+--   user_id text not null,
+--   username text not null,
+--   action text not null,
+--   tab text default '',
+--   record_id text default '',
+--   detail text default '',
+--   ts timestamptz default now()
+-- );
+-- ═══════════════════════════════════════════════════════════════
 -- alter table orders add column if not exists is_referred integer default 0;
 -- alter table orders add column if not exists referral_person text default '';
 -- alter table orders add column if not exists referral_amount numeric default 0;
@@ -4072,6 +4109,250 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   );
 }
 
+
+// ─── Admin Panel ──────────────────────────────────────────────────────────────
+function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
+  const [adminTab, setAdminTab] = useState("users");
+  const [users, setUsers] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [logFilter, setLogFilter] = useState("");
+  const [logPage, setLogPage] = useState(0);
+
+  // New user form
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [editingUser, setEditingUser] = useState(null);
+
+  const TAB_LABELS = {analytics:"Analytics",new:"New Order",orders:"Orders",clients:"Clients",expenses:"Expenses",income:"Income",dashboard:"Splitwise",inventory:"Inventory",products:"Products",assets:"Assets",salary:"Salary",download:"Download",settings:"Settings"};
+  const ALL = ["analytics","new","orders","clients","expenses","income","dashboard","inventory","products","assets","salary","download","settings"];
+
+  const headers = { "apikey":sbKey, "Authorization":`Bearer ${sbKey}`, "Content-Type":"application/json", "Prefer":"return=representation" };
+  const hMin = { "apikey":sbKey, "Authorization":`Bearer ${sbKey}`, "Content-Type":"application/json", "Prefer":"return=minimal" };
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    const r = await fetch(`${sbUrl}/rest/v1/user_roles?select=user_id,email,is_admin,permissions,is_active&order=email.asc`, {headers}).catch(()=>({ok:false}));
+    if (r.ok) { const d=await r.json(); setUsers((d||[]).map(u=>({...u,id:u.user_id,username:u.email?.split("@")[0]||u.email}))); }
+    setLoading(false);
+  };
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    const filter = logFilter ? `&username=ilike.*${encodeURIComponent(logFilter)}*` : "";
+    const r = await fetch(`${sbUrl}/rest/v1/app_audit_log?select=*&order=ts.desc&limit=200${filter}`, {headers}).catch(()=>({ok:false}));
+    if (r.ok) { const d=await r.json(); setLogs(d||[]); }
+    const rs = await fetch(`${sbUrl}/rest/v1/app_sessions?select=*&order=login_at.desc&limit=100`, {headers}).catch(()=>({ok:false}));
+    if (rs.ok) { const d=await rs.json(); setSessions(d||[]); }
+    setLoading(false);
+  };
+
+  useEffect(()=>{ if(sbUrl&&sbKey){ fetchUsers(); fetchLogs(); } },[sbUrl,sbKey]);
+
+  const saveUser = async () => {
+    if (!editingUser) return;
+    setLoading(true);
+    const body = {permissions:editingUser.permissions, is_active:editingUser.is_active, is_admin:!!editingUser.is_admin};
+    const r = await fetch(`${sbUrl}/rest/v1/user_roles?user_id=eq.${editingUser.id}`, {method:"PATCH",headers:hMin,body:JSON.stringify(body)});
+    toast(r.ok?"Permissions saved":"Error saving permissions", r.ok?"success":"error");
+    setEditingUser(null);
+    fetchUsers(); setLoading(false);
+  };
+
+  const toggleActive = async (u) => {
+    await fetch(`${sbUrl}/rest/v1/user_roles?user_id=eq.${u.id}`, {method:"PATCH",headers:hMin,body:JSON.stringify({is_active:!u.is_active})});
+    fetchUsers();
+  };
+
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Remove permissions for "${u.username}"?\nThis removes their app access but keeps their Supabase Auth account.`)) return;
+    await fetch(`${sbUrl}/rest/v1/user_roles?user_id=eq.${u.id}`, {method:"DELETE",headers:hMin});
+    toast("User access removed"); fetchUsers();
+  };
+
+  const setPermission = (tabId, level) => {
+    if (!editingUser) return;
+    setEditingUser(p=>({...p, permissions:{...p.permissions,[tabId]:level}}));
+  };
+
+  const PERM_LEVELS = ["none","read","write"];
+  const PERM_COLORS = {none:"bg-gray-100 text-gray-400", read:"bg-blue-100 text-blue-700", write:"bg-emerald-100 text-emerald-700"};
+
+  const filteredLogs = logFilter ? logs.filter(l=>l.username?.toLowerCase().includes(logFilter.toLowerCase())||l.action?.toLowerCase().includes(logFilter.toLowerCase())) : logs;
+  const PAGE_SIZE = 25;
+  const pagedLogs = filteredLogs.slice(logPage*PAGE_SIZE, (logPage+1)*PAGE_SIZE);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div><h2 className="font-bold text-lg text-slate-800">🛡️ Admin Panel</h2>
+          <p className="text-xs text-gray-400">Manage users, permissions and audit logs</p>
+        </div>
+        <button onClick={()=>{fetchUsers();fetchLogs();}} className="text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg">⟳ Refresh</button>
+      </div>
+
+      {/* Sub tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        {[["users","👤 Users & Permissions"],["logs","📋 Audit Logs"],["sessions","🔐 Sessions"]].map(([id,lb])=>(
+          <button key={id} onClick={()=>setAdminTab(id)}
+            className={"flex-1 py-2 rounded-lg text-xs font-semibold transition-all "+(adminTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
+            {lb}
+          </button>
+        ))}
+      </div>
+
+      {/* ── USERS ──────────────────────────────────────────────────────────── */}
+      {adminTab==="users"&&(
+        <div className="space-y-4">
+          {/* User list */}
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{users.length} Users</p>
+<span className="text-[10px] text-gray-400">Create users in Supabase Auth → they appear here after first login</span>
+            </div>
+            {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
+              <div className="divide-y divide-gray-50">
+                {users.map(u=>(
+                  <div key={u.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">{u.username[0]?.toUpperCase()}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-700">{u.username}</p>
+                      <p className="text-[10px] text-gray-400">{Object.values(u.permissions||{}).filter(v=>v!=="none").length} tabs accessible</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${u.is_active?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-500"}`}>{u.is_active?"Active":"Inactive"}</span>
+                    <button onClick={()=>{setEditingUser({...u});setNewUsername(u.username);setNewPassword("");}} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2 py-1 rounded-lg">Edit</button>
+                    <button onClick={()=>toggleActive(u)} className="text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 px-2 py-1 rounded-lg">{u.is_active?"Deactivate":"Activate"}</button>
+                    <button onClick={()=>deleteUser(u)} className="text-xs text-red-500 border border-red-200 hover:bg-red-50 px-2 py-1 rounded-lg">Delete</button>
+                  </div>
+                ))}
+                {users.length===0&&<p className="text-xs text-gray-400 text-center py-8">No users yet. Create one above.</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Edit/Create form */}
+          {editingUser!==null&&(
+            <div className="bg-white border border-indigo-200 rounded-2xl shadow-sm p-5 space-y-4">
+              <p className="text-sm font-bold text-slate-700">{editingUser.id?"Edit User: "+editingUser.username:"Create New User"}</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                <strong>Editing:</strong> {editingUser.email} — Passwords are managed in Supabase Auth dashboard. Here you only set tab permissions.
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={!!editingUser.is_admin} onChange={e=>setEditingUser(p=>({...p,is_admin:e.target.checked}))} className="rounded"/>
+                  <span className="text-xs font-semibold text-indigo-700">Admin (full access)</span>
+                </label>
+              </div>
+
+              {/* Permissions grid */}
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Tab Permissions</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {ALL.map(tabId=>{
+                    const cur = editingUser.permissions?.[tabId]||"none";
+                    return (
+                      <div key={tabId} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                        <span className="text-xs text-gray-600 font-medium flex-1">{TAB_LABELS[tabId]||tabId}</span>
+                        <div className="flex gap-1">
+                          {PERM_LEVELS.map(lvl=>(
+                            <button key={lvl} onClick={()=>setPermission(tabId,lvl)}
+                              className={"text-[10px] font-bold px-2 py-0.5 rounded-full transition-all "+(cur===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
+                              {lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"write"]))}))} className="text-xs text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-2 py-1 rounded-lg">Grant All</button>
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"read"]))}))} className="text-xs text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded-lg">Read All</button>
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"none"]))}))} className="text-xs text-red-500 border border-red-200 hover:bg-red-50 px-2 py-1 rounded-lg">Revoke All</button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button onClick={saveUser} disabled={loading} className="flex-1 py-2 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all">
+                  {loading?"Saving…":editingUser.id?"Save Changes":"Create User"}
+                </button>
+                <button onClick={()=>{setEditingUser(null);setNewUsername("");setNewPassword("");}} className="px-4 py-2 rounded-xl text-sm border border-gray-200 text-gray-500 hover:bg-gray-50">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── AUDIT LOGS ─────────────────────────────────────────────────────── */}
+      {adminTab==="logs"&&(
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input value={logFilter} onChange={e=>{setLogFilter(e.target.value);setLogPage(0);}} placeholder="Filter by user or action…"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <button onClick={fetchLogs} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-2 rounded-lg text-xs">⟳</button>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{filteredLogs.length} events</p>
+              <div className="flex gap-1">
+                <button disabled={logPage===0} onClick={()=>setLogPage(p=>p-1)} className="text-xs border border-gray-200 px-2 py-1 rounded-lg disabled:opacity-40">◀</button>
+                <span className="text-xs text-gray-400 px-2 py-1">{logPage+1}/{Math.max(1,Math.ceil(filteredLogs.length/PAGE_SIZE))}</span>
+                <button disabled={(logPage+1)*PAGE_SIZE>=filteredLogs.length} onClick={()=>setLogPage(p=>p+1)} className="text-xs border border-gray-200 px-2 py-1 rounded-lg disabled:opacity-40">▶</button>
+              </div>
+            </div>
+            {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
+              <div className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
+                {pagedLogs.map(l=>(
+                  <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[9px] shrink-0 mt-0.5">{l.username?.[0]?.toUpperCase()}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-bold text-slate-700">{l.username}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${l.action?.includes("delete")?"bg-red-100 text-red-600":l.action?.includes("upsert")||l.action?.includes("write")?"bg-amber-100 text-amber-700":"bg-gray-100 text-gray-500"}`}>{l.action}</span>
+                        {l.tab&&<span className="text-[9px] text-gray-400">{l.tab}</span>}
+                      </div>
+                      {l.detail&&<p className="text-[10px] text-gray-400 truncate mt-0.5">{l.detail}</p>}
+                    </div>
+                    <span className="text-[9px] text-gray-300 shrink-0">{l.ts?new Date(l.ts).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):""}</span>
+                  </div>
+                ))}
+                {pagedLogs.length===0&&<p className="text-xs text-gray-400 text-center py-8">No logs found.</p>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── SESSIONS ───────────────────────────────────────────────────────── */}
+      {adminTab==="sessions"&&(
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="p-3 border-b border-gray-100"><p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{sessions.length} Recent Sessions</p></div>
+          <div className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
+            {sessions.map(s=>(
+              <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
+                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[9px] shrink-0">{s.username?.[0]?.toUpperCase()}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-700">{s.username}</p>
+                  <p className="text-[10px] text-gray-400">Login: {s.login_at?new Date(s.login_at).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):""}</p>
+                </div>
+                <div className="text-right">
+                  {s.logout_at
+                    ?<span className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">Logged out {new Date(s.logout_at).toLocaleString("en-IN",{timeStyle:"short"})}</span>
+                    :<span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-bold">● Active</span>
+                  }
+                </div>
+              </div>
+            ))}
+            {sessions.length===0&&<p className="text-xs text-gray-400 text-center py-8">No sessions recorded.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, deleteExpense=()=>{}, toast=()=>{} }) {
   const [subTab, setSubTab] = useState("records");
   const [showEmpForm, setShowEmpForm] = useState(false);
@@ -6117,15 +6398,57 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 
   const handleLogin = async () => {
     if (!email || !password) { setError("Please enter email and password"); return; }
-    if (!sbUrl || !sbKey) { setError("Supabase credentials not configured. Check your environment variables."); return; }
+    if (!sbUrl || !sbKey) { setError("Supabase not configured. Check environment variables."); return; }
     setLoading(true); setError("");
     try {
+      // 1. Sign in via Supabase Auth
       const client = createSupabaseClient(sbUrl, sbKey);
       const data = await client.auth.signIn(email, password);
+      const token = data.access_token;
+      const authUser = data.user;
 
-      onLogin(data.access_token, data.user);
+      // 2. Fetch user_roles row for this Supabase user
+      const roleRes = await fetch(
+        `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
+        {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
+      );
+      let roleRow = null;
+      if (roleRes.ok) {
+        const rows = await roleRes.json();
+        roleRow = rows?.[0] || null;
+      }
+
+      // 3. If no role row exists yet → this is a fresh install, make them admin
+      if (!roleRow) {
+        const newRole = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
+        await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
+          headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+          body:JSON.stringify(newRole)});
+        roleRow = newRole;
+      }
+
+      if (!roleRow.is_active) { setError("Your account has been deactivated. Contact admin."); setLoading(false); return; }
+
+      const userData = {
+        id: authUser.id,
+        email: authUser.email,
+        username: authUser.email.split("@")[0],
+        isAdmin: !!roleRow.is_admin,
+        permissions: roleRow.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (roleRow.permissions || {})
+      };
+
+      // 4. Log session
+      const sessionId = crypto.randomUUID();
+      fetch(`${sbUrl}/rest/v1/app_sessions`,{method:"POST",
+        headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        body:JSON.stringify({id:sessionId,user_id:authUser.id,username:userData.username,login_at:new Date().toISOString()})
+      }).catch(()=>{});
+
+      sessionStorage.setItem("app_user", JSON.stringify(userData));
+      sessionStorage.setItem("app_session_id", sessionId);
+      onLogin(token, userData);
     } catch(e) {
-      setError(e.message);
+      setError(e.message||"Login failed");
     } finally {
       setLoading(false);
     }
@@ -6838,6 +7161,13 @@ function App() {
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
+  const [currentUser,setCurrentUser]=useState(()=>{ try{return JSON.parse(sessionStorage.getItem("app_user")||"null")}catch(e){return null} });
+  const perms = currentUser?.permissions || {};
+  const isAdmin = currentUser?.isAdmin===true;
+  const canRead = (tabId) => isAdmin || (perms[tabId]==="read"||perms[tabId]==="write");
+  const canWrite = (tabId) => isAdmin || perms[tabId]==="write";
+  const sbUrl2 = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
+  const sbKey2 = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
   const [orders,setOrders]=useState([]);
   const [quotations,setQuotations]=useState([]);
   const [proformas,setProformas]=useState([]);
@@ -6998,32 +7328,70 @@ function App() {
     setSyncStatus("saving");
     const batch = [...syncQueue.current];
     syncQueue.current = [];
+    const cu = currentUser;
+    const auditUrl = sbUrl2 && sbKey2 && cu ? `${sbUrl2}/rest/v1/app_audit_log` : null;
+    const auditHeaders = auditUrl ? {"apikey":sbKey2,"Authorization":`Bearer ${sbKey2}`,"Content-Type":"application/json","Prefer":"return=minimal"} : null;
+    const logAudit = (action, table, recId, detail) => {
+      if (!auditUrl) return;
+      const entry = {id:crypto.randomUUID(),user_id:cu.id||"admin",username:cu.username||"admin",action,tab:"",record_id:String(recId||"").slice(0,100),detail:String(detail||"").slice(0,200),ts:new Date().toISOString()};
+      fetch(auditUrl,{method:"POST",headers:auditHeaders,body:JSON.stringify(entry)}).catch(()=>{});
+    };
+    const errors = [];
     try {
       for (const job of batch) {
-        if (job.action==="upsert") await sb().from(job.table).upsert(job.row);  // row can be single obj or array
-        else if (job.action==="delete") await sb().from(job.table).delete(job.col, job.val);
-        else if (job.action==="deleteMany") await sb().from(job.table).deleteMany(job.col, [job.val]);
-        else if (job.action==="saveSettings") {
-          for (const [k,v] of Object.entries(job.data)) {
-            await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+        try {
+          if (job.action==="upsert") {
+            const res = await sb().from(job.table).upsert(job.row);
+            if (res?.error) throw res.error;
+            if (!["app_audit_log","app_sessions"].includes(job.table)) {
+              const recId = job.row?.order_no||job.row?.id||job.row?.inv_no||job.row?.key||"";
+              logAudit("upsert", job.table, recId, `${job.table}: ${recId}`);
+            }
+          } else if (job.action==="delete") {
+            const res = await sb().from(job.table).delete(job.col, job.val);
+            if (res?.error) throw res.error;
+            logAudit("delete", job.table, job.val, `${job.table}: ${job.val}`);
+          } else if (job.action==="deleteMany") {
+            const res = await sb().from(job.table).deleteMany(job.col, [job.val]);
+            if (res?.error) throw res.error;
+          } else if (job.action==="saveSettings") {
+            for (const [k,v] of Object.entries(job.data)) {
+              const res = await sb().from("settings").upsert({key:k, value: typeof v==="object"?JSON.stringify(v):String(v)});
+              if (res?.error) throw res.error;
+            }
+            logAudit("saveSettings","settings","","settings updated");
           }
+        } catch(e) {
+          const msg = e?.message||e?.details||String(e);
+          const hint = msg.toLowerCase().includes("column")?" (run DB migration)"
+            : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")?" (check Supabase RLS)":"";
+          errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
+          console.error("[DB Error]",job.table,job.action,e);
         }
       }
-      setSyncStatus("saved");
-    } catch(e) {
-      setSyncStatus("error");
-      toast("Failed to save changes — check your connection", "error");
+      if (errors.length===0) setSyncStatus("saved");
+      else { setSyncStatus("error"); toast(`DB save failed: ${errors[0]}`,"error"); console.error("[DB Errors]",errors); }
     } finally {
       syncing.current = false;
       setTimeout(()=>setSyncStatus(""),3000);
       if (syncQueue.current.length>0) flushQueue();
     }
-  },[sbUrl, sbKey]);
+  },[sbUrl, sbKey, currentUser, sbUrl2, sbKey2]);
 
   const enqueue = useCallback((jobs)=>{
-    syncQueue.current.push(...(Array.isArray(jobs)?jobs:[jobs]));
+    const list = Array.isArray(jobs)?jobs:[jobs];
+    // Security: non-admin users cannot enqueue write ops for tabs they don\'t have write access to
+    // We check write permission at the data level using canWrite — permissions come from DB, not client storage
+    if (!isAdmin) {
+      for (const job of list) {
+        if (job.action==="saveSettings" && !canWrite("settings")) {
+          toast("Permission denied: Settings","error"); return;
+        }
+      }
+    }
+    syncQueue.current.push(...list);
     setTimeout(flushQueue, 600);
-  },[flushQueue]);
+  },[flushQueue, isAdmin, canWrite, toast]);
 
   // ── Items sync helper: delete old + insert new ──────────────────────────
   const syncItems = (docType, docId, items) => {
@@ -7170,8 +7538,10 @@ function App() {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
     setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
-    setAccessToken(""); setUser(null);
-    sessionStorage.removeItem("sb_token");
+    const sid = sessionStorage.getItem("app_session_id");
+    if (sid && sbUrl2 && sbKey2) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${sbKey2}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
+    setAccessToken(""); setUser(null); setCurrentUser(null);
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
@@ -7221,8 +7591,9 @@ function App() {
     setAccessToken(token);
     accessTokenRef.current = token;
     setUser(userData);
+    setCurrentUser(userData);
     sessionStorage.setItem("sb_token", token);
-    window.location.reload();
+    // Don't reload — state already set
   };
 
   // ── Supabase credentials handlers ───────────────────────────────────────
@@ -7323,6 +7694,7 @@ function App() {
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
+          {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
       </div>
