@@ -6412,7 +6412,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       try {
         const roleRes = await fetch(
           `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
-          {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
+          {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}
         );
         if (roleRes.ok) {
           const rows = await roleRes.json();
@@ -6421,7 +6421,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
           if (!roleRow) {
             const newRole = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
             await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
-              headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+              headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json","Prefer":"return=minimal"},
               body:JSON.stringify(newRole)}).catch(()=>{});
             roleRow = newRole;
           }
@@ -6446,7 +6446,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       // 4. Log session (fire-and-forget — don't fail login if table missing)
       const sessionId = crypto.randomUUID();
       fetch(`${sbUrl}/rest/v1/app_sessions`,{method:"POST",
-        headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json","Prefer":"return=minimal"},
         body:JSON.stringify({id:sessionId,user_id:authUser.id,username:userData.username,login_at:new Date().toISOString()})
       }).catch(()=>{});
 
