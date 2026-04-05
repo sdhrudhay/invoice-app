@@ -6407,27 +6407,33 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       const token = data.access_token;
       const authUser = data.user;
 
-      // 2. Fetch user_roles row for this Supabase user
-      const roleRes = await fetch(
-        `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
-        {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
-      );
+      // 2. Fetch user_roles — graceful fallback if table doesn't exist yet
       let roleRow = null;
-      if (roleRes.ok) {
-        const rows = await roleRes.json();
-        roleRow = rows?.[0] || null;
-      }
+      try {
+        const roleRes = await fetch(
+          `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
+          {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
+        );
+        if (roleRes.ok) {
+          const rows = await roleRes.json();
+          roleRow = rows?.[0] || null;
+          // If no row yet, create one (first login = admin)
+          if (!roleRow) {
+            const newRole = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
+            await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
+              headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+              body:JSON.stringify(newRole)}).catch(()=>{});
+            roleRow = newRole;
+          }
+        }
+      } catch(e) { console.warn("user_roles table not found — run SQL migrations. Defaulting to admin mode."); }
 
-      // 3. If no role row exists yet → this is a fresh install, make them admin
+      // Fall back to full admin if table not set up yet
       if (!roleRow) {
-        const newRole = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
-        await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
-          headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
-          body:JSON.stringify(newRole)});
-        roleRow = newRole;
+        roleRow = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
       }
 
-      if (!roleRow.is_active) { setError("Your account has been deactivated. Contact admin."); setLoading(false); return; }
+      if (roleRow.is_active===false) { setError("Your account has been deactivated. Contact admin."); setLoading(false); return; }
 
       const userData = {
         id: authUser.id,
@@ -6437,7 +6443,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
         permissions: roleRow.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (roleRow.permissions || {})
       };
 
-      // 4. Log session
+      // 4. Log session (fire-and-forget — don't fail login if table missing)
       const sessionId = crypto.randomUUID();
       fetch(`${sbUrl}/rest/v1/app_sessions`,{method:"POST",
         headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
@@ -7268,7 +7274,6 @@ function App() {
         return r.json();
       }
     }), auth: baseClient.auth };
-    // brace balance fixed
     setLoading(true);
     Promise.all([
       client.from("orders").select(),
@@ -7318,8 +7323,8 @@ function App() {
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
       if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, unitPrice:Number(r.unit_price)||0, productType:r.product_type||"3d_printed", cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
-    }).catch(()=>{}).finally(()=>setLoading(false));
-  },[]);
+    }).catch((e)=>{ console.error("Data load error:", e); }).finally(()=>setLoading(false));
+  },[accessToken]);
 
   // ── Queue-based sync ────────────────────────────────────────────────────
   const flushQueue = useCallback(async ()=>{
