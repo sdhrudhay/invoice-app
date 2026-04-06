@@ -11,6 +11,14 @@ const hashPassword = async (pass) => {
 
 const ALL_TABS = ["analytics","new","orders","clients","expenses","income","dashboard","inventory","products","assets","salary","download","settings","admin"];
 const DEFAULT_PERMS = Object.fromEntries(ALL_TABS.map(t=>[t,"none"]));
+const TAB_SUBTABS = {
+  orders: ["details","quotation","invoices","payments","filament"],
+  expenses: ["expenses","categories"],
+  download: ["invoices","reports","gstr1"],
+  analytics: ["overview","trends","orders","finance","filament","customers","referrals"],
+  income: ["payments","invoiced"],
+};
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const today = () => new Date().toISOString().slice(0, 10);
@@ -4251,18 +4259,46 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Tab Permissions</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {ALL.map(tabId=>{
-                    const cur = editingUser.permissions?.[tabId]||"none";
+                    const pVal = editingUser.permissions?.[tabId];
+                    const cur = typeof pVal==="string" ? pVal : (pVal?._tab||"none");
+                    const subTabs = TAB_SUBTABS[tabId]||[];
                     return (
-                      <div key={tabId} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-                        <span className="text-xs text-gray-600 font-medium flex-1">{TAB_LABELS[tabId]||tabId}</span>
-                        <div className="flex gap-1">
-                          {PERM_LEVELS.map(lvl=>(
-                            <button key={lvl} onClick={()=>setPermission(tabId,lvl)}
-                              className={"text-[10px] font-bold px-2 py-0.5 rounded-full transition-all "+(cur===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
-                              {lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
-                            </button>
-                          ))}
+                      <div key={tabId} className="bg-gray-50 rounded-xl px-3 py-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-700 font-bold flex-1">{TAB_LABELS[tabId]||tabId}</span>
+                          <div className="flex gap-1">
+                            {PERM_LEVELS.map(lvl=>(
+                              <button key={lvl} onClick={()=>setPermission(tabId,lvl)}
+                                className={"text-[10px] font-bold px-2 py-0.5 rounded-full transition-all "+(cur===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
+                                {lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
+                              </button>
+                            ))}
+                          </div>
                         </div>
+                        {subTabs.length>0&&cur!=="none"&&(
+                          <div className="ml-2 space-y-1 border-l-2 border-indigo-100 pl-2">
+                            {subTabs.map(st=>{
+                              const stVal = typeof pVal==="object"&&pVal!==null ? (pVal[st]||"inherit") : "inherit";
+                              return (
+                                <div key={st} className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-500 flex-1">{st}</span>
+                                  <div className="flex gap-0.5">
+                                    {["inherit","none","read","write"].map(lvl=>(
+                                      <button key={lvl} onClick={()=>{
+                                        const base = typeof pVal==="string"?{_tab:pVal}:(pVal&&typeof pVal==="object"?{...pVal}:{_tab:cur});
+                                        if(lvl==="inherit"){delete base[st];}else{base[st]=lvl;}
+                                        setEditingUser(p=>({...p,permissions:{...p.permissions,[tabId]:Object.keys(base).length===1&&base._tab?base._tab:base}}));
+                                      }}
+                                        className={"text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-all "+(stVal===lvl?(lvl==="none"?"bg-red-100 text-red-500":lvl==="read"?"bg-blue-100 text-blue-700":lvl==="write"?"bg-emerald-100 text-emerald-700":"bg-indigo-100 text-indigo-600"):"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
+                                        {lvl==="inherit"?"↑":lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -6420,16 +6456,26 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
           roleRow = rows?.[0] || null;
           // If no row yet, create one (first login = admin)
           if (!roleRow) {
-            const newRole = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
+            // Check if this is the very first user ever (user_roles table empty)
+            const countRes = await fetch(`${sbUrl}/rest/v1/user_roles?select=user_id&limit=1`,
+              {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}).catch(()=>({ok:false}));
+            const existingUsers = countRes.ok ? await countRes.json().catch(()=>[]) : [];
+            const isFirstUser = existingUsers.length === 0;
+            const newRole = {
+              user_id:authUser.id, email:authUser.email,
+              is_admin: isFirstUser,
+              permissions: isFirstUser ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : Object.fromEntries(ALL_TABS.map(t=>[t,"none"])),
+              is_active: true
+            };
             await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
               headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json","Prefer":"return=minimal"},
               body:JSON.stringify(newRole)}).catch(()=>{});
             roleRow = newRole;
           }
         }
-      } catch(e) { console.warn("user_roles table not found — run SQL migrations. Defaulting to admin mode."); }
+      } catch(e) { console.warn("user_roles table missing — run SQL migrations"); }
 
-      // Fall back to full admin if table not set up yet
+      // Fallback only if table completely missing (500 error)
       if (!roleRow) {
         roleRow = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
       }
@@ -7171,8 +7217,26 @@ function App() {
   const [currentUser,setCurrentUser]=useState(()=>{ try{return JSON.parse(sessionStorage.getItem("app_user")||"null")}catch(e){return null} });
   const perms = currentUser?.permissions || {};
   const isAdmin = currentUser?.isAdmin===true;
-  const canRead = (tabId) => isAdmin || (perms[tabId]==="read"||perms[tabId]==="write");
-  const canWrite = (tabId) => isAdmin || perms[tabId]==="write";
+  const canRead = (tabId, subTabId=null) => {
+    if (isAdmin) return true;
+    const p = perms[tabId];
+    if (!p || p==="none") return false;
+    if (typeof p === "string") return p==="read"||p==="write";
+    // Object permission: check sub-tab if provided
+    const base = p._tab==="read"||p._tab==="write";
+    if (!subTabId) return base;
+    const sub = p[subTabId];
+    return sub==="read"||sub==="write";
+  };
+  const canWrite = (tabId, subTabId=null) => {
+    if (isAdmin) return true;
+    const p = perms[tabId];
+    if (!p || p==="none") return false;
+    if (typeof p === "string") return p==="write";
+    const base = p._tab==="write";
+    if (!subTabId) return base;
+    return p[subTabId]==="write";
+  };
   const sbUrl2 = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
   const sbKey2 = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
   const [orders,setOrders]=useState([]);
@@ -7254,6 +7318,25 @@ function App() {
     });
     return client;
   };
+
+
+  // ── Mark session logged out when tab/browser closes ──────────────────────
+  useEffect(()=>{
+    const onUnload = () => {
+      const sid = sessionStorage.getItem("app_session_id");
+      const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
+      const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
+      if (!sid||!url||!key) return;
+      // Use sendBeacon for reliable delivery on page unload
+      const body = JSON.stringify({logout_at: new Date().toISOString()});
+      navigator.sendBeacon(
+        `${url}/rest/v1/app_sessions?id=eq.${sid}`,
+        new Blob([body], {type:"application/json"})
+      );
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  },[]);
 
   // ── Load all data on mount ───────────────────────────────────────────────
   useEffect(()=>{
@@ -7689,15 +7772,15 @@ function App() {
       <div className="px-4 md:px-6 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
-          {tab==="new"&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
-          {tab==="orders"&&<OrdersList orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
-          {tab==="clients"&&<ClientMaster clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
-          {tab==="expenses"&&<ExpenseTracker expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
-          {tab==="assets"&&<AssetManager assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
-          {tab==="products"&&<ProductManager products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
-          {tab==="inventory"&&<InventoryManager inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
+          {tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
+          {tab==="orders"&&<OrdersList readOnly={!canWrite("orders")} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
+          {tab==="clients"&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
+          {tab==="expenses"&&<ExpenseTracker readOnly={!canWrite("expenses")} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
+          {tab==="assets"&&<AssetManager readOnly={!canWrite("assets")} assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
+          {tab==="products"&&<ProductManager readOnly={!canWrite("products")} products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
+          {tab==="inventory"&&<InventoryManager readOnly={!canWrite("inventory")} inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
-          {tab==="salary"&&<SalaryManager employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
+          {tab==="salary"&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
