@@ -4112,6 +4112,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
+  if (!currentUser?.isAdmin) return <div className="text-center py-20 text-red-500 font-bold">Access denied.</div>;
   const [adminTab, setAdminTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -4213,7 +4214,7 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
             </div>
             {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
               <div className="divide-y divide-gray-50">
-                {users.map(u=>(
+                {users.filter(u=>!u.is_admin).map(u=>(
                   <div key={u.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
                     <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">{u.username[0]?.toUpperCase()}</div>
                     <div className="flex-1 min-w-0">
