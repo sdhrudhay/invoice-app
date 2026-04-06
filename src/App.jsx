@@ -7619,6 +7619,7 @@ function App() {
     {id:"salary",  label:"Salary",     icon:"👷",  group:"ops"},
     {id:"download",label:"Download",   icon:"⬇️", group:"ops"},
     {id:"settings",label:"Settings",   icon:"⚙️", group:"meta"},
+    {id:"admin",   label:"Admin",      icon:"🛡️", group:"meta"},
   ];
 
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
@@ -7639,7 +7640,7 @@ function App() {
         </div>
         {/* Tabs */}
         <div className="flex-1 flex flex-col py-3 gap-0.5 overflow-y-auto px-2">
-          {TABS.filter(t=>t.id!=="settings").map(t=>(
+          {TABS.filter(t=>t.id!=="settings"&&(t.id==="admin"?isAdmin:isAdmin||canRead(t.id))).map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
               className={`relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab===t.id?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
               {tab===t.id&&<span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-500 rounded-r"/>}
@@ -7673,7 +7674,7 @@ function App() {
 
       {/* ── Bottom tab bar (mobile) ── */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-20 flex overflow-x-auto">
-        {TABS.map(t=>(
+        {TABS.filter(t=>(t.id==="admin"?isAdmin:isAdmin||canRead(t.id))).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             className={`flex-1 min-w-[48px] flex flex-col items-center justify-center py-2 gap-0.5 transition-all ${tab===t.id?"text-indigo-600":"text-gray-400"}`}>
             <span className="text-base leading-none">{t.icon}</span>
