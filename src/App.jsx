@@ -5139,8 +5139,8 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
-                {!readOnly&&<button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
-                {!readOnly&&<button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}}
+                {!readOnly&&<button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>}
+                {!readOnly&&<button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
               </div>
             </div>
           </div>
