@@ -1730,8 +1730,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     if(window.confirm(`Delete order ${order.orderNo} for ${order.customerName}?\n\nThis will permanently delete the order and all its quotations, invoices and payments. This cannot be undone.`))
                       onDeleteOrder(order.orderNo);
                   }}
-                  disabled={readOnly}
-                  className={`w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 transition-all duration-200 flex items-center justify-center gap-2 ${readOnly?"border-gray-200 text-gray-300 cursor-not-allowed":"border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"}`}>
+                  disabled={locked}
+                  className={`w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 transition-all duration-200 flex items-center justify-center gap-2 ${locked?"border-gray-200 text-gray-300 cursor-not-allowed":"border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"}`}>
                   <span>🗑</span> Delete This Order
                 </button>
               </div>
@@ -7776,11 +7776,11 @@ function App() {
               {syncStatus==="error"&&<span className="text-[10px] text-red-400 font-semibold">Failed to save</span>}
             </div>
           )}
-          <button onClick={()=>setTab("settings")}
+          {(isAdmin||canRead("settings"))&&<button onClick={()=>setTab("settings")}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab==="settings"?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
             <span className="text-sm leading-none shrink-0">⚙️</span>
             <span>Settings</span>
-          </button>
+          </button>}
           <button onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
             <span className="text-sm leading-none shrink-0">🚪</span>
@@ -7825,7 +7825,7 @@ function App() {
           {tab==="salary"&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
-          {tab==="settings"&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
+          {tab==="settings"&&canRead("settings")&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
           {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
