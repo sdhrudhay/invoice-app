@@ -2608,8 +2608,8 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={()=>handleEdit(p)} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg">Edit</button>
-                <button onClick={()=>handleDelete(p.id)} className="text-xs text-red-400 border border-red-100 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
+                {!readOnly&&<button onClick={()=>handleEdit(p)} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg">Edit</button>}
+                {!readOnly&&<button onClick={()=>handleDelete(p.id)} className="text-xs text-red-400 border border-red-100 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>}
               </div>
             </div>
           );
@@ -3004,7 +3004,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
               </div>
               <div className="flex gap-2 shrink-0">
                 {!readOnly&&<button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>}
-                <button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                {!readOnly&&<button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
               </div>
             </div>
           </div>
@@ -6030,8 +6030,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                   {w.notes&&<span className="text-xs text-gray-400 italic">{w.notes}</span>}
                 </div>
               </div>
-              <button onClick={()=>setWastageLog(prev=>prev.filter(x=>x.id!==w.id))}
-                className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>
+              {!readOnly&&<button onClick={()=>setWastageLog(prev=>prev.filter(x=>x.id!==w.id))}
+                className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>}
             </div>
           ))}
         </div>
@@ -6042,7 +6042,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function SettlementForm({ fromId, fromName, net, recipients, allRecipients, seller, summaries, onSettle }) {
+function SettlementForm({ fromId, fromName, net, recipients, allRecipients, seller, summaries, onSettle, readOnly=false }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today());
@@ -6342,6 +6342,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                     </span>
                   </div>
                   <SettlementForm
+                    readOnly={readOnly}
                     fromId={s.id}
                     fromName={s.name}
                     net={s.net}
