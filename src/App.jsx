@@ -1730,8 +1730,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     if(window.confirm(`Delete order ${order.orderNo} for ${order.customerName}?\n\nThis will permanently delete the order and all its quotations, invoices and payments. This cannot be undone.`))
                       onDeleteOrder(order.orderNo);
                   }}
-                  className="w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-all duration-200 flex items-center justify-center gap-2"
-                >
+                  disabled={readOnly}
+                  className={`w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 transition-all duration-200 flex items-center justify-center gap-2 ${readOnly?"border-gray-200 text-gray-300 cursor-not-allowed":"border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"}`}>
                   <span>🗑</span> Delete This Order
                 </button>
               </div>
@@ -2064,7 +2064,7 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{} }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{}, readOnly=false }) {
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -2434,7 +2434,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 // ─── Product Manager ──────────────────────────────────────────────────────────
-function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[] }) {
+function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[], readOnly=false }) {
   const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", unitPrice:"", productType:"3d_printed", cgstRate:9, sgstRate:9, notes:"" };
   const [form, setForm] = useState({...EMPTY_P});
   const [editId, setEditId] = useState(null);
@@ -2564,7 +2564,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">{editId?"Update":"Add Product"}</button>
+          {!readOnly&&<button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">{editId?"Update":"Add Product"}</button>}
           {editId&&<button onClick={()=>{setForm({...EMPTY_P});setEditId(null);}} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
         </div>
       </div>
@@ -2833,7 +2833,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
 }
 
 // ─── Client Master ────────────────────────────────────────────────────────────
-function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }) {
+function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, readOnly=false }) {
   const [form, setForm] = useState({...EMPTY_CLIENT});
   const [clientTab, setClientTab] = useState("B2B");
   const [editId, setEditId] = useState(null);
@@ -2892,7 +2892,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{} }
               "Place of Supply": c.placeOfSupply||"",
             })), `Clients_${clientTab}_Export`);
           }}/>
-          <button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>
+          {!readOnly&&<button onClick={handleNew} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">+ Add Client</button>}
         </div>
       </div>
 
@@ -4127,6 +4127,7 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [logFilter, setLogFilter] = useState("");
+  const [sessionFilter, setSessionFilter] = useState("");
   const [logPage, setLogPage] = useState(0);
 
   // New user form
@@ -4182,7 +4183,26 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
 
   const setPermission = (tabId, level) => {
     if (!editingUser) return;
-    setEditingUser(p=>({...p, permissions:{...p.permissions,[tabId]:level}}));
+    const subTabs = TAB_SUBTABS[tabId]||[];
+    if (subTabs.length>0) {
+      // Setting parent perm = set all sub-tabs to same level
+      const subPerms = Object.fromEntries(subTabs.map(st=>[st,level]));
+      setEditingUser(p=>({...p, permissions:{...p.permissions,[tabId]:level==="none"?"none":subPerms}}));
+    } else {
+      setEditingUser(p=>({...p, permissions:{...p.permissions,[tabId]:level}}));
+    }
+  };
+  const setSubPermission = (tabId, subTabId, level) => {
+    if (!editingUser) return;
+    setEditingUser(p=>{
+      const cur = p.permissions?.[tabId];
+      const base = typeof cur==="object"&&cur!==null ? {...cur} : {};
+      base[subTabId] = level;
+      // If all none, set parent to none string
+      const subTabs = TAB_SUBTABS[tabId]||[];
+      const allNone = subTabs.every(st=>(base[st]||"none")==="none");
+      return {...p, permissions:{...p.permissions,[tabId]:allNone?"none":base}};
+    });
   };
 
   const PERM_LEVELS = ["none","read","write"];
@@ -4258,39 +4278,40 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Tab Permissions</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {ALL.map(tabId=>{
+                  {ALL.filter(t=>t!=="admin").map(tabId=>{
                     const pVal = editingUser.permissions?.[tabId];
-                    const cur = typeof pVal==="string" ? pVal : (pVal?._tab||"none");
                     const subTabs = TAB_SUBTABS[tabId]||[];
+                    // For display: if subTabs exist, derive parent state from sub-tab values
+                    const getSubPerm = (st) => typeof pVal==="object"&&pVal!==null ? (pVal[st]||"none") : (typeof pVal==="string"?pVal:"none");
+                    const parentCur = subTabs.length===0
+                      ? (typeof pVal==="string"?pVal:"none")
+                      : (subTabs.every(st=>getSubPerm(st)==="none")?"none":subTabs.every(st=>getSubPerm(st)==="write")?"write":"read");
                     return (
                       <div key={tabId} className="bg-gray-50 rounded-xl px-3 py-2 space-y-1.5">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-gray-700 font-bold flex-1">{TAB_LABELS[tabId]||tabId}</span>
-                          <div className="flex gap-1">
+                          {subTabs.length===0&&<div className="flex gap-1">
                             {PERM_LEVELS.map(lvl=>(
                               <button key={lvl} onClick={()=>setPermission(tabId,lvl)}
-                                className={"text-[10px] font-bold px-2 py-0.5 rounded-full transition-all "+(cur===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
+                                className={"text-[10px] font-bold px-2 py-0.5 rounded-full transition-all "+(parentCur===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
                                 {lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
                               </button>
                             ))}
-                          </div>
+                          </div>}
+                          {subTabs.length>0&&<span className={"text-[9px] px-1.5 py-0.5 rounded-full font-bold "+(parentCur==="none"?"bg-red-100 text-red-400":parentCur==="write"?"bg-emerald-100 text-emerald-700":"bg-blue-100 text-blue-700")}>{parentCur==="none"?"No access":parentCur==="write"?"Full access":"Partial"}</span>}
                         </div>
-                        {subTabs.length>0&&cur!=="none"&&(
+                        {subTabs.length>0&&(
                           <div className="ml-2 space-y-1 border-l-2 border-indigo-100 pl-2">
                             {subTabs.map(st=>{
-                              const stVal = typeof pVal==="object"&&pVal!==null ? (pVal[st]||"inherit") : "inherit";
+                              const stVal = getSubPerm(st);
                               return (
                                 <div key={st} className="flex items-center gap-2">
-                                  <span className="text-[10px] text-gray-500 flex-1">{st}</span>
+                                  <span className="text-[10px] text-gray-600 flex-1 capitalize">{st}</span>
                                   <div className="flex gap-0.5">
-                                    {["inherit","none","read","write"].map(lvl=>(
-                                      <button key={lvl} onClick={()=>{
-                                        const base = typeof pVal==="string"?{_tab:pVal}:(pVal&&typeof pVal==="object"?{...pVal}:{_tab:cur});
-                                        if(lvl==="inherit"){delete base[st];}else{base[st]=lvl;}
-                                        setEditingUser(p=>({...p,permissions:{...p.permissions,[tabId]:Object.keys(base).length===1&&base._tab?base._tab:base}}));
-                                      }}
-                                        className={"text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-all "+(stVal===lvl?(lvl==="none"?"bg-red-100 text-red-500":lvl==="read"?"bg-blue-100 text-blue-700":lvl==="write"?"bg-emerald-100 text-emerald-700":"bg-indigo-100 text-indigo-600"):"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
-                                        {lvl==="inherit"?"↑":lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
+                                    {PERM_LEVELS.map(lvl=>(
+                                      <button key={lvl} onClick={()=>setSubPermission(tabId,st,lvl)}
+                                        className={"text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-all "+(stVal===lvl?PERM_COLORS[lvl]:"bg-white border border-gray-200 text-gray-400 hover:border-gray-300")}>
+                                        {lvl==="none"?"✗":lvl==="read"?"R":"R+W"}
                                       </button>
                                     ))}
                                   </div>
@@ -4304,9 +4325,9 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
                   })}
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"write"]))}))} className="text-xs text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-2 py-1 rounded-lg">Grant All</button>
-                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"read"]))}))} className="text-xs text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded-lg">Read All</button>
-                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.map(t=>[t,"none"]))}))} className="text-xs text-red-500 border border-red-200 hover:bg-red-50 px-2 py-1 rounded-lg">Revoke All</button>
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.filter(t=>t!=="admin").map(t=>{const st=TAB_SUBTABS[t]||[];return [t,st.length?Object.fromEntries(st.map(s=>[s,"write"])):"write"];}))}))} className="text-xs text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-2 py-1 rounded-lg">Grant All</button>
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.filter(t=>t!=="admin").map(t=>{const st=TAB_SUBTABS[t]||[];return [t,st.length?Object.fromEntries(st.map(s=>[s,"read"])):"read"];}))}))} className="text-xs text-blue-600 border border-blue-200 hover:bg-blue-50 px-2 py-1 rounded-lg">Read All</button>
+                  <button onClick={()=>setEditingUser(p=>({...p,permissions:Object.fromEntries(ALL.filter(t=>t!=="admin").map(t=>[t,"none"]))}))} className="text-xs text-red-500 border border-red-200 hover:bg-red-50 px-2 py-1 rounded-lg">Revoke All</button>
                 </div>
               </div>
 
@@ -4364,9 +4385,13 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
       {/* ── SESSIONS ───────────────────────────────────────────────────────── */}
       {adminTab==="sessions"&&(
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-3 border-b border-gray-100"><p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{sessions.length} Recent Sessions</p></div>
+          <div className="p-3 border-b border-gray-100 flex items-center gap-2">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex-1">{sessions.length} Recent Sessions</p>
+            <input value={sessionFilter} onChange={e=>setSessionFilter(e.target.value)} placeholder="Filter by user…"
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 w-36"/>
+          </div>
           <div className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
-            {sessions.map(s=>(
+            {sessions.filter(s=>!sessionFilter||s.username?.toLowerCase().includes(sessionFilter.toLowerCase())).map(s=>(
               <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
                 <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[9px] shrink-0">{s.username?.[0]?.toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
@@ -4390,7 +4415,7 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
 }
 
 
-function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, deleteExpense=()=>{}, toast=()=>{} }) {
+function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, upsertEmployee=()=>{}, deleteEmployee=()=>{}, deleteExpense=()=>{}, toast=()=>{}, readOnly=false }) {
   const [subTab, setSubTab] = useState("records");
   const [showEmpForm, setShowEmpForm] = useState(false);
   const [empForm, setEmpForm] = useState({name:"", role:""});
@@ -4470,8 +4495,8 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{employees.length} employee{employees.length!==1?"s":""}</p>
-            <button onClick={()=>{setShowEmpForm(true);setEditEmpId(null);setEmpForm({name:"",role:""}); }}
-              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Add</button>
+            {!readOnly&&<button onClick={()=>{setShowEmpForm(true);setEditEmpId(null);setEmpForm({name:"",role:""}); }}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Add</button>}
           </div>
           {showEmpForm&&(
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
@@ -4495,10 +4520,10 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
                   {emp.role&&<p className="text-xs text-gray-400">{emp.role}</p>}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={()=>{setEditEmpId(emp.id);setEmpForm({name:emp.name,role:emp.role||""});setShowEmpForm(true);}}
-                    className="text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg">Edit</button>
-                  <button onClick={()=>handleDeleteEmployee(emp)}
-                    className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg">Remove</button>
+                  {!readOnly&&<button onClick={()=>{setEditEmpId(emp.id);setEmpForm({name:emp.name,role:emp.role||""});setShowEmpForm(true);}}
+                    className="text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-1.5 rounded-lg">Edit</button>}
+                  {!readOnly&&<button onClick={()=>handleDeleteEmployee(emp)}
+                    className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg">Remove</button>}
                 </div>
               </div>
             ))}
@@ -4514,8 +4539,8 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{salaryExpenses.length} record{salaryExpenses.length!==1?"s":""}</p>
               {salaryExpenses.length>0&&<p className="text-xs text-gray-400 mt-0.5">Total paid: <span className="font-semibold text-slate-700">₹{salaryExpenses.reduce((s,e)=>s+Number(e.amount||0),0).toLocaleString("en-IN")}</span></p>}
             </div>
-            <button onClick={()=>setShowSalForm(v=>!v)}
-              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Record Payment</button>
+            {!readOnly&&<button onClick={()=>setShowSalForm(v=>!v)}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Record Payment</button>}
           </div>
 
           {showSalForm&&(
@@ -4563,7 +4588,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
   );
 }
 
-function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{} }) {
+function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{}, readOnly=false }) {
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -4630,8 +4655,8 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
               onKeyDown={e=>{if(e.key==="Enter"&&newCat.trim()){saveCats([...cats,newCat.trim()]);setNewCat("");}}}
               placeholder="New category name…"
               className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-            <button onClick={()=>{if(newCat.trim()){saveCats([...cats,newCat.trim()]);setNewCat("");}}}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Add</button>
+            {!readOnly&&<button onClick={()=>{if(newCat.trim()){saveCats([...cats,newCat.trim()]);setNewCat("");}}}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Add</button>}
           </div>
           <div className="space-y-1">
             {cats.map(c=>(
@@ -4646,7 +4671,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
 
       {expTab==="expenses"&&<>
       {/* Form */}
-      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+      {!readOnly&&<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
         {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
         <div className="grid grid-cols-2 gap-3">
@@ -4666,7 +4691,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
           <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">{editId?"Save Changes":"Add Expense"}</button>
           {editId&&<button onClick={handleCancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
         </div>
-      </div>
+      </div>}
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 gap-3">
@@ -4732,7 +4757,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
                 {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
               </div>
               <div className="flex gap-2 shrink-0">
-                <button onClick={()=>handleEdit(e)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg">✏️</button>
+                {!readOnly&&<button onClick={()=>handleEdit(e)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg">✏️</button>}
                 <button onClick={()=>handleDelete(e.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
               </div>
             </div>
@@ -4851,7 +4876,7 @@ async function uploadToCloudinary(file, cloudName, uploadPreset) {
   return { url: data.secure_url, publicId: data.public_id };
 }
 
-function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, cdnCloud="", cdnPreset="", toast=()=>{} }) {
+function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, cdnCloud="", cdnPreset="", toast=()=>{}, readOnly=false }) {
   const [form, setForm] = useState({...EMPTY_ASSET, purchaseDate:today()});
   const [editId, setEditId] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -5096,7 +5121,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
                 <button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
-                <button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                {!readOnly&&<button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
               </div>
             </div>
           </div>
@@ -5392,7 +5417,7 @@ function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
 const EMPTY_FILAMENT = { brand:"", material:"PLA", color:"", weightG:1000, costTotal:"", notes:"", qty:1 };
 const EMPTY_COST_SPLIT = () => [{ paidBy:"", amount:"" }];
 
-function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{} }) {
+function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses, recipients=[], allRecipients=[], seller, setSeller=()=>{}, deleteInventoryItem=()=>{}, toast=()=>{}, orders=[], wastageLog=[], setWastageLog=()=>{}, readOnly=false }) {
   const [showForm, setShowForm] = useState(false);
   const [rows, setRows] = useState([{...EMPTY_FILAMENT}]);
   const [purchaseDate, setPurchaseDate] = useState(today());
@@ -7221,22 +7246,25 @@ function App() {
     if (isAdmin) return true;
     const p = perms[tabId];
     if (!p || p==="none") return false;
+    // Simple string perm (no sub-tabs)
     if (typeof p === "string") return p==="read"||p==="write";
-    // Object permission: check sub-tab if provided
-    const base = p._tab==="read"||p._tab==="write";
-    if (!subTabId) return base;
-    const sub = p[subTabId];
-    return sub==="read"||sub==="write";
+    // Object: check specific sub-tab
+    if (subTabId) { const sv=p[subTabId]; return sv==="read"||sv==="write"; }
+    // No sub-tab specified: tab accessible if ANY sub-tab is granted
+    return Object.values(p).some(v=>v==="read"||v==="write");
   };
   const canWrite = (tabId, subTabId=null) => {
     if (isAdmin) return true;
     const p = perms[tabId];
     if (!p || p==="none") return false;
     if (typeof p === "string") return p==="write";
-    const base = p._tab==="write";
-    if (!subTabId) return base;
-    return p[subTabId]==="write";
+    if (subTabId) return p[subTabId]==="write";
+    return Object.values(p).some(v=>v==="write");
   };
+  // No permissions at all → show empty state
+  const hasAnyAccess = isAdmin || ALL_TABS.some(t=>canRead(t));
+  // First accessible tab for auto-redirect
+  const firstAccessibleTab = isAdmin ? "analytics" : (ALL_TABS.find(t=>t!=="admin"&&canRead(t)) || null);
   const sbUrl2 = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
   const sbKey2 = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
   const [orders,setOrders]=useState([]);
@@ -7320,6 +7348,13 @@ function App() {
   };
 
 
+  // ── Auto-navigate to first accessible tab when user loads ────────────────
+  useEffect(()=>{
+    if (!currentUser) return;
+    if (isAdmin) return; // admin stays on whatever tab
+    if (firstAccessibleTab && !canRead(tab)) setTab(firstAccessibleTab);
+  },[currentUser?.id]);
+
   // ── Mark session logged out when tab/browser closes ──────────────────────
   useEffect(()=>{
     const onUnload = () => {
@@ -7327,12 +7362,12 @@ function App() {
       const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
       const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
       if (!sid||!url||!key) return;
-      // Use sendBeacon for reliable delivery on page unload
-      const body = JSON.stringify({logout_at: new Date().toISOString()});
-      navigator.sendBeacon(
-        `${url}/rest/v1/app_sessions?id=eq.${sid}`,
-        new Blob([body], {type:"application/json"})
-      );
+      // keepalive:true ensures the request completes even when the tab closes
+      fetch(`${url}/rest/v1/app_sessions?id=eq.${sid}`, {
+        method:"PATCH", keepalive:true,
+        headers:{"apikey":key,"Authorization":`Bearer ${key}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        body:JSON.stringify({logout_at:new Date().toISOString()})
+      }).catch(()=>{});
     };
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
@@ -7771,6 +7806,13 @@ function App() {
       <div className="md:pl-36 pb-16 md:pb-0">
       <div className="px-4 md:px-6 py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 md:p-8">
+          {!hasAnyAccess&&!isAdmin&&(
+            <div className="flex flex-col items-center justify-center h-[70vh] gap-4 text-center px-8">
+              <div className="text-6xl">🔒</div>
+              <h2 className="text-xl font-black text-slate-700">No Access Yet</h2>
+              <p className="text-sm text-gray-400 max-w-xs">You don't have permission to access any section. Please contact your admin to grant you access.</p>
+            </div>
+          )}
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {tab==="orders"&&<OrdersList readOnly={!canWrite("orders")} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
