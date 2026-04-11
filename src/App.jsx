@@ -713,8 +713,8 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
                     <input value={it.item} onChange={e=>upd(i,"item",e.target.value)} placeholder="Item name" className={inp+" w-full min-w-[80px]"}/>
-                    {products.length>0&&<ProductPicker products={products} onSelect={p=>applyProduct(i,p)} rowIdx={i}/>}
-                    {spoolOptions.length>0&&<SpoolPicker spoolOptions={spoolOptions} onSelect={sg=>applySpoolToRow(i,sg,sg.spoolIds[0])}/>}
+                    {!readOnly&&products.length>0&&<ProductPicker products={products} onSelect={p=>applyProduct(i,p)} rowIdx={i}/>}
+                    {!readOnly&&spoolOptions.length>0&&<SpoolPicker spoolOptions={spoolOptions} onSelect={sg=>applySpoolToRow(i,sg,sg.spoolIds[0])}/>}
                   </div>
                   {(it._brand||it._material)&&<span className="text-[10px] text-gray-400">{[it._brand,it._material].filter(Boolean).join(" · ")}</span>}
                 </div>
@@ -724,9 +724,9 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
               <td className="px-2 py-1.5 text-center">
                 <div className="relative flex items-center justify-center">
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
-                  <button type="button" title="Calculate from filament weight"
+                  {!readOnly&&<button type="button" title="Calculate from filament weight"
                     onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top}:it2)); }}
-                    className="absolute right-0 text-[10px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded px-1 py-0.5 leading-none border border-indigo-200" >g→₹</button>
+                    className="absolute right-0 text-[10px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded px-1 py-0.5 leading-none border border-indigo-200" >g→₹</button>}
                 </div>
                 {it._calcOpen&&(
                   <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",top:(it._calcY||0)+24,left:Math.min((it._calcX||0)-180, window.innerWidth-240)}}>
