@@ -1172,18 +1172,29 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
       </div>
 
       {/* Summary */}
-      {filamentUsage.length>0&&(
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-indigo-400 mb-0.5">Total Used</p>
-            <p className="text-sm font-bold text-indigo-700">{totalUsed.toFixed(1)} g</p>
+      {filamentUsage.filter(u=>!u.isWaste).length>0&&(()=>{
+        // Group non-waste entries by material for breakdown
+        const matMap = {};
+        filamentUsage.filter(u=>!u.isWaste).forEach(u=>{
+          const inv = inventory.find(i=>i.id===u.inventoryId);
+          const mat = inv?.material||"Unknown";
+          matMap[mat]=(matMap[mat]||0)+Number(u.weightUsedG||0);
+        });
+        const mats = Object.entries(matMap).sort((a,b)=>b[1]-a[1]);
+        return (
+          <div className="space-y-2">
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+              <p className="text-xs text-indigo-400 mb-0.5 font-semibold uppercase tracking-wide">Total Filament Used</p>
+              <p className="text-2xl font-black text-indigo-700">{totalUsed.toFixed(1)} g</p>
+              {mats.length>1&&<div className="flex flex-wrap gap-1.5 mt-2">
+                {mats.map(([mat,g])=>(
+                  <span key={mat} className="text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full font-semibold">{mat}: {g.toFixed(1)} g</span>
+                ))}
+              </div>}
+            </div>
           </div>
-          <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-orange-400 mb-0.5">Waste</p>
-            <p className="text-sm font-bold text-orange-600">{totalWaste.toFixed(1)} g</p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Add entry form */}
       <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-3">
@@ -4061,7 +4072,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               chRefMap[ch].amount+=num(o.referralAmount);
               if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
             });
-            const topByPending = [...persons].sort((a,b)=>(b.amount-b.paid)-(a.amount-a.paid));
+            const topByPending = [...persons].sort((a,b)=>(b.amount-b.paid)-(a.amount-a.paid)).slice(0,3);
             const MEDALS = ["🥇","🥈","🥉"];
             return (<>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -4071,100 +4082,36 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 <KPITile label="Pending Payout" value={fmtK(unpaidRefAmt)} sub={`${unpaidRefs.length} unpaid`} accent="#f43f5e" icon="⏰"/>
               </div>
 
-              {/* Top Referrers Leaderboard */}
               {topByPending.length>0&&<Card>
-                <Sec icon="🏆" title="Top Referrers — Pending First"/>
+                <Sec icon="🏆" title="Top 3 Referrers"/>
                 <div className="space-y-2 mt-1">
                   {topByPending.map((p,i)=>{
                     const pending = p.amount - p.paid;
                     const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
                     return (
                       <div key={p.name} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                        <span className="text-lg shrink-0 w-6 text-center">{MEDALS[i]||<span className="text-xs font-black text-gray-400">#{i+1}</span>}</span>
+                        <span className="text-xl shrink-0 w-7 text-center">{MEDALS[i]}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-bold text-slate-700 truncate">{p.name}</span>
                             <span className="text-[10px] text-gray-400 shrink-0">{p.orders} order{p.orders!==1?"s":""}</span>
                           </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-indigo-400 transition-all" style={{width:`${pct}%`}}/>
+                          <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${pct}%`}}/>
+                            {pending>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${pct}%`,right:"0"}}/>}
                           </div>
                         </div>
-                        <div className="text-right shrink-0 space-y-0.5">
+                        <div className="text-right shrink-0">
                           <p className="text-xs font-black text-indigo-600">{fmtK(p.amount)} total</p>
                           {pending>0
                             ?<p className="text-[10px] font-bold text-orange-500">₹{Number(pending).toLocaleString("en-IN")} pending</p>
-                            :<p className="text-[10px] font-bold text-emerald-500">✓ Fully paid</p>
-                          }
+                            :<p className="text-[10px] font-bold text-emerald-500">✓ Fully paid</p>}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               </Card>}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Card>
-                  <Sec icon="👤" title="Referrals by Person — Pending vs Paid"/>
-                  {persons.length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
-                    <div className="space-y-3">
-                      {persons.map((p,i)=>{
-                        const pending = p.amount - p.paid;
-                        const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
-                        return (
-                          <div key={p.name} className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-gray-700 flex-1 truncate">{p.name}</span>
-                              <span className="text-[10px] text-gray-400">{p.orders} order{p.orders!==1?"s":""}</span>
-                              {pending>0
-                                ?<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600">₹{Number(pending).toLocaleString("en-IN")} pending</span>
-                                :<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Paid</span>
-                              }
-                            </div>
-                            <div className="flex gap-1 flex-wrap">
-                              {Object.entries(p.channels).map(([ch,cnt])=>(
-                                <span key={ch} className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{ch}: {cnt}</span>
-                              ))}
-                            </div>
-                            <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${pct}%`}}/>
-                              {pending>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${pct}%`,right:"0"}}/>}
-                            </div>
-                            <div className="flex justify-between text-[9px]">
-                              <span className="text-emerald-600 font-semibold">✓ {fmtK(p.paid)} paid</span>
-                              {pending>0&&<span className="text-orange-500 font-semibold">⏰ {fmtK(pending)} pending</span>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Card>
-                <Card>
-                  <Sec icon="📍" title="Referrals by Channel"/>
-                  {Object.keys(chRefMap).length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
-                    <div className="space-y-3">
-                      {Object.entries(chRefMap).sort((a,b)=>b[1].amount-a[1].amount).map(([ch,{count,amount,paid}])=>(
-                        <div key={ch} className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-700 flex-1">{ch}</span>
-                            <span className="text-[10px] text-gray-400">{count} orders</span>
-                            <span className="text-xs font-bold text-indigo-600">{fmtK(amount)}</span>
-                          </div>
-                          <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${amount?Math.round(paid/amount*100):0}%`}}/>
-                            {amount-paid>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${amount?Math.round(paid/amount*100):0}%`,right:"0"}}/>}
-                          </div>
-                          <div className="flex justify-between text-[9px]">
-                            <span className="text-emerald-600 font-semibold">✓ {fmtK(paid)} paid</span>
-                            {amount-paid>0&&<span className="text-orange-500 font-semibold">⏰ {fmtK(amount-paid)} pending</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </div>
 
               {unpaidRefs.length>0&&<Card>
                 <Sec icon="⏰" title="Pending Payouts — Ordered by Amount"/>
