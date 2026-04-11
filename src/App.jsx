@@ -6573,7 +6573,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
               is_active: true
             };
             await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
-              headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+              headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
               body:JSON.stringify(newRole)}).catch(()=>{});
             roleRow = newRole;
           }
@@ -6598,7 +6598,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       // 4. Log session (fire-and-forget — don't fail login if table missing)
       const sessionId = crypto.randomUUID();
       fetch(`${sbUrl}/rest/v1/app_sessions`,{method:"POST",
-        headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
         body:JSON.stringify({id:sessionId,user_id:authUser.id,username:userData.username,login_at:new Date().toISOString()})
       }).catch(()=>{});
 
@@ -7546,7 +7546,8 @@ function App() {
     syncQueue.current = [];
     const cu = currentUser;
     const auditUrl = sbUrl2 && sbKey2 && cu ? `${sbUrl2}/rest/v1/app_audit_log` : null;
-    const auditHeaders = auditUrl ? {"apikey":sbKey2,"Authorization":`Bearer ${sbKey2}`,"Content-Type":"application/json","Prefer":"return=minimal"} : null;
+    const auditToken = sessionStorage.getItem("sb_token")||sbKey2;
+    const auditHeaders = auditUrl ? {"apikey":sbKey2,"Authorization":`Bearer ${auditToken}`,"Content-Type":"application/json","Prefer":"return=minimal"} : null;
     const logAudit = (action, table, recId, detail) => {
       if (!auditUrl) return;
       const entry = {id:crypto.randomUUID(),user_id:cu.id||"admin",username:cu.username||"admin",action,tab:"",record_id:String(recId||"").slice(0,100),detail:String(detail||"").slice(0,200),ts:new Date().toISOString()};
