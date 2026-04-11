@@ -7487,34 +7487,26 @@ function App() {
     if (!url||!key||!token) return;
     const baseClient = createSupabaseClient(url, key);
 
-    // ── Validate token; refresh if expired ──────────────────────────────
-    let activeToken = token;
-    try {
-      const userCheck = await baseClient.auth.getUser(token);
-      if (!userCheck || userCheck.error) {
-        // Token expired — try refresh
-        const refreshTok = sessionStorage.getItem("sb_refresh_token");
-        if (refreshTok) {
-          const refreshed = await baseClient.auth.refreshToken(refreshTok);
-          if (refreshed?.access_token) {
-            activeToken = refreshed.access_token;
-            setAccessToken(activeToken);
-            sessionStorage.setItem("sb_token", activeToken);
-            if (refreshed.refresh_token) sessionStorage.setItem("sb_refresh_token", refreshed.refresh_token);
-          } else {
-            // Refresh failed — session expired, force logout
-            handleLogout();
-            return;
-          }
-        } else {
-          handleLogout();
-          return;
+    // ── Validate + refresh token, then load data ─────────────────────────
+    (async () => {
+      let activeToken = token;
+      try {
+        const userCheck = await baseClient.auth.getUser(token);
+        if (!userCheck || userCheck.error) {
+          const refreshTok = sessionStorage.getItem("sb_refresh_token");
+          if (refreshTok) {
+            const refreshed = await baseClient.auth.refreshToken(refreshTok);
+            if (refreshed?.access_token) {
+              activeToken = refreshed.access_token;
+              setAccessToken(activeToken);
+              sessionStorage.setItem("sb_token", activeToken);
+              if (refreshed.refresh_token) sessionStorage.setItem("sb_refresh_token", refreshed.refresh_token);
+            } else { handleLogout(); return; }
+          } else { handleLogout(); return; }
         }
-      }
-    } catch(e) { console.warn("Token check failed, proceeding:", e.message); }
-    // ─────────────────────────────────────────────────────────────────────
+      } catch(e) { console.warn("Token check failed, proceeding:", e.message); }
 
-    const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${activeToken}` };
+      const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${activeToken}` };
     const rest2 = `${url}/rest/v1`;
     const client = { from: (table) => ({
       select: async (cols="*") => {
@@ -7579,6 +7571,7 @@ function App() {
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
     }).catch((e)=>{ console.error("Phase 2 load error:", e); });
     }).catch((e)=>{ console.error("Phase 1 load error:", e); setLoading(false); });
+    })(); // end async IIFE
   },[accessToken]);
 
   // ── Queue-based sync ────────────────────────────────────────────────────
