@@ -3012,8 +3012,10 @@ const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscella
 
 
 
-function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[] }) {
-  const [section, setSection] = useState("overview");
+function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[], subTabPerms=null }) {
+  const canSection = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
+  const firstSection = ["overview","trends","orders","finance","filament","customers","referrals"].find(s=>canSection(s)) || "overview";
+  const [section, setSection] = useState(firstSection);
   const [period, setPeriod] = useState("month");
   const [year, setYear] = useState(new Date().getFullYear());
 
@@ -3437,7 +3439,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     <div className="space-y-4">
       {/* Nav */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
-        {SECTIONS.map(s=>(
+        {SECTIONS.filter(s=>canSection(s.id)).map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
             className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
             <span>{s.icon}</span><span className="hidden sm:inline">{s.label}</span>
@@ -3445,7 +3447,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
         ))}
       </div>
 
-      {(section==="trends"||section==="orders"||section==="finance"||section==="overview"||section==="filament"||section==="customers"||section==="referrals")&&(
+      {canSection(section)&&(
         <div className="flex items-center gap-2 justify-end">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {["month","year"].map(p=><button key={p} onClick={()=>setPeriod(p)} className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${period===p?"bg-white text-indigo-700 shadow-sm":"text-gray-500"}`}>{p==="month"?"Monthly":"Yearly"}</button>)}
@@ -3457,7 +3459,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
-      {section==="overview"&&(
+      {section==="overview"&&canSection("overview")&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Total Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰" badge={yoyGrowth!==null?{pos:yoyGrowth>=0,label:`${yoyGrowth>=0?"+":""}${yoyGrowth}% YoY`}:null}/>
@@ -3521,7 +3523,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── TRENDS ───────────────────────────────────────────────────────── */}
-      {section==="trends"&&(
+      {section==="trends"&&canSection("trends")&&(
         <div className="space-y-3">
           {/* Cumulative revenue line */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3762,7 +3764,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── ORDERS ───────────────────────────────────────────────────────── */}
-      {section==="orders"&&(
+      {section==="orders"&&canSection("orders")&&(
         <div className="space-y-3">
           {/* Order Stats at top — full width grid */}
           <Card>
@@ -3821,7 +3823,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── FINANCE ──────────────────────────────────────────────────────── */}
-      {section==="finance"&&(
+      {section==="finance"&&canSection("finance")&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Collected" value={fmtK(totalPaid)} sub={`Order value: ${fmtK(totalRev)}`} accent="#6366f1" icon="💰"/>
@@ -3871,7 +3873,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── FILAMENT ─────────────────────────────────────────────────────── */}
-      {section==="filament"&&(
+      {section==="filament"&&canSection("filament")&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Total Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub="across all orders" accent="#6366f1" icon="🧵"/>
@@ -3953,7 +3955,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── CUSTOMERS ────────────────────────────────────────────────────── */}
-      {section==="customers"&&(
+      {section==="customers"&&canSection("customers")&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Total Clients" value={Object.keys(custMap).length} sub={`${activeOrders.filter(o=>o.type==="B2B").length} B2B orders`} accent="#6366f1" icon="👥"/>
@@ -4021,7 +4023,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       )}
 
       {/* ── REFERRALS ─────────────────────────────────────────────────────── */}
-      {section==="referrals"&&(
+      {section==="referrals"&&canSection("referrals")&&(
         <div className="space-y-3">
           {(()=>{
             const refOrders = orders.filter(o=>o.isReferred);
@@ -4595,7 +4597,9 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
   );
 }
 
-function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{}, readOnly=false }) {
+function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], seller, deleteExpense=()=>{}, toast=()=>{}, readOnly=false, subTabPerms=null }) {
+  const canExpTab = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
+  const firstExpTab = ["expenses","categories"].find(t=>canExpTab(t)) || "expenses";
   const [form, setForm] = useState({...EMPTY_EXPENSE, date:today()});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -4603,7 +4607,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [msg, setMsg] = useState("");
-  const [expTab, setExpTab] = useState("expenses");
+  const [expTab, setExpTab] = useState(firstExpTab);
   const [cats, setCats] = useState(()=>{ try{const s=localStorage.getItem("expense_cats");return s?JSON.parse(s):DEFAULT_EXPENSE_CATS;}catch(e){return DEFAULT_EXPENSE_CATS;} });
   const [newCat, setNewCat] = useState("");
   const saveCats = (u) => { setCats(u); try{localStorage.setItem("expense_cats",JSON.stringify(u));}catch(e){} };
@@ -4648,13 +4652,13 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
     <div className="space-y-4">
       {/* Sub-tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {[["expenses","Expenses"],["categories","Categories"]].map(([id,label])=>(
+        {[["expenses","Expenses"],["categories","Categories"]].filter(([id])=>canExpTab(id)).map(([id,label])=>(
           <button key={id} onClick={()=>setExpTab(id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${expTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{label}</button>
         ))}
       </div>
 
-      {expTab==="categories"&&(
+      {expTab==="categories"&&canExpTab("categories")&&(
         <div className="space-y-3">
           <p className="text-xs text-gray-400">Manage expense categories. Default categories cannot be removed.</p>
           <div className="flex gap-2">
@@ -4676,7 +4680,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         </div>
       )}
 
-      {expTab==="expenses"&&<>
+      {expTab==="expenses"&&canExpTab("expenses")&&<>
       {/* Form */}
       {!readOnly&&<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
@@ -5259,7 +5263,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       </div>
       {/* View toggle */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {[["payments","Payments Received"],["invoiced","All Orders"]].map(([v,l])=>(
+        {[["payments","Payments Received"],["invoiced","All Orders"]].filter(([v])=>canIncTab(v)).map(([v,l])=>(
           <button key={v} onClick={()=>setView(v)}
             className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${view===v?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{l}</button>
         ))}
@@ -5292,7 +5296,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
         </div>
       </div>
 
-      {view==="payments"&&<>
+      {view==="payments"&&canIncTab("payments")&&<>
       <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-5 text-white">
         <p className="text-sm opacity-80">Total Received ({filtered.length} entries)</p>
         <p className="text-3xl font-black mt-1">&#x20B9;{total.toLocaleString("en-IN", {minimumFractionDigits:2})}</p>
@@ -5327,7 +5331,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       )}
       </>}
 
-      {view==="invoiced"&&(
+      {view==="invoiced"&&canIncTab("invoiced")&&(
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5 mb-1">
             {["All","Pending","Completed","Cancelled"].map(s=>(
@@ -6598,7 +6602,9 @@ function Toast({ toasts }) {
 }
 
 // ─── Bulk Download ────────────────────────────────────────────────────────────
-function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={}, expenses=[] }) {
+function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={}, expenses=[], subTabPerms=null }) {
+  const canDlTab = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
+  const firstDlTab = ["invoices","reports","gstr1"].find(t=>canDlTab(t)) || "invoices";
   const thisMonth = new Date().toISOString().slice(0,7);
   const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
   const [from, setFrom] = useState(threeMonthsAgo);
@@ -6610,7 +6616,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const [status, setStatus] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState({done:0,total:0});
-  const [subTab, setSubTab] = useState('invoices');
+  const [subTab, setSubTab] = useState(firstDlTab);
   const [reportPeriod, setReportPeriod] = useState('month');
   const [reportMonth, setReportMonth] = useState(thisMonth);
   const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
@@ -6886,7 +6892,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       </div>
       {/* Sub-tab */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"],["gstr1","🇮🇳 GSTR-1"]].map(([id,lb])=>(
+        {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"],["gstr1","🇮🇳 GSTR-1"]].filter(([id])=>canDlTab(id)).map(([id,lb])=>(
           <button key={id} onClick={()=>setSubTab(id)}
             className={"flex-1 py-2 rounded-lg text-sm font-semibold transition-all "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
             {lb}
@@ -6894,7 +6900,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
         ))}
       </div>
 
-      {subTab==="reports"&&(
+      {subTab==="reports"&&canDlTab("reports")&&(
         <div className="space-y-4">
           <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Select Period</p>
@@ -6936,7 +6942,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       )}
 
 
-      {subTab==="gstr1"&&(
+      {subTab==="gstr1"&&canDlTab("gstr1")&&(
         <div className="space-y-4">
           {/* Month selector */}
           <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
@@ -7171,7 +7177,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
           })()}
         </div>
       )}
-      {subTab==="invoices"&&(
+      {subTab==="invoices"&&canDlTab("invoices")&&(
         <div className="space-y-6">
           {/* Date range */}
           <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm space-y-4">
@@ -7820,17 +7826,17 @@ function App() {
               <p className="text-sm text-gray-400 max-w-xs">You don't have permission to access any section. Please contact your admin to grant you access.</p>
             </div>
           )}
-          {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
+          {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
           {tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {tab==="orders"&&<OrdersList readOnly={!canWrite("orders")} subTabPerms={isAdmin?null:(typeof perms["orders"]==="object"&&perms["orders"]!==null?perms["orders"]:null)} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {tab==="clients"&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
-          {tab==="expenses"&&<ExpenseTracker readOnly={!canWrite("expenses")} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
+          {tab==="expenses"&&<ExpenseTracker readOnly={!canWrite("expenses")} subTabPerms={isAdmin?null:(typeof perms["expenses"]==="object"&&perms["expenses"]!==null?perms["expenses"]:null)} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager readOnly={!canWrite("assets")} assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
           {tab==="products"&&<ProductManager readOnly={!canWrite("products")} products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
           {tab==="inventory"&&<InventoryManager readOnly={!canWrite("inventory")} inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
-          {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller}/>}
+          {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} subTabPerms={isAdmin?null:(typeof perms["income"]==="object"&&perms["income"]!==null?perms["income"]:null)}/>}
           {tab==="salary"&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
-          {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses}/>}
+          {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
           {tab==="settings"&&canRead("settings")&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
           {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} toast={toast} currentUser={currentUser}/>}
