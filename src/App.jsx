@@ -1196,6 +1196,14 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
         );
       })()}
 
+      {/* Wastage summary */}
+      {totalWaste>0&&(
+        <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+          <p className="text-xs text-orange-400 mb-0.5 font-semibold uppercase tracking-wide">Order Wastage</p>
+          <p className="text-2xl font-black text-orange-600">{totalWaste.toFixed(1)} g</p>
+        </div>
+      )}
+
       {/* Add entry form */}
       <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Add Entry</p>
@@ -4110,6 +4118,29 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                       </div>
                     );
                   })}
+                </div>
+              </Card>}
+
+              {Object.keys(chRefMap).length>0&&<Card>
+                <Sec icon="📍" title="Referrals by Channel"/>
+                <div className="space-y-3">
+                  {Object.entries(chRefMap).sort((a,b)=>b[1].amount-a[1].amount).map(([ch,{count,amount,paid}])=>(
+                    <div key={ch} className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-700 flex-1">{ch}</span>
+                        <span className="text-[10px] text-gray-400">{count} orders</span>
+                        <span className="text-xs font-bold text-indigo-600">{fmtK(amount)}</span>
+                      </div>
+                      <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${amount?Math.round(paid/amount*100):0}%`}}/>
+                        {amount-paid>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${amount?Math.round(paid/amount*100):0}%`,right:"0"}}/>}
+                      </div>
+                      <div className="flex justify-between text-[9px]">
+                        <span className="text-emerald-600 font-semibold">✓ {fmtK(paid)} paid</span>
+                        {amount-paid>0&&<span className="text-orange-500 font-semibold">⏰ {fmtK(amount-paid)} pending</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </Card>}
 
