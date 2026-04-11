@@ -5143,14 +5143,16 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
 }
 
 // ─── Income View ──────────────────────────────────────────────────────────────
-function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allRecipients=[], seller }) {
+function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allRecipients=[], seller, subTabPerms=null }) {
+  const canIncTab = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
+  const firstIncTab = ["payments","invoiced"].find(t=>canIncTab(t)) || "payments";
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [recipientFilter, setRecipientFilter] = useState("");
   const [modeFilter, setModeFilter] = useState("All");
-  const [view, setView] = useState("payments");
+  const [view, setView] = useState(firstIncTab);
   const [statusFilter, setStatusFilter] = useState("All");
   const [incChannelFilter, setIncChannelFilter] = useState("All");
 
