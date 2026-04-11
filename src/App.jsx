@@ -1463,6 +1463,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = (updatedFilamentUsage) => {
+    if (detailsLocked && updatedFilamentUsage === undefined) return; // block save for read-only
     const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
     // Each spool item now has its own filamentUsage entry — no weight mutation needed
     const updated = {...o, items: orderItems, filamentUsage: fu, charges};
@@ -1690,8 +1691,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
               <div className="border-t pt-4">
                 <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={effectiveNeedsGst} isIgst={isIgst} readOnly={detailsLocked} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
-                  onSpoolAdded={(entry)=>{ const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
-                  onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{
+                  onSpoolAdded={(entry)=>{ if(filamentLocked)return; const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
+                  onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{ if(filamentLocked)return;
                     const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
                     const allSpoolIds = spoolIds || [spoolId];
                     // Current entries for this batch
@@ -1726,11 +1727,12 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   }}/>
               </div>
               <div className="pt-3 border-t space-y-3">
-                {detailsLocked&&!hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">Fields are locked — you can still change status or referral details</p>}
                 {detailsLocked&&hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Delete the Tax Invoice to edit order fields</p>}
+                {detailsLocked&&!hasTaxInv&&!canSubTabWrite("details")&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Read-only access — contact admin to edit this order</p>}
                 <button
                   onClick={()=>handleSaveOrder()}
-                  className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
+                  disabled={detailsLocked}
+                  className={"relative w-full py-3 rounded-xl font-bold text-sm tracking-wide text-white shadow-sm transition-all duration-200 "+(detailsLocked?"bg-gray-300 cursor-not-allowed opacity-60":"bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:shadow-md hover:scale-[1.01]")}
                 >
                   Save Changes
                 </button>
