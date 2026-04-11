@@ -1398,8 +1398,10 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{} }) {
-  const [tab, setTab] = useState("details");
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{}, canSubTabRead=()=>true, canSubTabWrite=()=>true }) {
+  const ORDER_SUBTABS = ["details","quotation","invoices","payments","filament"];
+  const firstAccessible = ORDER_SUBTABS.find(st=>canSubTabRead(st)) || "details";
+  const [tab, setTab] = useState(firstAccessible);
   const [o, setO] = useState({...order});
   const [creating, setCreating] = useState(null); // "proforma" | "tax"
   const [payments, setPayments] = useState(order.payments||[]);
@@ -1547,7 +1549,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
       {/* Tabs */}
         <div className="flex border-b shrink-0 bg-gray-50">
-          {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"],["filament","Filament"]].map(([id,label])=>(
+          {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"],["filament","Filament"]].filter(([id])=>canSubTabRead(id)).map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setCreating(null);}}
               className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {label}
@@ -1558,7 +1560,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-          {tab==="details" && (
+          {tab==="details" && canSubTabRead("details") && (
             <>
               {locked&&(
                 <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
@@ -1738,7 +1740,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             </>
           )}
 
-          {tab==="quotation" && (
+          {tab==="quotation" && canSubTabRead("quotation") && (
             <div className="space-y-4">
               {qt
                 ? <>
@@ -1756,7 +1758,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             </div>
           )}
 
-          {tab==="invoices" && !creating && (
+          {tab==="invoices" && canSubTabRead("invoices") && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
                 {order.type==="B2B"&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
@@ -1807,7 +1809,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             </div>
           )}
 
-          {tab==="invoices" && creating && (
+          {tab==="invoices" && canSubTabRead("invoices") && creating && (
 <div className="space-y-4">
               <InvoiceEditor
               inv={{ invNo:"(auto)", invDate:today(), items: order.items && order.items.length > 0 ? order.items.map(i=>calcItem({...i}, creating==="tax" ? true : order.needsGst)) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
@@ -1826,7 +1828,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
 
 
-          {tab==="filament" && (
+          {tab==="filament" && canSubTabRead("filament") && (
             <FilamentUsageTab
               filamentUsage={filamentUsage}
               setFilamentUsage={setFilamentUsage}
@@ -1842,7 +1844,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             />
           )}
 
-          {tab==="payments" && (() => {
+          {tab==="payments" && canSubTabRead("payments") && (() => {
             const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
             const qt2=quotations.find(q=>q.orderId===order.orderNo);
             const qtTotal=qt2?num(qt2.amount):(order.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
@@ -2064,7 +2066,10 @@ function ExcelBtn({ onClick }) {
   );
 }
 
-function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{}, readOnly=false }) {
+function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, recipients=[], allRecipients=[], upsertPayment=()=>{}, enqueue=()=>{}, initialOrder=null, onClearInitialOrder=()=>{}, toast=()=>{}, inventory=[], wastageLog=[], setWastageLog=()=>{}, products=[], expenses=[], setExpenses=()=>{}, readOnly=false, subTabPerms=null }) {
+  // canSubTab: null means all tabs accessible; object means check per sub-tab
+  const canSubTabRead = (st) => !subTabPerms || (subTabPerms[st]==="read"||subTabPerms[st]==="write");
+  const canSubTabWrite = (st) => !subTabPerms || subTabPerms[st]==="write";
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("All");
   const [typeFilter,setTypeFilter]=useState("All");
@@ -2393,6 +2398,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
       {openOrder && (
         <OrderEditDrawer
+          canSubTabRead={canSubTabRead}
+          canSubTabWrite={canSubTabWrite}
           order={orders.find(o=>o.orderNo===openOrder.orderNo)||openOrder}
           quotations={quotations}
           proformas={proformas}
@@ -7815,7 +7822,7 @@ function App() {
           )}
           {tab==="analytics"&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations}/>}
           {tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
-          {tab==="orders"&&<OrdersList readOnly={!canWrite("orders")} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
+          {tab==="orders"&&<OrdersList readOnly={!canWrite("orders")} subTabPerms={isAdmin?null:(typeof perms["orders"]==="object"&&perms["orders"]!==null?perms["orders"]:null)} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {tab==="clients"&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
           {tab==="expenses"&&<ExpenseTracker readOnly={!canWrite("expenses")} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="assets"&&<AssetManager readOnly={!canWrite("assets")} assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
