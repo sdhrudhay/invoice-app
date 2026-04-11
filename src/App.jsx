@@ -6075,11 +6075,11 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
     setAmount(""); setRef(""); setDirection(""); setVia(""); setOpen(false);
   };
 
-  if (!open) return (
-    {!readOnly&&<button onClick={() => setOpen(true)}
+  if (!open) return readOnly ? null : (
+    <button onClick={() => setOpen(true)}
       className="w-full mt-1 text-xs border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 py-2 rounded-lg font-semibold transition-all">
       + Record Settlement
-    </button>}
+    </button>
   );
 
   return (
