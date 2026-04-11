@@ -6572,7 +6572,6 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
               {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}).catch(()=>({ok:false}));
             const existingUsers = countRes.ok ? await countRes.json().catch(()=>[]) : [];
             const isFirstUser = existingUsers.length === 0;
-            const isFirstUser = existingUsers.length === 0;
             const newRole = {
               user_id:authUser.id, email:authUser.email,
               is_admin: isFirstUser,
