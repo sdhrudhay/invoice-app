@@ -1053,7 +1053,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
 // ─── Order Detail / Edit Drawer ───────────────────────────────────────────────
 
 // ─── Filament Usage Tab ───────────────────────────────────────────────────────
-function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{}, orders=[], currentOrderNo="", wastageLog=[], onAddWastage=()=>{} }) {
+function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], newUsage, setNewUsage, onSave, toast=()=>{}, orders=[], currentOrderNo="", wastageLog=[], onAddWastage=()=>{}, readOnly=false }) {
   const upd = (k,v) => setNewUsage(p=>({...p,[k]:v}));
 
   const matColors = {
@@ -1285,9 +1285,9 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
             className="w-4 h-4 rounded accent-orange-500"/>
           <span className="text-sm text-gray-600">Mark as waste / support material</span>
         </label>
-        <button onClick={handleAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+        {!readOnly&&<button onClick={handleAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
           + Add
-        </button>
+        </button>}
       </div>
 
       {/* Usage list */}
@@ -1428,6 +1428,12 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   // hasTaxInv must be declared before effectiveNeedsGst which depends on it
   const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
   const locked = hasTaxInv || o.status==="Completed" || o.status==="Cancelled";
+  // Per-sub-tab locked: order-level lock OR no write permission on that sub-tab
+  const detailsLocked  = locked || !canSubTabWrite("details");
+  const quotLocked     = locked || !canSubTabWrite("quotation");
+  const invLocked      = locked || !canSubTabWrite("invoices");
+  const payLocked      = locked || !canSubTabWrite("payments");
+  const filamentLocked = locked || !canSubTabWrite("filament");
   const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
   const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
@@ -1562,7 +1568,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 
           {tab==="details" && canSubTabRead("details") && (
             <>
-              {locked&&(
+              {detailsLocked&&(
                 <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                   <span className="text-xl shrink-0">🔒</span>
                   <div className="min-w-0">
@@ -1570,24 +1576,25 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <p className="text-xs text-amber-600 mt-0.5">
                       {hasTaxInv
                         ? "A Tax Invoice has been generated. Delete the tax invoice first to edit this order."
+                        : !canSubTabWrite("details")?"This sub-tab is read-only. Contact admin to grant write access."
                         : o.status==="Cancelled"?"Order is Cancelled. Change status to edit fields.":"Order is Completed. Change status back to Pending to edit fields."}
                     </p>
                   </div>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4">
-                <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} disabled={locked} className="col-span-2 md:col-span-1"/>
-                <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} disabled={locked} placeholder="+91 XXXXX XXXXX"/>
-                <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} disabled={locked} placeholder="customer@email.com"/>
-                {o.type==="B2B"&&<F label="GSTIN" value={o.gstin||""} onChange={v=>upd("gstin",v)} disabled={locked}/>}
-                <F label="Order Date" type="date" value={o.orderDate} onChange={v=>upd("orderDate",v)} disabled={locked}/>
-                <F label="Due Date" type="date" value={o.dueDate||""} onChange={v=>upd("dueDate",v)} disabled={locked}/>
-                <S label="Payment Mode" value={o.paymentMode} onChange={v=>upd("paymentMode",v)} options={PAYMENT_MODES} disabled={locked}/>
-                <F label="Advance Paid (₹)" type="number" value={o.advance||""} onChange={v=>upd("advance",v)} disabled={locked}/>
-                <F label="Advance Txn Ref (optional)" value={o.advanceTxnRef||""} onChange={v=>upd("advanceTxnRef",v)} disabled={locked} placeholder="UPI ref, cheque no…"/>
+                <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} disabled={detailsLocked} className="col-span-2 md:col-span-1"/>
+                <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} disabled={detailsLocked} placeholder="+91 XXXXX XXXXX"/>
+                <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} disabled={detailsLocked} placeholder="customer@email.com"/>
+                {o.type==="B2B"&&<F label="GSTIN" value={o.gstin||""} onChange={v=>upd("gstin",v)} disabled={detailsLocked}/>}
+                <F label="Order Date" type="date" value={o.orderDate} onChange={v=>upd("orderDate",v)} disabled={detailsLocked}/>
+                <F label="Due Date" type="date" value={o.dueDate||""} onChange={v=>upd("dueDate",v)} disabled={detailsLocked}/>
+                <S label="Payment Mode" value={o.paymentMode} onChange={v=>upd("paymentMode",v)} options={PAYMENT_MODES} disabled={detailsLocked}/>
+                <F label="Advance Paid (₹)" type="number" value={o.advance||""} onChange={v=>upd("advance",v)} disabled={detailsLocked}/>
+                <F label="Advance Txn Ref (optional)" value={o.advanceTxnRef||""} onChange={v=>upd("advanceTxnRef",v)} disabled={detailsLocked} placeholder="UPI ref, cheque no…"/>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Advance Received By</label>
-                  <select value={o.advanceRecipient||""} onChange={e=>!locked&&upd("advanceRecipient",e.target.value)} disabled={locked} className={"border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 "+(locked?"bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed":"bg-white border-gray-200")}>
+                  <select value={o.advanceRecipient||""} onChange={e=>!detailsLocked&&upd("advanceRecipient",e.target.value)} disabled={detailsLocked} className={"border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 "+(detailsLocked?"bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed":"bg-white border-gray-200")}>
                     <option value="">— Select recipient —</option>
                     <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
@@ -1597,45 +1604,45 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
                   <div className="flex gap-2 flex-wrap">
                     {["Offline","Online"].map(c=>(
-                      <button key={c} type="button" onClick={()=>!locked&&upd("channel",c==="Offline"?"Offline":((o.channel||"Offline")==="Offline"?ONLINE_PLATFORMS[0]:o.channel))} disabled={locked}
+                      <button key={c} type="button" onClick={()=>!detailsLocked&&upd("channel",c==="Offline"?"Offline":((o.channel||"Offline")==="Offline"?ONLINE_PLATFORMS[0]:o.channel))} disabled={detailsLocked}
                         className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
                     ))}
                   </div>
                   {(o.channel||"Offline")!=="Offline"&&<div className="flex gap-2 flex-wrap mt-1">
                     {ONLINE_PLATFORMS.map(p=>(
-                      <button key={p} type="button" onClick={()=>!locked&&upd("channel",p)} disabled={locked}
+                      <button key={p} type="button" onClick={()=>!detailsLocked&&upd("channel",p)} disabled={detailsLocked}
                         className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${o.channel===p?"bg-sky-100 border-sky-400 text-sky-700":"border-gray-200 text-gray-500 hover:border-sky-300"}`}>{p}</button>
                     ))}
                   </div>}
                 </div>
                 {o.status==="Cancelled"&&<F label="Reason for Cancellation" value={o.cancelReason||""} onChange={v=>upd("cancelReason",v)} placeholder="e.g. Customer changed mind, Out of stock…" className="col-span-2"/>}
               </div>
-              {o.type==="B2C"&&<label className={"flex items-center gap-2 text-sm text-gray-600 mt-1 "+(locked?"opacity-50 cursor-not-allowed":"cursor-pointer")}>
-                <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ if(locked)return; upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} disabled={locked} className="rounded accent-indigo-600 w-4 h-4"/>
+              {o.type==="B2C"&&<label className={"flex items-center gap-2 text-sm text-gray-600 mt-1 "+(detailsLocked?"opacity-50 cursor-not-allowed":"cursor-pointer")}>
+                <input type="checkbox" checked={!!o.isPickup} onChange={e=>{ if(detailsLocked)return; upd("isPickup",e.target.checked); if(e.target.checked) upd("placeOfSupply",stateByCode(extractStateCode(seller?.stateCode))||seller?.state||""); }} disabled={detailsLocked} className="rounded accent-indigo-600 w-4 h-4"/>
                 <span className="font-semibold text-gray-700">Office Pickup <span className="font-normal text-gray-400 text-xs">(customer collects — CGST+SGST, no address on invoice)</span></span>
               </label>}
               {!o.isPickup&&<>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={locked}/>
-                  <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={locked}/>
-                  <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={locked} rows={2} className="col-span-2"/>
+                  <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={detailsLocked}/>
+                  <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
+                  <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
                 </div>
               </div>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Shipping Address</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={locked}/>
-                  <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={locked}/>
-                  {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={locked}/>}
-                  <StateSelect value={o.shippingStateCode||""} onChange={v=>{ upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }} disabled={locked}/>
-                  <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} disabled={locked} rows={2} className="col-span-2"/>
+                  <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={detailsLocked}/>
+                  <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={detailsLocked}/>
+                  {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={detailsLocked}/>}
+                  <StateSelect value={o.shippingStateCode||""} onChange={v=>{ upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
+                  <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
                 </div>
               </div>
               </>}
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
-              <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2} disabled={locked}/>
+              <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2} disabled={detailsLocked}/>
               <div className="border border-dashed border-indigo-200 rounded-xl p-3 bg-indigo-50/40 space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>upd("isReferred",e.target.checked?1:0)} className="rounded"/>
@@ -1666,23 +1673,23 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               <div className="border-t pt-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-700">Other Charges <span className="text-xs font-normal text-gray-400">(shipping, handling — included in Tax Invoice)</span></p>
-                  {!locked&&<button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>}
+                  {!detailsLocked&&<button onClick={addCharge} className="text-xs text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-3 py-1 rounded-lg font-semibold">+ Add</button>}
                 </div>
                 {charges.map((c,i)=>(
                   <div key={i} className="flex items-center gap-2">
-                    <input value={c.label} onChange={e=>!locked&&updCharge(i,"label",e.target.value)} disabled={locked} placeholder="Label (e.g. Shipping)"
+                    <input value={c.label} onChange={e=>!detailsLocked&&updCharge(i,"label",e.target.value)} disabled={detailsLocked} placeholder="Label (e.g. Shipping)"
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                     <span className="text-gray-400 text-sm shrink-0">₹</span>
                     <input type="number" value={c.amount} onChange={e=>updCharge(i,"amount",e.target.value)} onWheel={e=>e.target.blur()}
                       placeholder="0" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                  {!locked&&<button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
+                  {!detailsLocked&&<button onClick={()=>delCharge(i)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
                   </div>
                 ))}
                 {charges.length>0&&<p className="text-xs text-gray-400 text-right">Total: ₹{fmt(charges.reduce((s,c)=>s+Number(c.amount||0),0))}</p>}
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={effectiveNeedsGst} isIgst={isIgst} readOnly={locked} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
+                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={effectiveNeedsGst} isIgst={isIgst} readOnly={detailsLocked} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
                   onSpoolAdded={(entry)=>{ const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{
                     const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
@@ -1719,8 +1726,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   }}/>
               </div>
               <div className="pt-3 border-t space-y-3">
-                {locked&&!hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">Fields are locked — you can still change status or referral details</p>}
-                {locked&&hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Delete the Tax Invoice to edit order fields</p>}
+                {detailsLocked&&!hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">Fields are locked — you can still change status or referral details</p>}
+                {detailsLocked&&hasTaxInv&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Delete the Tax Invoice to edit order fields</p>}
                 <button
                   onClick={()=>handleSaveOrder()}
                   className="relative w-full py-3 rounded-xl font-bold text-sm tracking-wide bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-200"
@@ -1732,8 +1739,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     if(window.confirm(`Delete order ${order.orderNo} for ${order.customerName}?\n\nThis will permanently delete the order and all its quotations, invoices and payments. This cannot be undone.`))
                       onDeleteOrder(order.orderNo);
                   }}
-                  disabled={locked}
-                  className={`w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 transition-all duration-200 flex items-center justify-center gap-2 ${locked?"border-gray-200 text-gray-300 cursor-not-allowed":"border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"}`}>
+                  disabled={detailsLocked}
+                  className={`w-full py-3 rounded-xl font-bold text-sm tracking-wide border-2 transition-all duration-200 flex items-center justify-center gap-2 ${detailsLocked?"border-gray-200 text-gray-300 cursor-not-allowed":"border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"}`}>
                   <span>🗑</span> Delete This Order
                 </button>
               </div>
@@ -1761,11 +1768,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && canSubTabRead("invoices") && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
-                {order.type==="B2B"&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
-                {(order.type==="B2B"||order.needsGst)
+                {order.type==="B2B"&&!invLocked&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
+                {!invLocked&&((order.type==="B2B"||order.needsGst)
                   ? <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice</button>
                   : <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice (will enable GST)</button>
-                }
+                )}
               </div>
               {pfs.length===0&&tis.length===0&&<p className="text-gray-400 text-sm text-center py-6">No invoices yet. Create one above.</p>}
               {pfs.length>0&&(
@@ -1778,7 +1785,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                            {!invLocked&&<button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -1797,7 +1804,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
                           <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
                           <div className="flex gap-2">
-                            <button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                            {!invLocked&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
                           </div>
                         </div>
@@ -1841,6 +1848,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               currentOrderNo={order.orderNo}
               wastageLog={wastageLog}
               onAddWastage={(w)=>setWastageLog(prev=>[...prev,w])}
+              readOnly={filamentLocked}
             />
           )}
 
@@ -1863,7 +1871,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 </div>
 
                 {/* Add payment form */}
-                <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+                {!payLocked&&<div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Payment</p>
                   <div className="grid grid-cols-2 gap-3">
                     <F label="Date" type="date" value={newPay.date} onChange={v=>setNewPay(p=>({...p,date:v}))}/>
@@ -1890,7 +1898,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <button onClick={handleAddPayment} className={`px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all ${newPay.isRefund?"bg-red-600 hover:bg-red-700":"bg-indigo-600 hover:bg-indigo-700"}`}>
                     {newPay.isRefund?"+ Record Refund":"+ Add Payment"}
                   </button>
-                </div>
+                </div>}
 
                 {/* Payment history */}
                 {num(o.advance)>0&&(()=>{
@@ -1928,7 +1936,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         {p.txnRef&&<p className="text-xs text-gray-400 mt-0.5 font-mono">Ref: {p.txnRef}</p>}
                         {p.comments&&<p className="text-xs text-gray-500 mt-0.5">{p.comments}</p>}
                       </div>
-                      <button onClick={()=>handleDeletePayment(p.id)} className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
+                      {!payLocked&&<button onClick={()=>handleDeletePayment(p.id)} className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>}
                     </div>
                   ))}
                 </div>
