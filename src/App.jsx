@@ -1599,7 +1599,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 </div>
-                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS}/>
+                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS} disabled={detailsLocked}/>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
                   <div className="flex gap-2 flex-wrap">
@@ -1644,25 +1644,25 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               {o.needsGst&&<div className="flex flex-col gap-1 w-64"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{o.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>}
               <F label="Comments / Notes" value={o.comments||""} onChange={v=>upd("comments",v)} rows={2} disabled={detailsLocked}/>
               <div className="border border-dashed border-indigo-200 rounded-xl p-3 bg-indigo-50/40 space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>upd("isReferred",e.target.checked?1:0)} className="rounded"/>
+                <label className={"flex items-center gap-2 select-none "+(detailsLocked?"opacity-60 cursor-not-allowed":"cursor-pointer")}>
+                  <input type="checkbox" checked={!!(o.isReferred)} onChange={e=>!detailsLocked&&upd("isReferred",e.target.checked?1:0)} disabled={detailsLocked} className="rounded"/>
                   <span className="text-xs font-semibold text-indigo-700">🤝 Referred Order?</span>
                 </label>
                 {!!(o.isReferred)&&<div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
-                    <F label="Referred by" value={o.referralPerson||""} onChange={v=>upd("referralPerson",v)} placeholder="Person / company name"/>
-                    <F label="Referral Amount (₹)" value={o.referralAmount||""} onChange={v=>upd("referralAmount",v)} placeholder="0"/>
+                    <F label="Referred by" value={o.referralPerson||""} onChange={v=>upd("referralPerson",v)} disabled={detailsLocked} placeholder="Person / company name"/>
+                    <F label="Referral Amount (₹)" value={o.referralAmount||""} onChange={v=>upd("referralAmount",v)} disabled={detailsLocked} placeholder="0"/>
                   </div>
                   <div className="border-t border-indigo-100 pt-2 space-y-1.5">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Referral Payout</p>
                     <div className="flex items-center gap-3 flex-wrap">
                       <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{const paid=e.target.checked?1:0; upd("referralPaid",paid); onReferralPaidChange({...o,referralPaid:paid},paid);}} className="rounded"/>
+                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{if(detailsLocked)return; const paid=e.target.checked?1:0; upd("referralPaid",paid); onReferralPaidChange({...o,referralPaid:paid},paid);}} disabled={detailsLocked} className="rounded"/>
                         <span className="text-xs text-gray-600 font-medium">Paid out</span>
                       </label>
                       {!!(o.referralPaid)&&<>
-                        <input type="date" value={o.referralPaidDate||""} onChange={e=>upd("referralPaidDate",e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                        <input type="text" value={o.referralPaidRef||""} onChange={e=>upd("referralPaidRef",e.target.value)} placeholder="Txn ref (optional)" className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-0"/>
+                        <input type="date" value={o.referralPaidDate||""} onChange={e=>upd("referralPaidDate",e.target.value)} disabled={detailsLocked} className={"border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"+(detailsLocked?" bg-gray-100 text-gray-400 cursor-not-allowed":"")}/>
+                        <input type="text" value={o.referralPaidRef||""} onChange={e=>upd("referralPaidRef",e.target.value)} disabled={detailsLocked} placeholder="Txn ref (optional)" className={"border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-0"+(detailsLocked?" bg-gray-100 text-gray-400 cursor-not-allowed":"")}/>
                       </>}
                     </div>
                     {!!(o.isReferred)&&!!( o.referralAmount)&&<p className="text-[10px] text-indigo-600 font-semibold">Due: ₹{Number(o.referralAmount||0).toLocaleString("en-IN")}</p>}
