@@ -4187,8 +4187,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
-function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
+function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentUser=null }) {
   if (!currentUser?.isAdmin) return <div className="text-center py-20 text-red-500 font-bold">Access denied.</div>;
+  const authToken = accessToken || sbKey; // use JWT if available, fall back to anon
   const [adminTab, setAdminTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -4206,8 +4207,8 @@ function AdminPanel({ sbUrl="", sbKey="", toast=()=>{}, currentUser=null }) {
   const TAB_LABELS = {analytics:"Analytics",new:"New Order",orders:"Orders",clients:"Clients",expenses:"Expenses",income:"Income",dashboard:"Splitwise",inventory:"Inventory",products:"Products",assets:"Assets",salary:"Salary",download:"Download",settings:"Settings"};
   const ALL = ["analytics","new","orders","clients","expenses","income","dashboard","inventory","products","assets","salary","download","settings"];
 
-  const headers = { "apikey":sbKey, "Authorization":`Bearer ${sbKey}`, "Content-Type":"application/json", "Prefer":"return=representation" };
-  const hMin = { "apikey":sbKey, "Authorization":`Bearer ${sbKey}`, "Content-Type":"application/json", "Prefer":"return=minimal" };
+  const headers = { "apikey":sbKey, "Authorization":`Bearer ${authToken}`, "Content-Type":"application/json", "Prefer":"return=representation" };
+  const hMin = { "apikey":sbKey, "Authorization":`Bearer ${authToken}`, "Content-Type":"application/json", "Prefer":"return=minimal" };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -6554,17 +6555,23 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       try {
         const roleRes = await fetch(
           `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
-          {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}
+          {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
         );
         if (roleRes.ok) {
           const rows = await roleRes.json();
           roleRow = rows?.[0] || null;
           // If no row yet, create one (first login = admin)
           if (!roleRow) {
-            // Check if this is the very first user ever (user_roles table empty)
+            // Check if this is the very first user ever — use token so RLS allows it
+            // Can only check own row exists (RLS: user sees own row only)
+            // If select returned empty, this user has no role row yet → create as first or restricted
+            // New user — default to no permissions. Admin must grant access.
+            // Exception: if this is truly the first user, make them admin.
+            // We check using the anon key (bypasses RLS on user_roles for count only).
             const countRes = await fetch(`${sbUrl}/rest/v1/user_roles?select=user_id&limit=1`,
               {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}).catch(()=>({ok:false}));
             const existingUsers = countRes.ok ? await countRes.json().catch(()=>[]) : [];
+            const isFirstUser = existingUsers.length === 0;
             const isFirstUser = existingUsers.length === 0;
             const newRole = {
               user_id:authUser.id, email:authUser.email,
@@ -7919,7 +7926,7 @@ function App() {
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
           {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
           {tab==="settings"&&canRead("settings")&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
-          {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} toast={toast} currentUser={currentUser}/>}
+          {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} accessToken={accessToken} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
       </div>
