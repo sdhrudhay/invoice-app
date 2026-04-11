@@ -6526,6 +6526,15 @@ function createSupabaseClient(url, key) {
         headers: { "apikey": key, "Authorization": `Bearer ${accessToken}` }
       });
       return r.ok ? r.json() : null;
+    },
+    refreshToken: async (refreshToken) => {
+      const r = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": key },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      if (!r.ok) return null;
+      return r.json(); // { access_token, refresh_token, user }
     }
   };
   return { from, auth };
@@ -6610,6 +6619,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
 
       sessionStorage.setItem("app_user", JSON.stringify(userData));
       sessionStorage.setItem("app_session_id", sessionId);
+      if (data.refresh_token) sessionStorage.setItem("sb_refresh_token", data.refresh_token);
       onLogin(token, userData);
     } catch(e) {
       setError(e.message||"Login failed");
@@ -7476,7 +7486,35 @@ function App() {
     const token = sessionStorage.getItem("sb_token")||"";
     if (!url||!key||!token) return;
     const baseClient = createSupabaseClient(url, key);
-    const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${token}` };
+
+    // ── Validate token; refresh if expired ──────────────────────────────
+    let activeToken = token;
+    try {
+      const userCheck = await baseClient.auth.getUser(token);
+      if (!userCheck || userCheck.error) {
+        // Token expired — try refresh
+        const refreshTok = sessionStorage.getItem("sb_refresh_token");
+        if (refreshTok) {
+          const refreshed = await baseClient.auth.refreshToken(refreshTok);
+          if (refreshed?.access_token) {
+            activeToken = refreshed.access_token;
+            setAccessToken(activeToken);
+            sessionStorage.setItem("sb_token", activeToken);
+            if (refreshed.refresh_token) sessionStorage.setItem("sb_refresh_token", refreshed.refresh_token);
+          } else {
+            // Refresh failed — session expired, force logout
+            handleLogout();
+            return;
+          }
+        } else {
+          handleLogout();
+          return;
+        }
+      }
+    } catch(e) { console.warn("Token check failed, proceeding:", e.message); }
+    // ─────────────────────────────────────────────────────────────────────
+
+    const authHeaders = { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${activeToken}` };
     const rest2 = `${url}/rest/v1`;
     const client = { from: (table) => ({
       select: async (cols="*") => {
@@ -7764,7 +7802,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${sbKey2}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
