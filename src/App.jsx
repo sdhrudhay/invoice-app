@@ -6505,7 +6505,13 @@ function createSupabaseClient(url, key) {
         body: JSON.stringify({ email, password })
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error_description || data.msg || "Login failed");
+      if (!r.ok) {
+        const msg = data.error_description || data.msg || data.error || "Login failed";
+        if (r.status===400) throw new Error("Invalid email or password. Please check your credentials.");
+        if (r.status===422) throw new Error("Email format is invalid.");
+        if (r.status===429) throw new Error("Too many login attempts. Please wait a moment.");
+        throw new Error(msg);
+      }
       return data; // { access_token, refresh_token, user }
     },
     signOut: async (accessToken) => {
@@ -6528,6 +6534,7 @@ function createSupabaseClient(url, key) {
 function LoginScreen({ onLogin, sbUrl, sbKey }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -6626,12 +6633,18 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
             </div>
             <div>
               <label className="text-xs font-semibold uppercase tracking-wide text-gray-500 block mb-1">Password</label>
-              <input
-                type="password" value={password} onChange={e=>setPassword(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-                placeholder="••••••••"
-                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-slate-800"
-              />
+              <div className="relative">
+                <input
+                  type={showPw?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                  placeholder="••••••••"
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-slate-800"
+                />
+                <button type="button" onClick={()=>setShowPw(v=>!v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm select-none">
+                  {showPw?"🙈":"👁"}
+                </button>
+              </div>
             </div>
             {error&&<p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
             <button
@@ -7469,55 +7482,59 @@ function App() {
       }
     }), auth: baseClient.auth };
     setLoading(true);
+    // Phase 1: Critical data — orders, settings, recipients (needed to render immediately)
     Promise.all([
       client.from("orders").select(),
-      client.from("quotations").select(),
-      client.from("proformas").select(),
-      client.from("tax_invoices").select(),
       client.from("items").select(),
-      client.from("clients").select(),
-      client.from("recipients").select(),
-      client.from("expenses").select(),
       client.from("payments").select(),
-      client.from("assets").select(),
       client.from("settings").select(),
-      client.from("settlements").select(),
-      client.from("inventory").select(),
-      client.from("wastage_log").select(),
-      client.from("products").select(),
-      client.from("employees").select().catch(()=>[]),
-    ]).then(([ord,qt,pf,ti,allItems,cl,rc,ex,pay,ass,sets,stl,inv,wlog,prods,emps])=>{
+      client.from("recipients").select(),
+    ]).then(([ord, allItems, pay, sets, rc]) => {
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
-      // Map DB item row to app item object
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
       const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
       const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", isReferred:r.is_referred||0, referralPerson:r.referral_person||"", referralAmount:r.referral_amount||0, referralPaid:r.referral_paid||0, referralPaidDate:r.referral_paid_date||"", referralPaidRef:r.referral_paid_ref||"", items:getItems("order",r.order_no), payments:[] });
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItems(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
+      const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
+      const payMapped = pay?.length ? pay.map(mapPayment) : [];
+      if (ord?.length) setOrders(ord.map(mapOrder).map(o=>({...o,payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
+      if (rc?.length) { const mapped=rc.map(r=>({id:r.id,name:r.name,isDeleted:r.is_deleted||false})); setRecipients(mapped.filter(r=>!r.isDeleted)); allRecipientsRef.current=mapped; }
+      if (sets?.length) { const s={}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} }); if(s.seller)setSeller(s.seller); if(s.series)setSeries(s.series); }
+      setLoading(false); // ← Show UI now with orders loaded
+
+      // Phase 2: Secondary data — load in background without blocking UI
+      Promise.all([
+        client.from("quotations").select(),
+        client.from("proformas").select(),
+        client.from("tax_invoices").select(),
+        client.from("clients").select(),
+        client.from("expenses").select(),
+        client.from("assets").select(),
+        client.from("settlements").select(),
+        client.from("inventory").select(),
+        client.from("wastage_log").select(),
+        client.from("products").select(),
+        client.from("employees").select().catch(()=>[]),
+      ]).then(([qt,pf,ti,cl,ex,ass,stl,inv,wlog,prods,emps])=>{ const allItemsP2 = allItems||[];
+      const parseJsonP2 = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
+      const mapItemP2 = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
+      const getItemsP2 = (type, id) => (allItemsP2||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItemP2);
+      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItemsP2(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
-      const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
+      const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
       if (emps?.length) setEmployees(emps.filter(r=>!r.is_deleted).map(r=>({id:r.id, name:r.name, role:r.role||"", isDeleted:false})));
-      const ordMapped = ord?.length ? ord.map(mapOrder) : [];
-      const payMapped = pay?.length ? pay.map(mapPayment) : [];
-      if (ordMapped.length) setOrders(ordMapped.map(o=>({...o, payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
       if (qt?.length) setQuotations(qt.map(mapInv("quotation")));
       if (pf?.length) setProformas(pf.map(mapInv("proforma")));
       if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
       if (cl?.length) setClients(cl.map(mapClient).filter(c=>!c.isDeleted));
-      if (rc?.length) { const mapped=rc.map(r=>({id:r.id,name:r.name,isDeleted:r.is_deleted||false})); setRecipients(mapped.filter(r=>!r.isDeleted)); allRecipientsRef.current=mapped; }
-      const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
       if (ass?.length) setAssets(ass.map(mapAsset).filter(a=>!a.isDeleted));
       if (ex?.length) setExpenses(ex.map(mapExpense).filter(e=>!e.isDeleted));
-      if (sets?.length) {
-        const s = {}; sets.forEach(r=>{ try{s[r.key]=JSON.parse(r.value)}catch(e){s[r.key]=r.value} });
-        if (s.seller) setSeller(s.seller);
-        if (s.series) setSeries(s.series);
-      }
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
       if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, unitPrice:Number(r.unit_price)||0, productType:r.product_type||"3d_printed", cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
-    }).catch((e)=>{ console.error("Data load error:", e); }).finally(()=>setLoading(false));
+    }).catch((e)=>{ console.error("Phase 2 load error:", e); });
+    }).catch((e)=>{ console.error("Phase 1 load error:", e); setLoading(false); });
   },[accessToken]);
 
   // ── Queue-based sync ────────────────────────────────────────────────────
