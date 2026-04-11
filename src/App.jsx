@@ -2922,9 +2922,9 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
             <div className="grid grid-cols-2 gap-4">
               <F label={clientTab==="B2C"?"Customer Name":"Company Name"} value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
-              {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} disabled={locked} placeholder="29XXXXX0000X1ZX"/>}
+              {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} disabled={readOnly} placeholder="29XXXXX0000X1ZX"/>}
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
-              <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} disabled={locked} placeholder="client@email.com"/>
+              <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} disabled={readOnly} placeholder="client@email.com"/>
               <div className="flex flex-col gap-1"><label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label><div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{form.placeOfSupply||<span className="text-gray-400 italic">Auto-filled</span>}</div></div>
             </div>
           </div>
@@ -2932,9 +2932,9 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
           <div className="border-t pt-4">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
             <div className="grid grid-cols-2 gap-4">
-              <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} disabled={locked} placeholder="Company name or individual"/>
-              <StateSelect value={form.billingStateCode} onChange={v=>{ upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }}/>
-              <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} disabled={locked} rows={2} className="col-span-2"/>
+              <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} disabled={readOnly} placeholder="Company name or individual"/>
+              <StateSelect value={form.billingStateCode} onChange={v=>{ if(readOnly)return; upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }} disabled={readOnly}/>
+              <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} disabled={readOnly} rows={2} className="col-span-2"/>
             </div>
           </div>
 
@@ -2962,7 +2962,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
               <F label="Name" value={sameAsBilling ? (form.billingName||form.name) : form.shippingName} onChange={v=>{if(!sameAsBilling)upd("shippingName",v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? form.contact : form.shippingContact} onChange={v=>{if(!sameAsBilling)upd("shippingContact",v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               <F label="GSTIN (if different)" value={sameAsBilling ? form.gstin : form.shippingGstin} onChange={v=>{if(!sameAsBilling)upd("shippingGstin",v);}} disabled={sameAsBilling}/>
-              <StateSelect value={sameAsBilling ? form.billingStateCode : form.shippingStateCode} onChange={v=>{ if(!sameAsBilling){ upd("shippingStateCode",v); upd("placeOfSupply",stateByCode(v)); } }} disabled={sameAsBilling}/>
+              <StateSelect value={sameAsBilling ? form.billingStateCode : form.shippingStateCode} onChange={v=>{ if(!sameAsBilling&&!readOnly){ upd("shippingStateCode",v); upd("placeOfSupply",stateByCode(v)); } }} disabled={sameAsBilling||readOnly}/>
               <F label="Shipping Address" value={sameAsBilling ? form.billingAddress : form.shippingAddress} onChange={v=>{if(!sameAsBilling)upd("shippingAddress",v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
             </div>
           </div>
@@ -3003,7 +3003,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
+                {!readOnly&&<button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>}
                 <button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
               </div>
             </div>
@@ -4595,7 +4595,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
                   </div>
                   {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
                 </div>
-                <button onClick={()=>handleDeleteSalary(e)} className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>
+                {!readOnly&&<button onClick={()=>handleDeleteSalary(e)} className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>}
               </div>
             ))}
           </div>
@@ -5009,15 +5009,15 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
             }));
             exportToExcel(rows, "Assets_Export");
           }}/>
-          <button onClick={()=>{ setForm({...EMPTY_ASSET,purchaseDate:today()}); setEditId(null); setShowForm(v=>!v); }}
+          {!readOnly&&<button onClick={()=>{ setForm({...EMPTY_ASSET,purchaseDate:today()}); setEditId(null); setShowForm(v=>!v); }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">
             {showForm ? "Close Form" : "+ Add Asset"}
-          </button>
+          </button>}
         </div>
       </div>
 
       {/* Form */}
-      {showForm && (
+      {showForm && !readOnly && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
           <h3 className="font-bold text-slate-700 text-sm">{editId ? "Edit Asset — "+editId : "New Asset"}</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -5139,8 +5139,8 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
                 </div>
               </div>
               <div className="flex flex-col gap-1.5 shrink-0">
-                <button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
-                {!readOnly&&<button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
+                {!readOnly&&<button onClick={()=>handleEdit(a)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
+                {!readOnly&&<button onClick={()=>handleDelete(a)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}}
               </div>
             </div>
           </div>
@@ -5603,8 +5603,8 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="font-bold text-lg text-slate-800">Filament Inventory</h2>
         <div className="flex items-center gap-2">
-          {invTab==="stock"&&<button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showForm?"Cancel":"+ Add Stock"}</button>}
-          {invTab==="wastage"&&<button onClick={()=>setShowWasteForm(v=>!v)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showWasteForm?"Cancel":"+ Record Wastage"}</button>}
+          {invTab==="stock"&&!readOnly&&<button onClick={()=>setShowForm(v=>!v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showForm?"Cancel":"+ Add Stock"}</button>}
+          {invTab==="wastage"&&!readOnly&&<button onClick={()=>setShowWasteForm(v=>!v)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">{showWasteForm?"Cancel":"+ Record Wastage"}</button>}
         </div>
       </div>
       {/* Sub-tabs */}
@@ -5831,7 +5831,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                             {rem<Number(item.weightG||0)&&<span className={`text-xs font-semibold ${c2}`}>{rem.toFixed(0)}g left ({p2}%)</span>}
                             {item.notes&&<span className="text-xs text-gray-400 italic">{item.notes}</span>}
                           </div>
-                          <button onClick={()=>handleDelete(item)} className="text-xs text-red-300 hover:text-red-500 font-bold leading-none shrink-0">×</button>
+                          {!readOnly&&<button onClick={()=>handleDelete(item)} className="text-xs text-red-300 hover:text-red-500 font-bold leading-none shrink-0">×</button>}
                         </div>
                       );
                     })}
@@ -5861,7 +5861,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                 </div>
               </div>
             </div>
-            <button onClick={()=>handleDelete(item)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg shrink-0 transition-all">×</button>
+            {!readOnly&&<button onClick={()=>handleDelete(item)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg shrink-0 transition-all">×</button>}
           </div>
         ))}
       </div>
@@ -5890,16 +5890,16 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                     <input value={brand} readOnly placeholder="Brand" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
                     <input value={mat} readOnly placeholder="Material" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
                     <span className="text-gray-400 text-xs shrink-0">₹/g</span>
-                    <input type="number" value={ppg} min="0" step="0.01"
-                      onChange={e=>{ const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp}); }}
+                    <input type="number" value={ppg} min="0" step="0.01" disabled={readOnly}
+                      onChange={e=>{ if(!readOnly){const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp});} }}
                       onWheel={e=>e.target.blur()} placeholder="0.00"
-                      className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
-                      className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+                      className={"w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"+(readOnly?" bg-gray-100 text-gray-400":"")}/>
+                    {!readOnly&&<button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
+                      className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
                   </div>
                 );
               })}
-              <AddPriceRow materialList={materialList} fps={fps} seller={seller} setSeller={setSeller}/>
+              {!readOnly&&<AddPriceRow materialList={materialList} fps={fps} seller={seller} setSeller={setSeller}/>}
             </div>
           );
         })()}
@@ -6076,10 +6076,10 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
   };
 
   if (!open) return (
-    <button onClick={() => setOpen(true)}
+    {!readOnly&&<button onClick={() => setOpen(true)}
       className="w-full mt-1 text-xs border border-dashed border-indigo-300 text-indigo-500 hover:bg-indigo-50 py-2 rounded-lg font-semibold transition-all">
       + Record Settlement
-    </button>
+    </button>}
   );
 
   return (
@@ -6142,7 +6142,7 @@ function SettlementForm({ fromId, fromName, net, recipients, allRecipients, sell
   );
 }
 
-function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, settlements=[], setSettlements=()=>{} }) {
+function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, settlements=[], setSettlements=()=>{}, readOnly=false }) {
   // Build per-recipient ledger
   // Each recipient either:
   //   collected money (advance/payments) → recipient owes company (positive = recipient owes)
@@ -7847,7 +7847,7 @@ function App() {
           {tab==="income"&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} subTabPerms={isAdmin?null:(typeof perms["income"]==="object"&&perms["income"]!==null?perms["income"]:null)}/>}
           {tab==="salary"&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {tab==="download"&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
-          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements}/>}
+          {tab==="dashboard"&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
           {tab==="settings"&&canRead("settings")&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
           {tab==="admin"&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} toast={toast} currentUser={currentUser}/>}
         </div>
