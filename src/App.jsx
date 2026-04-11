@@ -4061,37 +4061,82 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               chRefMap[ch].amount+=num(o.referralAmount);
               if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
             });
+            const topByPending = [...persons].sort((a,b)=>(b.amount-b.paid)-(a.amount-a.paid));
+            const MEDALS = ["🥇","🥈","🥉"];
             return (<>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <KPITile label="Referred Orders" value={refOrders.length} sub={`of ${orders.length} total`} accent="#8b5cf6" icon="🤝"/>
                 <KPITile label="Total Referral Due" value={fmtK(totalRefAmt)} sub="across all referrals" accent="#6366f1" icon="💰"/>
-                <KPITile label="Paid Out" value={fmtK(paidRefAmt)} sub={`${paidRefs.length} referrals`} accent="#10b981" icon="✅"/>
+                <KPITile label="Paid Out" value={fmtK(paidRefAmt)} sub={`${paidRefs.length} paid`} accent="#10b981" icon="✅"/>
                 <KPITile label="Pending Payout" value={fmtK(unpaidRefAmt)} sub={`${unpaidRefs.length} unpaid`} accent="#f43f5e" icon="⏰"/>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Card>
-                  <Sec icon="👤" title="Referrals by Person"/>
-                  {persons.length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
-                    <div className="space-y-3">
-                      {persons.map((p,i)=>(
-                        <div key={p.name} className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-gray-700 flex-1 truncate">{p.name}</span>
-                            <span className="text-[10px] text-gray-400">{p.orders} orders</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${p.paid>=p.amount&&p.amount>0?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{p.paid>=p.amount&&p.amount>0?"Paid":"Pending"}</span>
-                            <span className="text-xs font-black text-indigo-600">{fmtK(p.amount)}</span>
-                          </div>
-                          <div className="flex gap-1 flex-wrap">
-                            {Object.entries(p.channels).map(([ch,cnt])=>(
-                              <span key={ch} className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{ch}: {cnt}</span>
-                            ))}
+
+              {/* Top Referrers Leaderboard */}
+              {topByPending.length>0&&<Card>
+                <Sec icon="🏆" title="Top Referrers — Pending First"/>
+                <div className="space-y-2 mt-1">
+                  {topByPending.map((p,i)=>{
+                    const pending = p.amount - p.paid;
+                    const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
+                    return (
+                      <div key={p.name} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                        <span className="text-lg shrink-0 w-6 text-center">{MEDALS[i]||<span className="text-xs font-black text-gray-400">#{i+1}</span>}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold text-slate-700 truncate">{p.name}</span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{p.orders} order{p.orders!==1?"s":""}</span>
                           </div>
                           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-indigo-400" style={{width:`${p.amount?Math.round(p.paid/p.amount*100):0}%`}}/>
+                            <div className="h-full rounded-full bg-indigo-400 transition-all" style={{width:`${pct}%`}}/>
                           </div>
-                          <p className="text-[9px] text-gray-400">{fmtK(p.paid)} paid · {fmtK(p.amount-p.paid)} pending</p>
                         </div>
-                      ))}
+                        <div className="text-right shrink-0 space-y-0.5">
+                          <p className="text-xs font-black text-indigo-600">{fmtK(p.amount)} total</p>
+                          {pending>0
+                            ?<p className="text-[10px] font-bold text-orange-500">₹{Number(pending).toLocaleString("en-IN")} pending</p>
+                            :<p className="text-[10px] font-bold text-emerald-500">✓ Fully paid</p>
+                          }
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Card>
+                  <Sec icon="👤" title="Referrals by Person — Pending vs Paid"/>
+                  {persons.length===0?<p className="text-xs text-gray-300 text-center py-4">No referrals yet</p>:(
+                    <div className="space-y-3">
+                      {persons.map((p,i)=>{
+                        const pending = p.amount - p.paid;
+                        const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
+                        return (
+                          <div key={p.name} className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-700 flex-1 truncate">{p.name}</span>
+                              <span className="text-[10px] text-gray-400">{p.orders} order{p.orders!==1?"s":""}</span>
+                              {pending>0
+                                ?<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600">₹{Number(pending).toLocaleString("en-IN")} pending</span>
+                                :<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Paid</span>
+                              }
+                            </div>
+                            <div className="flex gap-1 flex-wrap">
+                              {Object.entries(p.channels).map(([ch,cnt])=>(
+                                <span key={ch} className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{ch}: {cnt}</span>
+                              ))}
+                            </div>
+                            <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${pct}%`}}/>
+                              {pending>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${pct}%`,right:"0"}}/>}
+                            </div>
+                            <div className="flex justify-between text-[9px]">
+                              <span className="text-emerald-600 font-semibold">✓ {fmtK(p.paid)} paid</span>
+                              {pending>0&&<span className="text-orange-500 font-semibold">⏰ {fmtK(pending)} pending</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </Card>
@@ -4106,23 +4151,37 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                             <span className="text-[10px] text-gray-400">{count} orders</span>
                             <span className="text-xs font-bold text-indigo-600">{fmtK(amount)}</span>
                           </div>
-                          <HBar label="" value={paid} total={amount} color="#10b981" pct={amount?Math.round(paid/amount*100):0}/>
-                          <p className="text-[9px] text-gray-400">{fmtK(paid)} paid · {fmtK(amount-paid)} pending</p>
+                          <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{width:`${amount?Math.round(paid/amount*100):0}%`}}/>
+                            {amount-paid>0&&<div className="absolute inset-y-0 rounded-full bg-orange-300" style={{left:`${amount?Math.round(paid/amount*100):0}%`,right:"0"}}/>}
+                          </div>
+                          <div className="flex justify-between text-[9px]">
+                            <span className="text-emerald-600 font-semibold">✓ {fmtK(paid)} paid</span>
+                            {amount-paid>0&&<span className="text-orange-500 font-semibold">⏰ {fmtK(amount-paid)} pending</span>}
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                 </Card>
               </div>
+
               {unpaidRefs.length>0&&<Card>
-                <Sec icon="⚠️" title="Pending Referral Payouts"/>
+                <Sec icon="⏰" title="Pending Payouts — Ordered by Amount"/>
                 <div className="space-y-1.5">
                   {unpaidRefs.sort((a,b)=>num(b.referralAmount)-num(a.referralAmount)).map(o=>(
-                    <div key={o.orderNo} className="flex items-center gap-3 py-1.5 border-b border-gray-50">
-                      <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
-                      <span className="text-xs text-gray-700 flex-1 truncate">{o.customerName}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold shrink-0">{o.referralPerson||"?"}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0">{o.channel||"Offline"}</span>
+                    <div key={o.orderNo} className="flex items-center gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
+                          <span className="text-xs text-gray-700 truncate">{o.customerName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">{o.referralPerson||"?"}</span>
+                          <span className="text-[9px] text-gray-400">{o.channel||"Offline"}</span>
+                          <span className="text-[9px] text-gray-400">{o.orderDate||""}</span>
+                        </div>
+                      </div>
                       <span className="text-sm font-black text-orange-500 shrink-0">₹{Number(o.referralAmount||0).toLocaleString("en-IN")}</span>
                     </div>
                   ))}
