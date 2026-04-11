@@ -1196,13 +1196,25 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
         );
       })()}
 
-      {/* Wastage summary */}
-      {totalWaste>0&&(
-        <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
-          <p className="text-xs text-orange-400 mb-0.5 font-semibold uppercase tracking-wide">Order Wastage</p>
-          <p className="text-2xl font-black text-orange-600">{totalWaste.toFixed(1)} g</p>
-        </div>
-      )}
+      {/* Wastage summary — from wastageLog linked to this order */}
+      {(()=>{
+        const orderWaste = wastageLog.filter(w=>w.orderNo===currentOrderNo);
+        const orderWasteG = orderWaste.reduce((s,w)=>s+Number(w.weightG||0),0);
+        if (orderWasteG<=0) return null;
+        const byMat = {};
+        orderWaste.forEach(w=>{ byMat[w.material||"Unknown"]=(byMat[w.material||"Unknown"]||0)+Number(w.weightG||0); });
+        return (
+          <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-orange-400 mb-0.5 font-semibold uppercase tracking-wide">Order Wastage</p>
+            <p className="text-2xl font-black text-orange-600">{orderWasteG.toFixed(1)} g</p>
+            {Object.keys(byMat).length>1&&<div className="flex flex-wrap gap-1.5 mt-2">
+              {Object.entries(byMat).sort((a,b)=>b[1]-a[1]).map(([mat,g])=>(
+                <span key={mat} className="text-[10px] px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-semibold">{mat}: {g.toFixed(1)} g</span>
+              ))}
+            </div>}
+          </div>
+        );
+      })()}
 
       {/* Add entry form */}
       <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-3">
