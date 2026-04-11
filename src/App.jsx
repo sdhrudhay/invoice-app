@@ -702,7 +702,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
   const hdrs = ["#","Item / Description","HSN","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100">
+    <div className="overflow-x-auto rounded-xl border border-gray-100 scrollbar-none" style={{WebkitOverflowScrolling:"touch"}}>
       <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
         <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
@@ -942,7 +942,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               {selectedClient && <p className="text-xs text-indigo-500 mt-2 font-medium">✓ Client details auto-filled — edit below if needed for this order</p>}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             <F label="Customer / Company Name" value={customerName} onChange={setCustomerName} required className="col-span-2 md:col-span-1"/>
             <F label="Phone" value={phone} onChange={setPhone} placeholder="+91 XXXXX XXXXX"/>
             <F label="Email" value={email} onChange={setEmail} placeholder="customer@email.com"/>
@@ -983,7 +983,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           {(!isPickup||type==="B2B")&&(
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
               <StateSelect value={billingStateCode} onChange={v=>{ setBillingStateCode(v); if(type==="B2B") setPlaceOfSupply(stateByCode(v)); }}/>
               <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="col-span-2"/>
@@ -1011,7 +1011,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
                 <span className="font-medium text-indigo-600">Same as billing</span>
               </label>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? phone : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
@@ -1375,7 +1375,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                 const fi = d.firstItem;
                 return (
                   <div key={d.bk} className={`rounded-xl px-4 py-3 border ${borderCls}`}>
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-1.5 flex-wrap min-w-0">
                           {fi&&<span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${matColors[fi.material]||"bg-gray-100 text-gray-600"}`}>{fi.material}</span>}
@@ -1551,7 +1551,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       {/* Backdrop */}
       <div className="flex-1 bg-black/40" onClick={onClose}/>
       {/* Drawer */}
-      <div className="w-full max-w-2xl bg-white shadow-2xl flex flex-col">
+      <div className="w-full md:max-w-2xl bg-white shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-slate-800 text-white shrink-0">
           <div>
@@ -1586,10 +1586,10 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       )}
 
       {/* Tabs */}
-        <div className="flex border-b shrink-0 bg-gray-50">
+        <div className="flex border-b shrink-0 bg-gray-50 overflow-x-auto scrollbar-none">
           {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"],["filament","Filament"]].filter(([id])=>canSubTabRead(id)).map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setCreating(null);}}
-              className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
+              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap shrink-0 ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500 hover:text-gray-700"}`}>
               {label}
             </button>
           ))}
@@ -1614,7 +1614,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                 <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} disabled={detailsLocked} className="col-span-2 md:col-span-1"/>
                 <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} disabled={detailsLocked} placeholder="+91 XXXXX XXXXX"/>
                 <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} disabled={detailsLocked} placeholder="customer@email.com"/>
@@ -1656,7 +1656,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               {!o.isPickup&&<>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                   <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={detailsLocked}/>
                   <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
                   <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
@@ -1664,7 +1664,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Shipping Address</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                   <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={detailsLocked}/>
                   <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={detailsLocked}/>
                   {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={detailsLocked}/>}
@@ -2868,7 +2868,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm text-slate-800">{r.name}</span>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-1.5 shrink-0 flex-wrap">
                 <button onClick={()=>handleEdit(r)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-3 py-1.5 rounded-lg">✏️ Edit</button>
                 <button onClick={()=>handleDelete(r.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-3 py-1.5 rounded-lg">Delete</button>
               </div>
@@ -2953,7 +2953,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <F label={clientTab==="B2C"?"Customer Name":"Company Name"} value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
               {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} disabled={readOnly} placeholder="29XXXXX0000X1ZX"/>}
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
@@ -2964,7 +2964,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
           <div className="border-t pt-4">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} disabled={readOnly} placeholder="Company name or individual"/>
               <StateSelect value={form.billingStateCode} onChange={v=>{ if(readOnly)return; upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }} disabled={readOnly}/>
               <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} disabled={readOnly} rows={2} className="col-span-2"/>
@@ -2991,7 +2991,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
                 <span className="font-medium text-indigo-600">Same as billing</span>
               </label>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <F label="Name" value={sameAsBilling ? (form.billingName||form.name) : form.shippingName} onChange={v=>{if(!sameAsBilling)upd("shippingName",v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? form.contact : form.shippingContact} onChange={v=>{if(!sameAsBilling)upd("shippingContact",v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               <F label="GSTIN (if different)" value={sameAsBilling ? form.gstin : form.shippingGstin} onChange={v=>{if(!sameAsBilling)upd("shippingGstin",v);}} disabled={sameAsBilling}/>
@@ -3035,7 +3035,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
                   {c.billingAddress && <div className="text-gray-400 truncate max-w-md">{c.billingAddress}</div>}
                 </div>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-1.5 shrink-0 flex-wrap">
                 {!readOnly&&<button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>}
                 {!readOnly&&<button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
               </div>
@@ -3479,11 +3479,11 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   return (
     <div className="space-y-4">
       {/* Nav */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10 overflow-x-auto scrollbar-none">
         {SECTIONS.filter(s=>canSection(s.id)).map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
-            <span>{s.icon}</span><span className="hidden sm:inline">{s.label}</span>
+            className={`flex-shrink-0 flex items-center justify-center gap-1 py-2 px-2.5 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            <span>{s.icon}</span><span className="hidden sm:inline ml-1">{s.label}</span>
           </button>
         ))}
       </div>
@@ -3541,7 +3541,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue + expense overview bars */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ChartCard icon="📊" title={period==="year"?"Revenue by Year":"Revenue This Year"} sub={chartLabel}
               legend={[
                 <span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,
@@ -3567,7 +3567,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="trends"&&canSection("trends")&&(
         <div className="space-y-3">
           {/* Cumulative revenue line */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <ChartCard icon="📈" title="Cumulative Revenue & Profit" sub={`${year}`}
                 legend={[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
@@ -3620,7 +3620,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue line YoY comparison */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <ChartCard icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}
                 legend={[<span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,<span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>,yoyGrowth!==null&&<span key="c" className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>].filter(Boolean)}>
@@ -3721,7 +3721,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             });
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Card>
                   <Sec icon="🔥" title="Top Products" sub={periodLabel}/>
                   {topItems.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
@@ -3833,7 +3833,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ChartCard icon="📈" title="Orders Over Time">
               <BarChart2 data={chartData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)}/>
             </ChartCard>
@@ -3842,7 +3842,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </ChartCard>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ChartCard icon="🛒" title="Sales Channel">
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
             </ChartCard>
@@ -3873,7 +3873,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Card>
               <Sec icon="💸" title="Expenses by Category"/>
               {expCats.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
@@ -3955,7 +3955,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             })()}
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Card>
               <Sec icon="🗑️" title="Wastage by Brand · Material · Color"/>
               {wastageLog.length===0?<p className="text-xs text-gray-300 text-center py-4">No wastage recorded</p>:(()=>{
@@ -4034,7 +4034,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             )}
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Card>
               <Sec icon="🗓️" title="Order Frequency Distribution"/>
               {(()=>{
@@ -4827,7 +4827,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
                 {rcp&&<p className="text-xs text-indigo-500 mt-0.5">👤 {rcp.name}</p>}
                 {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-1.5 shrink-0 flex-wrap">
                 {!readOnly&&<button onClick={()=>handleEdit(e)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg">✏️</button>}
                 <button onClick={()=>handleDelete(e.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
               </div>
@@ -5072,7 +5072,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
       {showForm && !readOnly && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
           <h3 className="font-bold text-slate-700 text-sm">{editId ? "Edit Asset — "+editId : "New Asset"}</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
             <div className="col-span-2"><F label="Asset Name *" value={form.name} onChange={v=>upd("name",v)} placeholder="e.g. Creality Ender 3 Pro"/></div>
             <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={ASSET_CATEGORIES}/>
             <F label="Purchase Date *" type="date" value={form.purchaseDate} onChange={v=>upd("purchaseDate",v)}/>
@@ -6629,7 +6629,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-6">
           <div className="text-center">
@@ -6985,7 +6985,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"],["gstr1","🇮🇳 GSTR-1"]].filter(([id])=>canDlTab(id)).map(([id,lb])=>(
           <button key={id} onClick={()=>setSubTab(id)}
-            className={"flex-1 py-2 rounded-lg text-sm font-semibold transition-all "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
+            className={"shrink-0 py-2 px-3 rounded-lg text-xs md:text-sm font-semibold transition-all whitespace-nowrap "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
             {lb}
           </button>
         ))}
@@ -7875,7 +7875,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
-      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
+      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}.scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}`}</style>
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
       {/* ── Sidebar nav (desktop) ── */}
