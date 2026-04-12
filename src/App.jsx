@@ -41,9 +41,9 @@ function buildOrderNo(series, type, orders) {
 }
 
 function genInvNo(prefix, period, list, digits) {
-  const base = period ? `${prefix}/${period}` : prefix;
+  const base = period ? `${prefix}${period}` : prefix;
   const count = list.filter(i => i.invNoBase === base).length + 1;
-  return { invNo: `${base}/${String(count).padStart(digits, "0")}`, invNoBase: base };
+  return { invNo: `${base}${String(count).padStart(digits, "0")}`, invNoBase: base };
 }
 
 function genClientId(clients=[]) {
@@ -6718,17 +6718,7 @@ function Toast({ toasts }) {
 function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={}, expenses=[], subTabPerms=null }) {
   const canDlTab = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
   const firstDlTab = ["invoices","reports","gstr1"].find(t=>canDlTab(t)) || "invoices";
-  const thisMonth = new Date().toISOString().slice(0,7);
-  const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
-  const [from, setFrom] = useState(threeMonthsAgo);
-  const [to, setTo] = useState(thisMonth);
-  const [custTypes, setCustTypes] = useState(['B2B','B2C']);
-  const [orderStatuses, setOrderStatuses] = useState(['Pending','Completed','Cancelled']);
-  const [balanceFilter, setBalanceFilter] = useState('all');
-  const [docTypes, setDocTypes] = useState(['quotation','proforma','tax']);
-  const [status, setStatus] = useState('');
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState({done:0,total:0});
+
   const [subTab, setSubTab] = useState(firstDlTab);
   const [reportPeriod, setReportPeriod] = useState('month');
   const [reportMonth, setReportMonth] = useState(thisMonth);
