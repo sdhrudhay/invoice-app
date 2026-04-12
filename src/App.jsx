@@ -475,7 +475,7 @@ function Badge({ label }) {
 }
 
 function F({ label, value, onChange, type="text", required, className="", placeholder, disabled, rows }) {
-  const b = "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full " + (disabled ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed select-none" : "bg-white border-gray-200");
+  const b = "border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full " + (disabled ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed select-none" : "bg-white border-gray-200");
   return (
     <div className={`flex flex-col gap-1 ${className} ${disabled ? "relative" : ""}`}>
       {label && <label className={"text-xs font-semibold uppercase tracking-wide " + (disabled ? "text-gray-300" : "text-gray-500")}>{label}{required && <span className="text-red-400 ml-0.5">*</span>}</label>}
@@ -942,8 +942,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               {selectedClient && <p className="text-xs text-indigo-500 mt-2 font-medium">✓ Client details auto-filled — edit below if needed for this order</p>}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-            <F label="Customer / Company Name" value={customerName} onChange={setCustomerName} required className="col-span-2 md:col-span-1"/>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <F label="Customer / Company Name" value={customerName} onChange={setCustomerName} required className="md:col-span-2 col-span-1"/>
             <F label="Phone" value={phone} onChange={setPhone} placeholder="+91 XXXXX XXXXX"/>
             <F label="Email" value={email} onChange={setEmail} placeholder="customer@email.com"/>
             {type==="B2B"&&<F label="GSTIN" value={gstin} onChange={setGstin} placeholder="29XXXXX0000X1ZX"/>}
@@ -962,10 +962,10 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
             <S label="Order Status" value={status} onChange={setStatus} options={STATUS_OPTIONS}/>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2">
                 {["Offline","Online"].map(c=>(
                   <button key={c} type="button" onClick={()=>setChannel(c==="Offline"?"Offline":(channel==="Offline"||!ONLINE_PLATFORMS.includes(channel)?ONLINE_PLATFORMS[0]:channel))}
-                    className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?channel==="Offline":channel!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
+                    className={`flex-1 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?channel==="Offline":channel!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
                 ))}
               </div>
               {channel!=="Offline"&&<div className="flex gap-2 flex-wrap mt-1">
@@ -983,10 +983,10 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           {(!isPickup||type==="B2B")&&(
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
               <StateSelect value={billingStateCode} onChange={v=>{ setBillingStateCode(v); if(type==="B2B") setPlaceOfSupply(stateByCode(v)); }}/>
-              <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="col-span-2"/>
+              <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="md:col-span-2"/>
             </div>
           </div>
           )}
@@ -1011,7 +1011,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
                 <span className="font-medium text-indigo-600">Same as billing</span>
               </label>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? phone : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
@@ -1298,7 +1298,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
             </div>
           );
         })()}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Weight Used (g)</label>
             <input type="number" value={newUsage.weightUsedG} min="0" step="0.1"
@@ -1614,7 +1614,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <F label="Customer / Company Name" value={o.customerName} onChange={v=>upd("customerName",v)} disabled={detailsLocked} className="col-span-2 md:col-span-1"/>
                 <F label="Phone" value={o.phone||o.contact||""} onChange={v=>upd("phone",v)} disabled={detailsLocked} placeholder="+91 XXXXX XXXXX"/>
                 <F label="Email" value={o.email||""} onChange={v=>upd("email",v)} disabled={detailsLocked} placeholder="customer@email.com"/>
@@ -1634,10 +1634,10 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS} disabled={detailsLocked}/>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2">
                     {["Offline","Online"].map(c=>(
                       <button key={c} type="button" onClick={()=>!detailsLocked&&upd("channel",c==="Offline"?"Offline":((o.channel||"Offline")==="Offline"?ONLINE_PLATFORMS[0]:o.channel))} disabled={detailsLocked}
-                        className={`px-4 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
+                        className={`flex-1 py-1.5 rounded-full text-sm font-semibold border-2 transition-all ${(c==="Offline"?(o.channel||"Offline")==="Offline":(o.channel||"Offline")!=="Offline")?"bg-sky-600 border-sky-600 text-white":"border-gray-300 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":"🌐 Online"}</button>
                     ))}
                   </div>
                   {(o.channel||"Offline")!=="Offline"&&<div className="flex gap-2 flex-wrap mt-1">
@@ -1656,7 +1656,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               {!o.isPickup&&<>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={detailsLocked}/>
                   <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
                   <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
@@ -1664,7 +1664,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Shipping Address</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={detailsLocked}/>
                   <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={detailsLocked}/>
                   {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={detailsLocked}/>}
@@ -1906,7 +1906,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 {/* Add payment form */}
                 {!payLocked&&<div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Payment</p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <F label="Date" type="date" value={newPay.date} onChange={v=>setNewPay(p=>({...p,date:v}))}/>
                     <F label="Amount (₹)" type="number" value={newPay.amount} onChange={v=>setNewPay(p=>({...p,amount:v}))} placeholder="0.00"/>
                     <S label="Payment Mode" value={newPay.mode} onChange={v=>setNewPay(p=>({...p,mode:v}))} options={PAYMENT_MODES}/>
@@ -1924,7 +1924,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <input type="checkbox" checked={!!newPay.isRefund} onChange={e=>setNewPay(p=>({...p,isRefund:e.target.checked,refundTo:e.target.checked?(o.customerName||""):""}))} className="w-4 h-4 rounded accent-red-500"/>
                     <span className="text-sm text-gray-600 font-semibold">This is a refund <span className="font-normal text-gray-400 text-xs">(outgoing — deducted from income)</span></span>
                   </label>
-                  {newPay.isRefund&&<div className="grid grid-cols-2 gap-3">
+                  {newPay.isRefund&&<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <F label="Refund To (Customer)" value={newPay.refundTo} onChange={v=>setNewPay(p=>({...p,refundTo:v}))} placeholder="Customer name / contact" className="col-span-2"/>
                   </div>}
 
@@ -2541,7 +2541,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="col-span-2 flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Product Name</label>
             <input value={form.name} onChange={e=>upd("name",e.target.value)} placeholder={form.productType==="3d_printed"?"e.g. Phone Stand - Black PLA":"e.g. Packaging Box, Screws…"}
@@ -2675,7 +2675,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       {/* Business */}
       <section>
         <h3 className="font-bold text-gray-800 mb-4">Business Details</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="col-span-2"/>
           <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/><F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
           <StateSelect label="State/UT Code" value={extractStateCode(s.stateCode)||s.stateCode} onChange={v=>setS({...s,stateCode:v,state:stateByCode(v)})}/>
@@ -2949,8 +2949,8 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Basic Info</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-              <F label={clientTab==="B2C"?"Customer Name":"Company Name"} value={form.name} onChange={v=>upd("name",v)} required className="col-span-2 md:col-span-1"/>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <F label={clientTab==="B2C"?"Customer Name":"Company Name"} value={form.name} onChange={v=>upd("name",v)} required/>
               {clientTab==="B2B"&&<F label="GSTIN" value={form.gstin} onChange={v=>upd("gstin",v)} disabled={readOnly} placeholder="29XXXXX0000X1ZX"/>}
               <F label="Phone" value={form.contact} onChange={v=>upd("contact",v)} placeholder="+91 XXXXX XXXXX"/>
               <F label="Email" value={form.email||""} onChange={v=>upd("email",v)} disabled={readOnly} placeholder="client@email.com"/>
@@ -2960,7 +2960,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
           <div className="border-t pt-4">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} disabled={readOnly} placeholder="Company name or individual"/>
               <StateSelect value={form.billingStateCode} onChange={v=>{ if(readOnly)return; upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }} disabled={readOnly}/>
               <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} disabled={readOnly} rows={2} className="col-span-2"/>
@@ -2987,7 +2987,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
                 <span className="font-medium text-indigo-600">Same as billing</span>
               </label>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <F label="Name" value={sameAsBilling ? (form.billingName||form.name) : form.shippingName} onChange={v=>{if(!sameAsBilling)upd("shippingName",v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? form.contact : form.shippingContact} onChange={v=>{if(!sameAsBilling)upd("shippingContact",v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               <F label="GSTIN (if different)" value={sameAsBilling ? form.gstin : form.shippingGstin} onChange={v=>{if(!sameAsBilling)upd("shippingGstin",v);}} disabled={sameAsBilling}/>
@@ -3478,8 +3478,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10 overflow-x-auto scrollbar-none">
         {SECTIONS.filter(s=>canSection(s.id)).map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
-            className={`flex-shrink-0 flex items-center justify-center gap-1 py-2 px-2.5 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
-            <span>{s.icon}</span><span className="hidden sm:inline ml-1">{s.label}</span>
+            className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            <span className="text-base leading-none">{s.icon}</span>
+            <span className="text-[9px] leading-tight whitespace-nowrap">{s.label}</span>
           </button>
         ))}
       </div>
@@ -3537,7 +3538,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue + expense overview bars */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ChartCard icon="📊" title={period==="year"?"Revenue by Year":"Revenue This Year"} sub={chartLabel}
               legend={[
                 <span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,
@@ -3563,7 +3564,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="trends"&&canSection("trends")&&(
         <div className="space-y-3">
           {/* Cumulative revenue line */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <ChartCard icon="📈" title="Cumulative Revenue & Profit" sub={`${year}`}
                 legend={[["Revenue","#6366f1"],["Expenses","#f59e0b"],["Profit","#10b981"]].map(([l,c])=>(
@@ -3616,7 +3617,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
           </Card>
 
           {/* Revenue line YoY comparison */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <ChartCard icon="🔁" title="YoY Revenue Comparison" sub={`${year-1} vs ${year}`}
                 legend={[<span key="a" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>{year}</span>,<span key="b" className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-0.5 inline-block" style={{background:"#6366f180"}}/>{year-1}</span>,yoyGrowth!==null&&<span key="c" className={`text-xs font-bold px-2 py-0.5 rounded-full ${yoyGrowth>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>YoY: {yoyGrowth>=0?"+":""}{yoyGrowth}%</span>].filter(Boolean)}>
@@ -3717,7 +3718,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             });
 
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Card>
                   <Sec icon="🔥" title="Top Products" sub={periodLabel}/>
                   {topItems.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
@@ -3829,7 +3830,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ChartCard icon="📈" title="Orders Over Time">
               <BarChart2 data={chartData.map(d=>({label:d.label,value:d.orders}))} color={(i)=>bc(i)}/>
             </ChartCard>
@@ -3838,7 +3839,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </ChartCard>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ChartCard icon="🛒" title="Sales Channel">
               <Donut data={Object.entries(channelMap).sort((a,b)=>b[1]-a[1])} colors={PALETTE} size={180}/>
             </ChartCard>
@@ -3869,7 +3870,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
               <Sec icon="💸" title="Expenses by Category"/>
               {expCats.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
@@ -3951,7 +3952,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             })()}
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
               <Sec icon="🗑️" title="Wastage by Brand · Material · Color"/>
               {wastageLog.length===0?<p className="text-xs text-gray-300 text-center py-4">No wastage recorded</p>:(()=>{
@@ -4030,7 +4031,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             )}
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
               <Sec icon="🗓️" title="Order Frequency Distribution"/>
               {(()=>{
@@ -4566,7 +4567,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
           {showEmpForm&&(
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
               <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{editEmpId?"Edit":"New"} Employee</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <F label="Name" value={empForm.name} onChange={v=>setEmpForm(f=>({...f,name:v}))} placeholder="Full name"/>
                 <F label="Role" value={empForm.role} onChange={v=>setEmpForm(f=>({...f,role:v}))} placeholder="e.g. Intern, Designer"/>
               </div>
@@ -4611,7 +4612,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
           {showSalForm&&(
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3">
               <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Salary / Stipend</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Employee / Intern</label>
                   <select value={salForm.employeeId} onChange={e=>setSalForm(f=>({...f,employeeId:e.target.value}))}
@@ -4741,7 +4742,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       {!readOnly&&<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
         {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <F label="Date" type="date" value={form.date} onChange={v=>upd("date",v)} required/>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Paid By <span className="text-red-400">*</span></label>
@@ -4761,7 +4762,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       </div>}
 
       {/* Summary strip */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
           <p className="text-xs text-gray-400 mb-0.5">Total Expenses (All Time)</p>
           <p className="text-sm font-bold text-red-600">₹{fmt(grandTotal)}</p>
@@ -5068,7 +5069,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
       {showForm && !readOnly && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
           <h3 className="font-bold text-slate-700 text-sm">{editId ? "Edit Asset — "+editId : "New Asset"}</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="col-span-2"><F label="Asset Name *" value={form.name} onChange={v=>upd("name",v)} placeholder="e.g. Creality Ender 3 Pro"/></div>
             <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={ASSET_CATEGORIES}/>
             <F label="Purchase Date *" type="date" value={form.purchaseDate} onChange={v=>upd("purchaseDate",v)}/>
@@ -5970,7 +5971,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide">New Wastage Entry</p>
 
             {/* Date + Reason row */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500">Date</label>
                 <input type="date" value={wasteEntry.date} onChange={e=>updW("date",e.target.value)}
@@ -6027,7 +6028,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             </div>
 
             {/* Weight + Order row */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500">Weight Wasted (g)</label>
                 <input type="number" value={wasteEntry.weightG} min="0" step="0.1" placeholder="0.0"
@@ -6319,7 +6320,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
           exportToExcel(rows, "Splitwise_Export");
         }}/>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-orange-50 border border-orange-100 rounded-xl px-5 py-4">
           <p className="text-xs text-orange-400 uppercase tracking-wide font-semibold mb-1">Company Owes Recipients</p>
           <p className="text-2xl font-black text-orange-600">₹{fmt(companyOwes)}</p>
@@ -6981,7 +6982,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {[["invoices","📄 Invoice Downloads"],["reports","📊 Financial Reports"],["gstr1","🇮🇳 GSTR-1"]].filter(([id])=>canDlTab(id)).map(([id,lb])=>(
           <button key={id} onClick={()=>setSubTab(id)}
-            className={"shrink-0 py-2 px-3 rounded-lg text-xs md:text-sm font-semibold transition-all whitespace-nowrap "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
+            className={"flex-1 py-2 px-1 rounded-lg text-[10px] md:text-xs font-semibold transition-all text-center whitespace-nowrap "+(subTab===id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700")}>
             {lb}
           </button>
         ))}
