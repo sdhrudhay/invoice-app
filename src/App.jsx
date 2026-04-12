@@ -6596,21 +6596,12 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
           roleRow = rows?.[0] || null;
           // If no row yet, create one (first login = admin)
           if (!roleRow) {
-            // Check if this is the very first user ever — use token so RLS allows it
-            // Can only check own row exists (RLS: user sees own row only)
-            // If select returned empty, this user has no role row yet → create as first or restricted
-            // New user — default to no permissions. Admin must grant access.
-            // Exception: if this is truly the first user, make them admin.
-            // We check using the anon key (bypasses RLS on user_roles for count only).
-            const countRes = await fetch(`${sbUrl}/rest/v1/user_roles?select=user_id&limit=1`,
-              {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}).catch(()=>({ok:false}));
-            const existingUsers = countRes.ok ? await countRes.json().catch(()=>null) : null;
-            // If count fetch failed (null), assume NOT first user — safer default
-            const isFirstUser = Array.isArray(existingUsers) && existingUsers.length === 0;
+            // New user — always create with no permissions and no admin.
+            // Admin must manually grant access via the Admin panel or SQL.
             const newRole = {
               user_id:authUser.id, email:authUser.email,
-              is_admin: isFirstUser,
-              permissions: isFirstUser ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : Object.fromEntries(ALL_TABS.map(t=>[t,"none"])),
+              is_admin: false,
+              permissions: Object.fromEntries(ALL_TABS.map(t=>[t,"none"])),
               is_active: true
             };
             await fetch(`${sbUrl}/rest/v1/user_roles`,{method:"POST",
