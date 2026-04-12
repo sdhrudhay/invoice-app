@@ -1465,6 +1465,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
   const locked = hasTaxInv || o.status==="Completed" || o.status==="Cancelled";
   const statusLocked = !canSubTabWrite("details"); // status only locked by permissions
+  const saveLocked   = !canSubTabWrite("details"); // save blocked only by permissions, not order state
   // Per-sub-tab locked: order-level lock OR no write permission on that sub-tab
   const detailsLocked  = locked || !canSubTabWrite("details");
   const quotLocked     = !canSubTabWrite("quotation"); // only locked by permissions
@@ -1501,7 +1502,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
   const handleSaveOrder = (updatedFilamentUsage) => {
-    if (detailsLocked && updatedFilamentUsage === undefined) return; // block save for read-only
+    if (saveLocked && updatedFilamentUsage === undefined) return; // block save for read-only (permissions only)
     const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
     // Each spool item now has its own filamentUsage entry — no weight mutation needed
     const updated = {...o, items: orderItems, filamentUsage: fu, charges};
@@ -1769,8 +1770,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 {detailsLocked&&!hasTaxInv&&!canSubTabWrite("details")&&<p className="text-xs text-amber-600 font-medium text-center">🔒 Read-only access — contact admin to edit this order</p>}
                 <button
                   onClick={()=>handleSaveOrder()}
-                  disabled={detailsLocked}
-                  className={"relative w-full py-3 rounded-xl font-bold text-sm tracking-wide text-white shadow-sm transition-all duration-200 "+(detailsLocked?"bg-gray-300 cursor-not-allowed opacity-60":"bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:shadow-md hover:scale-[1.01]")}
+                  disabled={saveLocked}
+                  className={"relative w-full py-3 rounded-xl font-bold text-sm tracking-wide text-white shadow-sm transition-all duration-200 "+(saveLocked?"bg-gray-300 cursor-not-allowed opacity-60":"bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 hover:shadow-md hover:scale-[1.01]")}
                 >
                   Save Changes
                 </button>
