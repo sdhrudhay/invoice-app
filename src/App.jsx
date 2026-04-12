@@ -41,9 +41,9 @@ function buildOrderNo(series, type, orders) {
 }
 
 function genInvNo(prefix, period, list, digits) {
-  const base = period ? `${prefix}/${period}` : prefix;
+  const base = period ? `${prefix}${period}` : prefix;
   const count = list.filter(i => i.invNoBase === base).length + 1;
-  return { invNo: `${base}/${String(count).padStart(digits, "0")}`, invNoBase: base };
+  return { invNo: `${base}${String(count).padStart(digits, "0")}`, invNoBase: base };
 }
 
 function genClientId(clients=[]) {
@@ -1464,12 +1464,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   // hasTaxInv must be declared before effectiveNeedsGst which depends on it
   const hasTaxInv = taxInvoices.some(t=>t.orderId===order.orderNo);
   const locked = hasTaxInv || o.status==="Completed" || o.status==="Cancelled";
+  const statusLocked = !canSubTabWrite("details"); // status only locked by permissions
   // Per-sub-tab locked: order-level lock OR no write permission on that sub-tab
   const detailsLocked  = locked || !canSubTabWrite("details");
-  const quotLocked     = locked || !canSubTabWrite("quotation");
-  const invLocked      = locked || !canSubTabWrite("invoices");
-  const payLocked      = locked || !canSubTabWrite("payments");
-  const filamentLocked = locked || !canSubTabWrite("filament");
+  const quotLocked     = !canSubTabWrite("quotation"); // only locked by permissions
+  const invLocked      = locked || !canSubTabWrite("invoices"); // creating new inv still blocked when locked
+  const canDeleteInv   = canSubTabWrite("invoices"); // delete always allowed regardless of lock
+  const payLocked      = !canSubTabWrite("payments"); // only locked by permissions
+  const filamentLocked = !canSubTabWrite("filament"); // only locked by permissions
   const effectiveNeedsGst = !!(o.needsGst ?? order.needsGst) || hasTaxInv;
   const isIgst = !_pickupFromO && effectiveNeedsGst && seller?.stateCode && _scFromO && extractStateCode(_scFromO) !== extractStateCode(seller.stateCode);
   const qt = quotations.find(q=>q.orderId===order.orderNo);
@@ -1636,7 +1638,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 </div>
-                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS} disabled={detailsLocked}/>
+                <S label="Order Status" value={o.status} onChange={v=>upd("status",v)} options={STATUS_OPTIONS} disabled={statusLocked}/>
                 <div className="flex flex-col gap-1 col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sales Channel</label>
                   <div className="flex gap-2">
@@ -1811,7 +1813,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && canSubTabRead("invoices") && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
-                {order.type==="B2B"&&!invLocked&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
+                {order.type==="B2B"&&!invLocked&&pfs.length===0&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
                 {!invLocked&&((order.type==="B2B"||order.needsGst)
                   ? <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice</button>
                   : <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice (will enable GST)</button>
@@ -1828,7 +1830,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={p.invNo} className="flex flex-col gap-2 border border-blue-100 bg-blue-50 rounded-xl px-4 py-3">
                           <div className="flex items-start justify-between gap-2">
                             <div><p className="font-mono font-bold text-blue-800 text-sm break-all">{p.invNo}</p><p className="text-xs text-blue-500 mt-0.5">{p.invDate} · <span className="font-semibold text-blue-700">₹{fmt(tN)}</span></p></div>
-                            {!invLocked&&<button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
+                            {canDeleteInv&&<button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="flex-1 text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 py-2 rounded-lg font-medium text-center">👁 View</button>
@@ -1850,7 +1852,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                         <div key={t.invNo} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3">
                           <div className="flex items-start justify-between gap-2">
                             <div><p className="font-mono font-bold text-slate-800 text-sm break-all">{t.invNo}</p><p className="text-xs text-slate-500 mt-0.5">{t.invDate} · <span className="font-semibold text-slate-700">₹{fmt(tN)}</span></p></div>
-                            {!invLocked&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
+                            {canDeleteInv&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
@@ -2679,9 +2681,9 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
   const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
   const pfPeriod = sr.pfFormat==="YYYYMM"?yyyymm():sr.pfFormat==="YYYY"?yyyy():sr.pfFormat==="YYYYMMDD"?yyyymmdd():"";
   const tiPeriod = sr.tiFormat==="YYYYMM"?yyyymm():sr.tiFormat==="YYYY"?yyyy():sr.tiFormat==="YYYYMMDD"?yyyymmdd():"";
-  const qtPrev = [[sr.qtPrefix,qtPeriod2].filter(Boolean).join("/"),String(1).padStart(Number(sr.qtDigits)||6,"0")].join("/");
-  const pfPrev = [[sr.pfPrefix,pfPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
-  const tiPrev = [[sr.tiPrefix,tiPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
+  const qtPrev = [sr.qtPrefix,qtPeriod2].filter(Boolean).join("")+String(1).padStart(Number(sr.qtDigits)||6,"0");
+  const pfPrev = [sr.pfPrefix,pfPeriod].filter(Boolean).join("")+String(1).padStart(Number(sr.invDigits)||6,"0");
+  const tiPrev = [sr.tiPrefix,tiPeriod].filter(Boolean).join("")+String(1).padStart(Number(sr.invDigits)||6,"0");
 
   const formatOpts = [{value:"NONE",label:"None (no date)"},{value:"YYYY",label:"YYYY – e.g. 2025"},{value:"YYYYMM",label:"YYYYMM – e.g. 202501"},{value:"YYYYMMDD",label:"YYYYMMDD – e.g. 20250107"}];
   const digitOpts = ["3","4","5","6"].map(d=>({value:d,label:`${d} digits`}));
