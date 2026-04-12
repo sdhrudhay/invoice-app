@@ -6604,8 +6604,9 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
             // We check using the anon key (bypasses RLS on user_roles for count only).
             const countRes = await fetch(`${sbUrl}/rest/v1/user_roles?select=user_id&limit=1`,
               {headers:{"apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Content-Type":"application/json"}}).catch(()=>({ok:false}));
-            const existingUsers = countRes.ok ? await countRes.json().catch(()=>[]) : [];
-            const isFirstUser = existingUsers.length === 0;
+            const existingUsers = countRes.ok ? await countRes.json().catch(()=>null) : null;
+            // If count fetch failed (null), assume NOT first user — safer default
+            const isFirstUser = Array.isArray(existingUsers) && existingUsers.length === 0;
             const newRole = {
               user_id:authUser.id, email:authUser.email,
               is_admin: isFirstUser,
@@ -6620,9 +6621,9 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
         }
       } catch(e) { console.warn("user_roles table missing — run SQL migrations"); }
 
-      // Fallback only if table completely missing (500 error)
+      // Fallback only if table completely missing — default to NO access, not admin
       if (!roleRow) {
-        roleRow = {user_id:authUser.id, email:authUser.email, is_admin:true, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"write"])), is_active:true};
+        roleRow = {user_id:authUser.id, email:authUser.email, is_admin:false, permissions:Object.fromEntries(ALL_TABS.map(t=>[t,"none"])), is_active:true};
       }
 
       if (roleRow.is_active===false) { setError("Your account has been deactivated. Contact admin."); setLoading(false); return; }
