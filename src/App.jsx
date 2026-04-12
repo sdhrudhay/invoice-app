@@ -1789,9 +1789,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
             <div className="space-y-4">
               {qt
                 ? <>
-                    <div className="flex items-center justify-between">
-                      <div><span className="font-mono font-bold text-sky-700">{qt.invNo}</span><span className="text-xs text-gray-400 ml-2">{qt.invDate}</span><span className="text-xs font-semibold text-sky-700 ml-3">₹{fmt(qt.amount)}</span></div>
-                      <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildQuotationHtml(o,qt,seller),qt.invNo)} className="text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(qt.amount)}</span></p></div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">👁 View</button>
+                        <button onClick={()=>downloadHtml(buildQuotationHtml(o,qt,seller),qt.invNo)} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">⬇ Download</button>
+                      </div>
                     </div>
                     <div className="border-t pt-4">
                       <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
@@ -1820,11 +1825,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     {pfs.map(p=>{
                       const tN=p.items.reduce((s,i)=>s+num(i.netAmt),0);
                       return (
-                        <div key={p.invNo} className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 gap-3">
-                          <div><span className="font-mono font-bold text-blue-800 text-sm">{p.invNo}</span><span className="text-xs text-blue-500 ml-2">{p.invDate}</span><span className="text-xs font-semibold text-blue-700 ml-3">₹{fmt(tN)}</span></div>
+                        <div key={p.invNo} className="flex flex-col gap-2 border border-blue-100 bg-blue-50 rounded-xl px-4 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div><p className="font-mono font-bold text-blue-800 text-sm break-all">{p.invNo}</p><p className="text-xs text-blue-500 mt-0.5">{p.invDate} · <span className="font-semibold text-blue-700">₹{fmt(tN)}</span></p></div>
+                            {!invLocked&&<button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
+                          </div>
                           <div className="flex gap-2">
-                            {!invLocked&&<button onClick={()=>onDeleteInvoice(p.invNo,"proforma")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,p,"proforma",seller))} className="flex-1 text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 py-2 rounded-lg font-medium text-center">👁 View</button>
+                            <button onClick={()=>downloadHtml(buildInvoiceHtml(o,p,"proforma",seller),p.invNo)} className="flex-1 text-xs border border-blue-200 text-blue-600 hover:bg-blue-100 py-2 rounded-lg font-medium text-center">⬇ Download</button>
                           </div>
                         </div>
                       );
@@ -1839,11 +1847,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     {tis.map(t=>{
                       const tN=t.items.reduce((s,i)=>s+num(i.netAmt),0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
                       return (
-                        <div key={t.invNo} className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 gap-3">
-                          <div><span className="font-mono font-bold text-slate-800 text-sm">{t.invNo}</span><span className="text-xs text-slate-500 ml-2">{t.invDate}</span><span className="text-xs font-semibold text-slate-700 ml-3">₹{fmt(tN)}</span></div>
+                        <div key={t.invNo} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div><p className="font-mono font-bold text-slate-800 text-sm break-all">{t.invNo}</p><p className="text-xs text-slate-500 mt-0.5">{t.invDate} · <span className="font-semibold text-slate-700">₹{fmt(tN)}</span></p></div>
+                            {!invLocked&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
+                          </div>
                           <div className="flex gap-2">
-                            {!invLocked&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">👁 View</button><button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 px-3 py-1.5 rounded-lg font-medium">⬇ Download</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
+                            <button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ Download</button>
                           </div>
                         </div>
                       );
@@ -1911,19 +1922,19 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 {/* Add payment form */}
                 {!payLocked&&<div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Record Payment</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-3">
                     <F label="Date" type="date" value={newPay.date} onChange={v=>setNewPay(p=>({...p,date:v}))}/>
                     <F label="Amount (₹)" type="number" value={newPay.amount} onChange={v=>setNewPay(p=>({...p,amount:v}))} placeholder="0.00"/>
                     <S label="Payment Mode" value={newPay.mode} onChange={v=>setNewPay(p=>({...p,mode:v}))} options={PAYMENT_MODES}/>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Received By{num(o.advance)>0&&<span className="text-red-400"> *</span>}</label>
-                      <select value={newPay.receivedBy} onChange={e=>setNewPay(p=>({...p,receivedBy:e.target.value}))} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                      <select value={newPay.receivedBy} onChange={e=>setNewPay(p=>({...p,receivedBy:e.target.value}))} className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
                         <option value="">— Select recipient —</option>
                         <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                       </select>
                     </div>
                     <F label="Txn / Ref No (optional)" value={newPay.txnRef} onChange={v=>setNewPay(p=>({...p,txnRef:v}))} placeholder="UPI ref, cheque no…"/>
-                    <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment" className="col-span-2"/>
+                    <F label="Comments (optional)" value={newPay.comments} onChange={v=>setNewPay(p=>({...p,comments:v}))} placeholder="e.g. Part payment"/>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={!!newPay.isRefund} onChange={e=>setNewPay(p=>({...p,isRefund:e.target.checked,refundTo:e.target.checked?(o.customerName||""):""}))} className="w-4 h-4 rounded accent-red-500"/>
@@ -1933,7 +1944,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <F label="Refund To (Customer)" value={newPay.refundTo} onChange={v=>setNewPay(p=>({...p,refundTo:v}))} placeholder="Customer name / contact" className="col-span-2"/>
                   </div>}
 
-                  <button onClick={handleAddPayment} className={`px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all ${newPay.isRefund?"bg-red-600 hover:bg-red-700":"bg-indigo-600 hover:bg-indigo-700"}`}>
+                  <button onClick={handleAddPayment} className={`w-full py-3 rounded-xl text-sm font-bold text-white transition-all ${newPay.isRefund?"bg-red-600 hover:bg-red-700":"bg-indigo-600 hover:bg-indigo-700"}`}>
                     {newPay.isRefund?"+ Record Refund":"+ Add Payment"}
                   </button>
                 </div>}
@@ -2680,13 +2691,16 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       {/* Business */}
       <section>
         <h3 className="font-bold text-gray-800 mb-4">Business Details</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="col-span-2"/>
-          <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/><F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
+        <div className="flex flex-col gap-3">
+          <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})}/>
+          <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/>
+          <F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
           <StateSelect label="State/UT Code" value={extractStateCode(s.stateCode)||s.stateCode} onChange={v=>setS({...s,stateCode:v,state:stateByCode(v)})}/>
-          <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2} className="col-span-2"/>
-          <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})}/><F label="Email" value={s.email} onChange={v=>setS({...s,email:v})}/>
-          <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})}/><F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})}/>
+          <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2}/>
+          <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})}/>
+          <F label="Email" value={s.email} onChange={v=>setS({...s,email:v})}/>
+          <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})}/>
+          <F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})}/>
           <F label="IFSC Code" value={s.ifsc} onChange={v=>setS({...s,ifsc:v})}/>
         </div>
       </section>
@@ -5944,16 +5958,20 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
               {entries.map(([key,ppg])=>{
                 const [brand,mat] = key.split("||");
                 return (
-                  <div key={key} className="flex items-center gap-2">
-                    <input value={brand} readOnly placeholder="Brand" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
-                    <input value={mat} readOnly placeholder="Material" className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600 text-xs"/>
-                    <span className="text-gray-400 text-xs shrink-0">₹/g</span>
-                    <input type="number" value={ppg} min="0" step="0.01" disabled={readOnly}
-                      onChange={e=>{ if(!readOnly){const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp});} }}
-                      onWheel={e=>e.target.blur()} placeholder="0.00"
-                      className={"w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"+(readOnly?" bg-gray-100 text-gray-400":"")}/>
-                    {!readOnly&&<button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
-                      className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
+                  <div key={key} className="border border-gray-100 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-700 text-sm flex-1">{brand||"—"}</span>
+                      <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">{mat}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">₹/g</span>
+                      <input type="number" value={ppg} min="0" step="0.01" disabled={readOnly}
+                        onChange={e=>{ if(!readOnly){const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp});} }}
+                        onWheel={e=>e.target.blur()} placeholder="0.00"
+                        className={"flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"+(readOnly?" bg-gray-100 text-gray-400":"")}/>
+                      {!readOnly&&<button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
+                        className="text-red-400 hover:text-red-600 font-bold text-lg leading-none px-1">×</button>}
+                    </div>
                   </div>
                 );
               })}
