@@ -2679,9 +2679,9 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
   const qtPeriod2 = sr.qtFormat==="YYYYMM"?yyyymm():sr.qtFormat==="YYYY"?yyyy():sr.qtFormat==="YYYYMMDD"?yyyymmdd():"";
   const pfPeriod = sr.pfFormat==="YYYYMM"?yyyymm():sr.pfFormat==="YYYY"?yyyy():sr.pfFormat==="YYYYMMDD"?yyyymmdd():"";
   const tiPeriod = sr.tiFormat==="YYYYMM"?yyyymm():sr.tiFormat==="YYYY"?yyyy():sr.tiFormat==="YYYYMMDD"?yyyymmdd():"";
-  const qtPrev = [[sr.qtPrefix,qtPeriod2].filter(Boolean).join("/"),String(1).padStart(Number(sr.qtDigits)||6,"0")].join("/");
-  const pfPrev = [[sr.pfPrefix,pfPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
-  const tiPrev = [[sr.tiPrefix,tiPeriod].filter(Boolean).join("/"),String(1).padStart(Number(sr.invDigits)||6,"0")].join("/");
+  const qtPrev = [sr.qtPrefix,qtPeriod2].filter(Boolean).join("")+String(1).padStart(Number(sr.qtDigits)||6,"0");
+  const pfPrev = [sr.pfPrefix,pfPeriod].filter(Boolean).join("")+String(1).padStart(Number(sr.invDigits)||6,"0");
+  const tiPrev = [sr.tiPrefix,tiPeriod].filter(Boolean).join("")+String(1).padStart(Number(sr.invDigits)||6,"0");
 
   const formatOpts = [{value:"NONE",label:"None (no date)"},{value:"YYYY",label:"YYYY – e.g. 2025"},{value:"YYYYMM",label:"YYYYMM – e.g. 202501"},{value:"YYYYMMDD",label:"YYYYMMDD – e.g. 20250107"}];
   const digitOpts = ["3","4","5","6"].map(d=>({value:d,label:`${d} digits`}));
@@ -6718,7 +6718,17 @@ function Toast({ toasts }) {
 function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], seller={}, expenses=[], subTabPerms=null }) {
   const canDlTab = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
   const firstDlTab = ["invoices","reports","gstr1"].find(t=>canDlTab(t)) || "invoices";
-
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const threeMonthsAgo = (()=>{ const d=new Date(); d.setMonth(d.getMonth()-2); return d.toISOString().slice(0,7); })();
+  const [from, setFrom] = useState(threeMonthsAgo);
+  const [to, setTo] = useState(thisMonth);
+  const [custTypes, setCustTypes] = useState(['B2B','B2C']);
+  const [orderStatuses, setOrderStatuses] = useState(['Pending','Completed','Cancelled']);
+  const [balanceFilter, setBalanceFilter] = useState('all');
+  const [docTypes, setDocTypes] = useState(['quotation','proforma','tax']);
+  const [status, setStatus] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState({done:0,total:0});
   const [subTab, setSubTab] = useState(firstDlTab);
   const [reportPeriod, setReportPeriod] = useState('month');
   const [reportMonth, setReportMonth] = useState(thisMonth);
