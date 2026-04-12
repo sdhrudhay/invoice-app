@@ -983,7 +983,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
           {(!isPickup||type==="B2B")&&(
           <div className="border-t pt-4">
             <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <F label="Name on Invoice" value={billingName} onChange={setBillingName} placeholder={customerName}/>
               <StateSelect value={billingStateCode} onChange={v=>{ setBillingStateCode(v); if(type==="B2B") setPlaceOfSupply(stateByCode(v)); }}/>
               <F label="Billing Address" value={billingAddress} onChange={setBillingAddress} rows={2} className="md:col-span-2"/>
@@ -1011,16 +1011,16 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
                 <span className="font-medium text-indigo-600">Same as billing</span>
               </label>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <F label="Name" value={sameAsBilling ? (billingName||customerName) : shippingName} onChange={v=>{if(!sameAsBilling)setShippingName(v);}} disabled={sameAsBilling}/>
               <F label="Contact Number" value={sameAsBilling ? phone : shippingContact} onChange={v=>{if(!sameAsBilling)setShippingContact(v);}} disabled={sameAsBilling} placeholder="+91 XXXXX XXXXX"/>
               {type==="B2B"&&<F label="GSTIN (if different)" value={sameAsBilling ? gstin : shippingGstin} onChange={v=>{if(!sameAsBilling)setShippingGstin(v);}} disabled={sameAsBilling}/>}
               <StateSelect value={sameAsBilling ? billingStateCode : shippingStateCode} onChange={v=>{ if(!sameAsBilling){ setShippingStateCode(v); if(type==="B2C") setPlaceOfSupply(stateByCode(v)); } }} disabled={sameAsBilling}/>
-              <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2} className="col-span-2"/>
+              <F label="Shipping Address" value={sameAsBilling ? billingAddress : shippingAddress} onChange={v=>{if(!sameAsBilling)setShippingAddress(v);}} disabled={sameAsBilling} rows={2}/>
             </div>
           </div>
           )}
-          {needsGst&&<div className="flex flex-col gap-1 w-64">
+          {needsGst&&<div className="flex flex-col gap-1 w-full md:w-64">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Place of Supply</label>
             <div className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600">{placeOfSupply||<span className="text-gray-400 italic">Auto-filled from state code</span>}</div>
           </div>}
@@ -1035,15 +1035,20 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
               <input type="checkbox" checked={isReferred} onChange={e=>setIsReferred(e.target.checked)} className="rounded"/>
               <span className="text-xs font-semibold text-indigo-700">🤝 Referred Order?</span>
             </label>
-            {isReferred&&<div className="grid grid-cols-2 gap-2">
-              <F label="Referred by" value={referralPerson} onChange={setReferralPerson} placeholder="Person / company name"/>
-              <F label="Referral Amount (₹)" value={referralAmount} onChange={setReferralAmount} placeholder="0"/>
+            {isReferred&&<div className="flex flex-col md:flex-row gap-2">
+              <F label="Referred by" value={referralPerson} onChange={setReferralPerson} placeholder="Person / company name" className="flex-1"/>
+              <F label="Referral Amount (₹)" value={referralAmount} onChange={setReferralAmount} placeholder="0" className="md:w-40"/>
             </div>}
           </div>
-          <div className="flex gap-3 items-center pt-2 border-t">
-            <button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 transition-all">{saving?"Saving…":"Save Order & Generate Quotation"}</button>
-            <button onClick={reset} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm">Clear</button>
-            <span className="ml-auto text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-1.5 font-mono">Next: <b className="text-indigo-600">{previewNo}</b></span>
+          <div className="flex flex-col gap-2 pt-2 border-t">
+            <button onClick={handleSave} disabled={saving}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50 transition-all">
+              {saving?"Saving…":"Save Order & Generate Quotation"}
+            </button>
+            <div className="flex gap-2 items-center">
+              <button onClick={reset} className="flex-1 border border-gray-200 text-gray-500 hover:bg-gray-50 py-2.5 rounded-lg text-sm font-medium">Clear</button>
+              <div className="flex-1 text-xs text-gray-400 bg-gray-50 border rounded-lg px-3 py-2.5 font-mono text-center">Next: <span className="font-bold text-indigo-600">{previewNo}</span></div>
+            </div>
           </div>
       </div>
     </div>
@@ -2960,7 +2965,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
           <div className="border-t pt-4">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Billing Address</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <F label="Name on Invoice" value={form.billingName} onChange={v=>upd("billingName",v)} disabled={readOnly} placeholder="Company name or individual"/>
               <StateSelect value={form.billingStateCode} onChange={v=>{ if(readOnly)return; upd("billingStateCode",v); upd("placeOfSupply",stateByCode(v)); }} disabled={readOnly}/>
               <F label="Billing Address" value={form.billingAddress} onChange={v=>upd("billingAddress",v)} disabled={readOnly} rows={2} className="col-span-2"/>
@@ -3478,9 +3483,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10 overflow-x-auto scrollbar-none">
         {SECTIONS.filter(s=>canSection(s.id)).map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
-            className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
-            <span className="text-base leading-none">{s.icon}</span>
-            <span className="text-[9px] leading-tight whitespace-nowrap">{s.label}</span>
+            className={`flex-shrink-0 flex items-center justify-center gap-1 rounded-lg font-semibold transition-all py-1.5 px-2 md:px-3 ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            <span className="text-sm md:text-base leading-none">{s.icon}</span>
+            <span className="text-[9px] md:text-xs whitespace-nowrap">{s.label}</span>
           </button>
         ))}
       </div>
