@@ -7482,11 +7482,12 @@ function App() {
       const sid = sessionStorage.getItem("app_session_id");
       const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
       const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
-      if (!sid||!url||!key) return;
+      const token2 = sessionStorage.getItem("sb_token")||"";
+      if (!sid||!url||!key||!token2) return;
       // keepalive:true ensures the request completes even when the tab closes
       fetch(`${url}/rest/v1/app_sessions?id=eq.${sid}`, {
         method:"PATCH", keepalive:true,
-        headers:{"apikey":key,"Authorization":`Bearer ${key}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        headers:{"apikey":key,"Authorization":`Bearer ${token2}`,"Content-Type":"application/json","Prefer":"return=minimal"},
         body:JSON.stringify({logout_at:new Date().toISOString()})
       }).catch(()=>{});
     };
@@ -7810,7 +7811,7 @@ function App() {
     setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
     const sid = sessionStorage.getItem("app_session_id");
-    if (sid && sbUrl2 && sbKey2) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${sbKey2}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
+    if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
     sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
