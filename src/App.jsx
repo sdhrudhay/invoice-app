@@ -5960,13 +5960,13 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                 return (
                   <div key={key} className="flex flex-col md:flex-row md:items-center gap-2 py-2 border-b border-gray-50 last:border-0">
                     <span className="font-medium text-slate-700 text-sm flex-1 min-w-0 truncate">{brand||"—"}</span>
-                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium shrink-0 w-fit">{mat}</span>
-                    <div className="flex items-center gap-2 md:w-36">
-                      <span className="text-xs text-gray-400 shrink-0">₹/g</span>
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium shrink-0">{mat}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-gray-400">₹/g</span>
                       <input type="number" value={ppg} min="0" step="0.01" disabled={readOnly}
                         onChange={e=>{ if(!readOnly){const nfp={...fps,[key]:e.target.value}; setSeller({...seller,filamentPrices:nfp});} }}
                         onWheel={e=>e.target.blur()} placeholder="0.00"
-                        className={"flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"+(readOnly?" bg-gray-100 text-gray-400":"")}/>
+                        className={"w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"+(readOnly?" bg-gray-100 text-gray-400":"")}/>
                       {!readOnly&&<button onClick={()=>{ const nfp={...fps}; delete nfp[key]; setSeller({...seller,filamentPrices:nfp}); }}
                         className="text-red-400 hover:text-red-600 font-bold text-lg leading-none px-1">×</button>}
                     </div>
