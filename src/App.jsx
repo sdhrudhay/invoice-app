@@ -1812,7 +1812,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && canSubTabRead("invoices") && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
-                {order.type==="B2B"&&!invLocked&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
+                {order.type==="B2B"&&!invLocked&&pfs.length===0&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
                 {!invLocked&&((order.type==="B2B"||order.needsGst)
                   ? <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice</button>
                   : <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice (will enable GST)</button>
