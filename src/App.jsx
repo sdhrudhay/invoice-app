@@ -1594,7 +1594,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
         <div className="flex border-b shrink-0 bg-gray-50 overflow-x-auto scrollbar-none" style={{WebkitOverflowScrolling:"touch"}}>
           {[["details","Order"],["quotation","Quotation"],["invoices","Invoices"],["payments","Payments"],["filament","Filament"]].filter(([id])=>canSubTabRead(id)).map(([id,label])=>(
             <button key={id} onClick={()=>{setTab(id);setCreating(null);}}
-              className={`px-3 py-2.5 text-xs font-semibold border-b-2 transition-all whitespace-nowrap shrink-0 ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500"}`}>
+              className={`flex-1 text-center py-2.5 text-xs font-semibold border-b-2 transition-all whitespace-nowrap shrink-0 ${tab===id?"border-indigo-600 text-indigo-700 bg-white":"border-transparent text-gray-500"}`}>
               {label}
             </button>
           ))}
@@ -1661,20 +1661,20 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               {!o.isPickup&&<>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Billing Address</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                   <F label="Name on Invoice" value={o.billingName||""} onChange={v=>upd("billingName",v)} disabled={detailsLocked}/>
                   <StateSelect value={o.billingStateCode||""} onChange={v=>{ upd("billingStateCode",v); if(o.type==="B2B") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
-                  <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
+                  <F label="Billing Address" value={o.billingAddress||""} onChange={v=>upd("billingAddress",v)} disabled={detailsLocked} rows={2}/>
                 </div>
               </div>
               <div className="border-t pt-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Shipping Address</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                   <F label="Name" value={o.shippingName||""} onChange={v=>upd("shippingName",v)} disabled={detailsLocked}/>
                   <F label="Contact Number" value={o.shippingContact||""} onChange={v=>upd("shippingContact",v)} disabled={detailsLocked}/>
                   {o.type==="B2B"&&<F label="GSTIN (if different)" value={o.shippingGstin||""} onChange={v=>upd("shippingGstin",v)} disabled={detailsLocked}/>}
                   <StateSelect value={o.shippingStateCode||""} onChange={v=>{ upd("shippingStateCode",v); if(o.type==="B2C") upd("placeOfSupply",stateByCode(v)); }} disabled={detailsLocked}/>
-                  <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} disabled={detailsLocked} rows={2} className="col-span-2"/>
+                  <F label="Shipping Address" value={o.shippingAddress||""} onChange={v=>upd("shippingAddress",v)} disabled={detailsLocked} rows={2}/>
                 </div>
               </div>
               </>}
@@ -3483,9 +3483,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 sticky top-0 z-10 overflow-x-auto scrollbar-none">
         {SECTIONS.filter(s=>canSection(s.id)).map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)}
-            className={`flex-shrink-0 flex items-center justify-center gap-1 rounded-lg font-semibold transition-all py-1.5 px-2 md:px-3 ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
-            <span className="text-sm md:text-base leading-none">{s.icon}</span>
-            <span className="text-[9px] md:text-xs whitespace-nowrap">{s.label}</span>
+            className={`flex-1 flex-shrink-0 flex items-center justify-center gap-1 rounded-lg font-semibold transition-all py-2 px-1.5 md:px-3 ${section===s.id?"bg-white text-indigo-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>
+            <span className="text-sm leading-none">{s.icon}</span>
+            <span className="text-[10px] md:text-xs whitespace-nowrap">{s.label}</span>
           </button>
         ))}
       </div>
@@ -4747,18 +4747,18 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       {!readOnly&&<div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
         {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           <F label="Date" type="date" value={form.date} onChange={v=>upd("date",v)} required/>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Paid By <span className="text-red-400">*</span></label>
-            <select value={form.paidBy} onChange={e=>upd("paidBy",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <select value={form.paidBy} onChange={e=>upd("paidBy",e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
               <option value="">— Select recipient —</option>
               <option value="__company__">{seller?.name||"Company"}</option>{recipients.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <F label="Amount (₹)" type="number" value={form.amount} onChange={v=>upd("amount",v)} placeholder="0.00" required/>
           <S label="Category" value={form.category} onChange={v=>upd("category",v)} options={cats}/>
-          <F label="Comment (optional)" value={form.comment} onChange={v=>upd("comment",v)} placeholder="Any notes…" className="col-span-2"/>
+          <F label="Comment (optional)" value={form.comment} onChange={v=>upd("comment",v)} placeholder="Any notes…"/>
         </div>
         <div className="flex gap-2 pt-1">
           <button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">{editId?"Save Changes":"Add Expense"}</button>
@@ -5172,14 +5172,14 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
                   <span className="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{a.id}</span>
                   <span className="text-xs bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100 px-2 py-0.5 rounded-full">{a.category}</span>
                 </div>
-                <div className="grid grid-cols-4 gap-0 mt-3 border border-gray-100 rounded-lg overflow-hidden">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-0 mt-3 border border-gray-100 rounded-lg overflow-hidden">
                   {[
                     ["Date", a.purchaseDate||"—", "text-gray-700"],
                     ["Amount", a.amount>0?`₹${fmt(num(a.amount))}`:"—", "text-emerald-700 font-bold"],
                     ["Paid By", resolveName(a.paidBy)||"—", "text-gray-700"],
                     ["Vendor", a.vendor||"—", "text-gray-700"],
                   ].map(([lbl,val,cls],i)=>(
-                    <div key={i} className={`px-3 py-2 text-center ${i<3?"border-r border-gray-100":""}`}>
+                    <div key={i} className={`px-3 py-2.5 text-center ${i===0?"border-r border-gray-100":i===1?"md:border-r border-gray-100":i===2?"border-r md:border-r border-gray-100 border-t md:border-t-0":""}`}>
                       <p className="text-xs text-gray-400 mb-0.5">{lbl}</p>
                       <p className={`text-xs ${cls}`}>{val}</p>
                     </div>
@@ -5397,27 +5397,27 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
 
       {view==="invoiced"&&canIncTab("invoiced")&&(
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5 mb-1">
+          <div className="flex overflow-x-auto scrollbar-none gap-1.5 mb-1 pb-0.5">
             {["All","Pending","Completed","Cancelled"].map(s=>(
               <button key={s} onClick={()=>setStatusFilter(s)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500 hover:border-slate-400"}`}>{s}</button>
+                className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${statusFilter===s?"bg-slate-700 border-slate-700 text-white":"border-gray-200 text-gray-500"}`}>{s}</button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-1.5 mb-1">
+          <div className="flex overflow-x-auto scrollbar-none gap-1.5 mb-1 pb-0.5">
             {["All","Offline","Online",...ONLINE_PLATFORMS].map(c=>(
               <button key={c} onClick={()=>setIncChannelFilter(c)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${incChannelFilter===c?"bg-sky-600 border-sky-600 text-white":"border-gray-200 text-gray-500 hover:border-sky-400"}`}>{c==="Offline"?"🏪 Offline":c==="Online"?"🌐 Online":c==="All"?"All":c}</button>
+                className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${incChannelFilter===c?"bg-sky-600 border-sky-600 text-white":"border-gray-200 text-gray-500"}`}>{c==="Offline"?"🏪 Offline":c==="Online"?"🌐 Online":c==="All"?"All":c}</button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             {[
               ["Order Value", filteredInvoiced.reduce((s,o)=>s+o.invoicedAmt,0), "from-indigo-600 to-violet-600"],
               ["Collected", filteredInvoiced.reduce((s,o)=>s+o.paidAmt,0), "from-emerald-500 to-teal-500"],
               ["Outstanding", filteredInvoiced.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+Math.max(0,o.balance),0), "from-orange-500 to-amber-500"],
             ].map(([label,amt,grad])=>(
               <div key={label} className={`bg-gradient-to-r ${grad} rounded-xl p-4 text-white`}>
-                <p className="text-xs opacity-80">{label}</p>
-                <p className="text-xl font-black mt-0.5">&#x20B9;{amt.toLocaleString("en-IN",{minimumFractionDigits:2})}</p>
+                <p className="text-[10px] opacity-80 leading-tight">{label}</p>
+                <p className="text-base md:text-xl font-black mt-0.5">&#x20B9;{amt.toLocaleString("en-IN",{minimumFractionDigits:0})}</p>
               </div>
             ))}
           </div>
@@ -5468,22 +5468,26 @@ function AddPriceRow({ materialList=[], fps={}, seller={}, setSeller=()=>{} }) {
   const [nm, setNm] = useState(materialList[0]||"PLA");
   const [np, setNp] = useState("");
   return (
-    <div className="flex items-center gap-2 mt-2">
-      <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
-        className="flex-1 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-xs"/>
-      <select value={nm} onChange={e=>setNm(e.target.value)}
-        className="w-24 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-xs">
-        {materialList.map(m=><option key={m}>{m}</option>)}
-      </select>
-      <span className="text-gray-400 text-xs shrink-0">₹/g</span>
-      <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
-        className="w-20 border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
-      <button onClick={()=>{
-        if (!np||isNaN(Number(np))) return;
-        const k=`${nb.trim()}||${nm}`;
-        setSeller({...seller, filamentPrices:{...(seller.filamentPrices||{}), [k]:np}});
-        setNb(""); setNp("");
-      }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold">+ Add</button>
+    <div className="flex flex-col gap-2 mt-2 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
+      <div className="flex gap-2">
+        <input value={nb} onChange={e=>setNb(e.target.value)} placeholder="Brand (e.g. Bambu)"
+          className="flex-1 border border-indigo-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+        <select value={nm} onChange={e=>setNm(e.target.value)}
+          className="w-28 border border-indigo-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+          {materialList.map(m=><option key={m}>{m}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-2 items-center">
+        <span className="text-gray-500 text-xs shrink-0">₹/g</span>
+        <input type="number" value={np} min="0" step="0.01" onChange={e=>setNp(e.target.value)} onWheel={e=>e.target.blur()} placeholder="0.00"
+          className="flex-1 border border-indigo-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"/>
+        <button onClick={()=>{
+          if (!np||isNaN(Number(np))) return;
+          const k=`${nb.trim()}||${nm}`;
+          setSeller({...seller, filamentPrices:{...(seller.filamentPrices||{}), [k]:np}});
+          setNb(""); setNp("");
+        }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold shrink-0">+ Add</button>
+      </div>
     </div>
   );
 }
@@ -5687,7 +5691,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
             {rows.map((row,idx)=>(
               <div key={idx} className="bg-white border border-gray-100 rounded-xl p-3 relative">
                 {rows.length>1&&<button onClick={()=>removeRow(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
-                <div className="grid grid-cols-2 gap-3 pr-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-5">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brand</label>
                     <input value={row.brand} onChange={e=>updRow(idx,"brand",e.target.value)} placeholder="e.g. Bambu, eSUN, Sunlu…"
