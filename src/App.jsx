@@ -4621,6 +4621,26 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
 
   const salaryExpenses = expenses.filter(e=>e.category==="Salary"&&!e.isDeleted);
 
+  // Resolve which employee a salary expense belongs to
+  // New records: paidBy === emp.id
+  // Old records: paidBy === "__company__", employee name is first part of comment before " — "
+  const resolveEmp = (e) => {
+    const byId = employees.find(emp=>emp.id===e.paidBy);
+    if (byId) return byId;
+    // fallback: match by name from comment
+    const commentName = (e.comment||"").split(" — ")[0].trim();
+    return employees.find(emp=>emp.name.trim().toLowerCase()===commentName.toLowerCase())||null;
+  };
+  const getEmpName = (e) => {
+    const emp = resolveEmp(e);
+    if (emp) return emp.name;
+    return (e.comment||"").split(" — ")[0].trim()||"Unknown";
+  };
+  const getEmpNotes = (e) => {
+    const parts = (e.comment||"").split(" — ");
+    return parts.length>1 ? parts.slice(1).join(" — ") : "";
+  };
+
   const handleSaveEmployee = () => {
     if (!empForm.name.trim()) { toast("Name is required","error"); return; }
     const id = editEmpId || ("EMP-"+Date.now());
@@ -4694,7 +4714,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
               <ExcelBtn onClick={()=>exportToExcel(employees.map(emp=>({
                 "ID": emp.id, "Name": emp.name, "Role": emp.role||"",
                 "Status": (emp.status||"active")==="left"?"Left":"Active",
-                "Total Salary Paid (₹)": salaryExpenses.filter(e=>e.paidBy===emp.id).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(2),
+                "Total Salary Paid (₹)": salaryExpenses.filter(e=>resolveEmp(e)?.id===emp.id).reduce((s,e)=>s+Number(e.amount||0),0).toFixed(2),
               })),"Employees_Export")}/>
               {!readOnly&&<button onClick={()=>{setShowEmpForm(true);setEditEmpId(null);setEmpForm({name:"",role:"",status:"active"});}}
                 className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Add</button>}
@@ -4733,7 +4753,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${emp.status==="left"?"bg-red-100 text-red-600":"bg-emerald-100 text-emerald-700"}`}>{emp.status==="left"?"👋 Left":"✅ Active"}</span>
                     </div>
                     {emp.role&&<p className="text-xs text-gray-400 mt-0.5">{emp.role}</p>}
-                    <p className="text-xs text-gray-500 mt-1">Total paid: <span className="font-bold text-indigo-600">₹{salaryExpenses.filter(e=>e.paidBy===emp.id).reduce((s,e)=>s+Number(e.amount||0),0).toLocaleString("en-IN",{minimumFractionDigits:2})}</span></p>
+                    <p className="text-xs text-gray-500 mt-1">Total paid: <span className="font-bold text-indigo-600">₹{salaryExpenses.filter(e=>resolveEmp(e)?.id===emp.id).reduce((s,e)=>s+Number(e.amount||0),0).toLocaleString("en-IN",{minimumFractionDigits:2})}</span></p>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     {!readOnly&&<button onClick={()=>{setEditEmpId(emp.id);setEmpForm({name:emp.name,role:emp.role||"",status:emp.status||"active"});setShowEmpForm(true);}}
@@ -4759,10 +4779,10 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
             <div className="flex gap-2">
               <ExcelBtn onClick={()=>exportToExcel(salaryExpenses.slice().reverse().map(e=>({
                 "Date": e.date||"",
-                "Employee": employees.find(emp=>emp.id===e.paidBy)?.name||e.paidBy||"",
-                "Role": employees.find(emp=>emp.id===e.paidBy)?.role||"",
+                "Employee": getEmpName(e),
+                "Role": resolveEmp(e)?.role||"",
                 "Amount (₹)": Number(e.amount||0).toFixed(2),
-                "Notes": e.comment||"",
+                "Notes": getEmpNotes(e),
               })),"Salary_Records_Export")}/>
               {!readOnly&&<button onClick={()=>setShowSalForm(v=>!v)}
                 className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-semibold">+ Record Payment</button>}
@@ -4799,10 +4819,10 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-slate-800">₹{Number(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">Salary</span>
+                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">{getEmpName(e)}</span>
                     <span className="text-xs text-gray-400">{e.date}</span>
                   </div>
-                  {e.comment&&<p className="text-xs text-gray-500 mt-0.5">{e.comment}</p>}
+                  {getEmpNotes(e)&&<p className="text-xs text-gray-500 mt-0.5">{getEmpNotes(e)}</p>}
                 </div>
                 {!readOnly&&<button onClick={()=>handleDeleteSalary(e)} className="text-red-300 hover:text-red-500 font-bold text-lg leading-none shrink-0">×</button>}
               </div>
