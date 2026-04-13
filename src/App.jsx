@@ -848,22 +848,30 @@ function ClientSearch({ clients, onSelect, value }) {
 // ─── Order Form ───────────────────────────────────────────────────────────────
 function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, setProformas, taxInvoices, setTaxInvoices, seller, series, clients, recipients=[], onViewOrder=()=>{}, toast=()=>{}, products=[], inventory=[], wastageLog=[] }) {
   const topRef = useRef(null);
-  const [type,setType]=useState("B2B"); const [needsGst,setNeedsGst]=useState(true);
-  const [customerName,setCustomerName]=useState(""); const [phone,setPhone]=useState(""); const [email,setEmail]=useState(""); const [gstin,setGstin]=useState("");
-  const [billingName,setBillingName]=useState(""); const [billingAddress,setBillingAddress]=useState(""); const [billingStateCode,setBillingStateCode]=useState("");
-  const [shippingName,setShippingName]=useState(""); const [shippingContact,setShippingContact]=useState(""); const [shippingAddress,setShippingAddress]=useState(""); const [shippingGstin,setShippingGstin]=useState(""); const [shippingStateCode,setShippingStateCode]=useState("");
-  const [sameAsBilling,setSameAsBilling]=useState(false);
-  const [placeOfSupply,setPlaceOfSupply]=useState(""); const [isPickup,setIsPickup]=useState(false); const [orderDate,setOrderDate]=useState(today()); const [dueDate,setDueDate]=useState(addDays(today(),30)); const [paymentMode,setPaymentMode]=useState("UPI"); const [advance,setAdvance]=useState(""); const [status,setStatus]=useState("Pending"); const [comments,setComments]=useState("");
-  const [items,setItems]=useState([{...EMPTY_ITEM}]);
-  const [advanceRecipient,setAdvanceRecipient]=useState("");
-  const [advanceTxnRef,setAdvanceTxnRef]=useState("");
-  const [channel,setChannel]=useState("Offline");
-  const [isReferred,setIsReferred]=useState(false);
-  const [referralPerson,setReferralPerson]=useState("");
-  const [referralAmount,setReferralAmount]=useState("");
+  // Load draft from sessionStorage if exists
+  const _draft = (() => { try { const d=sessionStorage.getItem("new_order_draft"); return d?JSON.parse(d):null; } catch(e){ return null; } })();
+  const [type,setType]=useState(_draft?.type||"B2B"); const [needsGst,setNeedsGst]=useState(_draft?.needsGst??true);
+  const [customerName,setCustomerName]=useState(_draft?.customerName||""); const [phone,setPhone]=useState(_draft?.phone||""); const [email,setEmail]=useState(_draft?.email||""); const [gstin,setGstin]=useState(_draft?.gstin||"");
+  const [billingName,setBillingName]=useState(_draft?.billingName||""); const [billingAddress,setBillingAddress]=useState(_draft?.billingAddress||""); const [billingStateCode,setBillingStateCode]=useState(_draft?.billingStateCode||"");
+  const [shippingName,setShippingName]=useState(_draft?.shippingName||""); const [shippingContact,setShippingContact]=useState(_draft?.shippingContact||""); const [shippingAddress,setShippingAddress]=useState(_draft?.shippingAddress||""); const [shippingGstin,setShippingGstin]=useState(_draft?.shippingGstin||""); const [shippingStateCode,setShippingStateCode]=useState(_draft?.shippingStateCode||"");
+  const [sameAsBilling,setSameAsBilling]=useState(_draft?.sameAsBilling||false);
+  const [placeOfSupply,setPlaceOfSupply]=useState(_draft?.placeOfSupply||""); const [isPickup,setIsPickup]=useState(_draft?.isPickup||false); const [orderDate,setOrderDate]=useState(_draft?.orderDate||today()); const [dueDate,setDueDate]=useState(_draft?.dueDate||addDays(today(),30)); const [paymentMode,setPaymentMode]=useState(_draft?.paymentMode||"UPI"); const [advance,setAdvance]=useState(_draft?.advance||""); const [status,setStatus]=useState(_draft?.status||"Pending"); const [comments,setComments]=useState(_draft?.comments||"");
+  const [items,setItems]=useState(_draft?.items||[{...EMPTY_ITEM}]);
+  const [advanceRecipient,setAdvanceRecipient]=useState(_draft?.advanceRecipient||"");
+  const [advanceTxnRef,setAdvanceTxnRef]=useState(_draft?.advanceTxnRef||"");
+  const [channel,setChannel]=useState(_draft?.channel||"Offline");
+  const [isReferred,setIsReferred]=useState(_draft?.isReferred||false);
+  const [referralPerson,setReferralPerson]=useState(_draft?.referralPerson||"");
+  const [referralAmount,setReferralAmount]=useState(_draft?.referralAmount||"");
   const [saving,setSaving]=useState(false); const [msg,setMsg]=useState(""); const [msgErr,setMsgErr]=useState(false);
   const [selectedClient,setSelectedClient]=useState(null);
   const [lastOrder,setLastOrder]=useState(null);
+
+  // Auto-save draft to sessionStorage on every change
+  useEffect(()=>{
+    const draft = {type,needsGst,customerName,phone,email,gstin,billingName,billingAddress,billingStateCode,shippingName,shippingContact,shippingAddress,shippingGstin,shippingStateCode,sameAsBilling,placeOfSupply,isPickup,orderDate,dueDate,paymentMode,advance,advanceRecipient,advanceTxnRef,status,comments,items,channel,isReferred,referralPerson,referralAmount};
+    try { sessionStorage.setItem("new_order_draft", JSON.stringify(draft)); } catch(e){}
+  },[type,needsGst,customerName,phone,email,gstin,billingName,billingAddress,billingStateCode,shippingName,shippingContact,shippingAddress,shippingGstin,shippingStateCode,sameAsBilling,placeOfSupply,isPickup,orderDate,dueDate,paymentMode,advance,advanceRecipient,advanceTxnRef,status,comments,items,channel,isReferred,referralPerson,referralAmount]);
 
   const applyClient = (c) => {
     if (!c) { setSelectedClient(null); setSameAsBilling(false); return; }
@@ -906,6 +914,7 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
   };
 
   const reset = () => {
+    sessionStorage.removeItem("new_order_draft");
     setSelectedClient(null); setCustomerName(""); setPhone(""); setEmail(""); setGstin(""); setBillingName(""); setBillingAddress(""); setBillingStateCode(""); setShippingName(""); setShippingContact(""); setShippingAddress(""); setShippingGstin(""); setShippingStateCode(""); setSameAsBilling(false); setPlaceOfSupply(""); setOrderDate(today()); setDueDate(addDays(today(),30)); setAdvance(""); setAdvanceRecipient(""); setAdvanceTxnRef(""); setStatus("Pending"); setComments(""); setNeedsGst(true); setType("B2B"); setChannel("Offline"); setIsReferred(false); setReferralPerson(""); setReferralAmount(""); setItems([{...EMPTY_ITEM}]); setMsg("");
   };
 
@@ -7872,7 +7881,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
