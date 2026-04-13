@@ -1409,7 +1409,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                           </div>
                         )}
                       </div>
-                      <button onClick={()=>{ const updated=filamentUsage.filter(u=>(u.batchKey||u.groupKey)!==d.bk); setFilamentUsage(updated); onSave(updated); }} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
+                      {!readOnly&&<button onClick={()=>{ const updated=filamentUsage.filter(u=>(u.batchKey||u.groupKey)!==d.bk); setFilamentUsage(updated); onSave(updated); }} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>}
                     </div>
                   </div>
                 );
