@@ -7478,24 +7478,6 @@ function App() {
   // Persist active tab across reloads
   useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
 
-  // Re-fetch permissions from DB on every page load/reload to pick up admin changes
-  useEffect(()=>{
-    if (!accessToken || !sbUrl2 || !sbKey2 || !currentUser?.id) return;
-    fetch(`${sbUrl2}/rest/v1/user_roles?user_id=eq.${currentUser.id}&select=is_admin,permissions,is_active,preferences`,
-      {headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json"}}
-    ).then(r=>r.ok?r.json():null).then(rows=>{
-      if (!rows) return;
-      const role = rows?.[0];
-      if (!role) return;
-      if (role.is_active===false) { handleLogout(); return; }
-      const freshPerms = role.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (role.permissions||{});
-      const updated = {...currentUser, isAdmin:!!role.is_admin, permissions:freshPerms, preferences:role.preferences||{}};
-      setCurrentUser(updated);
-      sessionStorage.setItem("app_user", JSON.stringify(updated));
-      // Also update dark mode from fresh prefs
-      if (role.preferences?.darkMode !== undefined) setIsDark(!!role.preferences.darkMode);
-    }).catch(()=>{});
-  },[accessToken]);
   // Persist dark mode to user_roles preferences column
   useEffect(()=>{
     // Update sessionStorage cache
@@ -7980,6 +7962,24 @@ function App() {
   }, [accessToken]);
 
   const logoutTimer = useRef(null); // separate ref so it can be cleared on activity
+
+  // Re-fetch permissions from DB on every page load/reload to pick up admin changes
+  useEffect(()=>{
+    if (!accessToken || !sbUrl2 || !sbKey2 || !currentUser?.id) return;
+    fetch(`${sbUrl2}/rest/v1/user_roles?user_id=eq.${currentUser.id}&select=is_admin,permissions,is_active,preferences`,
+      {headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json"}}
+    ).then(r=>r.ok?r.json():null).then(rows=>{
+      if (!rows) return;
+      const role = rows?.[0];
+      if (!role) return;
+      if (role.is_active===false) { handleLogout(); return; }
+      const freshPerms = role.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (role.permissions||{});
+      const updated = {...currentUser, isAdmin:!!role.is_admin, permissions:freshPerms, preferences:role.preferences||{}};
+      setCurrentUser(updated);
+      sessionStorage.setItem("app_user", JSON.stringify(updated));
+      if (role.preferences?.darkMode !== undefined) setIsDark(!!role.preferences.darkMode);
+    }).catch(()=>{});
+  },[accessToken]);
 
   const startCountdown = useCallback(() => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
