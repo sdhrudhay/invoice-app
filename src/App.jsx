@@ -3320,8 +3320,14 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     if(!total)return <p className="text-xs text-gray-300 text-center py-2">No data</p>;
     let cum=0;
     const r=38,cx=50,cy=50;
-    const slices=data.filter(([_k,v])=>v>0).map(([label,value],i)=>{
-      const pct=value/total,sa=cum*2*Math.PI-Math.PI/2;
+    const filtered=data.filter(([_k,v])=>v>0);
+    const slices=filtered.map(([label,value],i)=>{
+      const pct=value/total;
+      // Single slice at 100%: draw a full circle instead of arc
+      if(filtered.length===1||pct>=0.9999){
+        return {isCircle:true,color:colors[i%colors.length],label,value,pct};
+      }
+      const sa=cum*2*Math.PI-Math.PI/2;
       cum+=pct;
       const ea=cum*2*Math.PI-Math.PI/2;
       const x1=cx+r*Math.cos(sa),y1=cy+r*Math.sin(sa),x2=cx+r*Math.cos(ea),y2=cy+r*Math.sin(ea);
@@ -3330,7 +3336,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     return (
       <div className={compact?"flex items-center gap-2":"flex items-center gap-3"}>
         <svg viewBox="0 0 100 100" style={{width:size,height:size}} className="shrink-0">
-          {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="1.5"/>)}
+          {slices.map((s,i)=>s.isCircle
+            ?<circle key={i} cx={cx} cy={cy} r={r} fill={s.color} stroke="white" strokeWidth="1.5"/>
+            :<path key={i} d={s.path} fill={s.color} stroke="white" strokeWidth="1.5"/>)}
           <circle cx="50" cy="50" r="22" fill="white"/>
           {centerText&&<text x="50" y="53" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#475569">{centerText}</text>}
         </svg>
@@ -4142,7 +4150,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               chRefMap[ch].amount+=num(o.referralAmount);
               if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
             });
-            const [refSort, setRefSort] = React.useState("pending");
+            const [refSort, setRefSort] = useState("pending");
             const sortedTop3 = [...persons].sort((a,b)=>{
               if(refSort==="pending") return (b.amount-b.paid)-(a.amount-a.paid);
               if(refSort==="orders") return b.orders-a.orders;
