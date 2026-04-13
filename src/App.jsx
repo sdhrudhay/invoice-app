@@ -2312,7 +2312,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const isOverdue=o.status==="Pending"&&due&&due<todayStr;
     const isDueSoon=o.status==="Pending"&&due&&due>=todayStr&&due<=addDays(todayStr,3);
     return (
-      <div key={o.orderNo} onClick={()=>setOpenOrder(o)} className={`border rounded-lg px-3 py-2.5 hover:shadow-sm transition-all bg-white cursor-pointer ${isOverdue?"border-red-200 bg-red-50/30":isDueSoon?"border-amber-200 bg-amber-50/30":"border-gray-100 hover:border-indigo-200"}`}>
+      <div key={o.orderNo} onClick={()=>setOpenOrder(o)} className={`border rounded-lg px-3 py-2.5 hover:shadow-sm transition-all bg-white cursor-pointer ${isOverdue?"border-red-300 bg-red-50/30":isDueSoon?"border-amber-300 bg-amber-50/30":"border-gray-300 hover:border-indigo-300"}`}>
         {/* Row 1: order no + badges + arrow */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -6450,7 +6450,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
 
               {/* Expanded breakdown */}
               {isOpen && (
-                <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                <div className="border-t border-gray-300 px-4 pb-4 pt-3 space-y-3">
                   {/* Mini summary */}
                   <div className="grid grid-cols-2 gap-2 mb-1">
                     <div className="bg-emerald-50 rounded-lg px-3 py-2">
@@ -6464,7 +6464,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                   </div>
 
                   {/* Net total + Record settlement — shown at top */}
-                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-300">
                     <span className={`text-sm font-black ${s.net>0?"text-emerald-600":s.net<0?"text-orange-500":"text-gray-400"}`}>
                       {s.net===0?"✓ Settled":`₹${fmt(Math.abs(s.net))}`}
                     </span>
@@ -6489,7 +6489,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                   {/* Entry list */}
                   <div className="space-y-1.5">
                     {allEntries.map((e, i) => (
-                      <div key={i} className="flex items-start justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
+                      <div key={i} className="flex items-start justify-between gap-3 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2">
                         <div className="flex items-start gap-2 min-w-0">
                           <span className={`mt-0.5 text-xs px-1.5 py-0.5 rounded font-semibold shrink-0 ${e.type==="collected"?"bg-blue-100 text-blue-700":"bg-red-100 text-red-600"}`}>
                             {e.type==="collected"?"💰":"💸"}
@@ -6509,7 +6509,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
                     <div className="space-y-1 pt-1">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Settlements</p>
                       {s.entries.settlements.slice().reverse().map((st,si)=>(
-                        <div key={si} className="flex items-center justify-between gap-2 bg-violet-50 rounded-lg px-3 py-2">
+                        <div key={si} className="flex items-center justify-between gap-2 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
                           <div className="min-w-0">
                             <p className="text-xs font-medium text-violet-800">{st.label}</p>
                             <p className="text-xs text-gray-400">{st.date}{st.ref?` · ${st.ref}`:""}</p>
