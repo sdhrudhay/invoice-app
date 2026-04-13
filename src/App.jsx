@@ -6655,7 +6655,7 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
       let roleRow = null;
       try {
         const roleRes = await fetch(
-          `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active`,
+          `${sbUrl}/rest/v1/user_roles?user_id=eq.${authUser.id}&select=user_id,email,is_admin,permissions,is_active,preferences`,
           {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
         );
         if (roleRes.ok) {
@@ -6691,7 +6691,8 @@ function LoginScreen({ onLogin, sbUrl, sbKey }) {
         email: authUser.email,
         username: authUser.email.split("@")[0],
         isAdmin: !!roleRow.is_admin,
-        permissions: roleRow.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (roleRow.permissions || {})
+        permissions: roleRow.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (roleRow.permissions || {}),
+        preferences: roleRow.preferences || {}
       };
 
       // 4. Log session (fire-and-forget — don't fail login if table missing)
@@ -7428,13 +7429,35 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
 function App() {
   const [tab,setTab]=useState(()=>sessionStorage.getItem("active_tab")||"new");
-  const [isDark,setIsDark]=useState(()=>sessionStorage.getItem("dark_mode")==="1");
+  const [isDark,setIsDark]=useState(()=>{
+    try { const u=JSON.parse(sessionStorage.getItem("app_user")||"{}"); return !!(u?.preferences?.darkMode); } catch(e){ return false; }
+  });
   const [viewOrder,setViewOrder]=useState(null);
 
   // Persist active tab across reloads
   useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
-  // Persist dark mode
-  useEffect(()=>{ sessionStorage.setItem("dark_mode", isDark?"1":"0"); },[isDark]);
+  // Persist dark mode to user_roles preferences column
+  useEffect(()=>{
+    // Update sessionStorage cache
+    try {
+      const u = JSON.parse(sessionStorage.getItem("app_user")||"{}");
+      if (u && u.id) {
+        u.preferences = {...(u.preferences||{}), darkMode: isDark};
+        sessionStorage.setItem("app_user", JSON.stringify(u));
+        // Persist to Supabase user_roles
+        const url = localStorage.getItem("sb_url")||sbUrl2;
+        const key = localStorage.getItem("sb_key")||sbKey2;
+        const token = sessionStorage.getItem("sb_token");
+        if (url && key && token && u.id) {
+          fetch(`${url}/rest/v1/user_roles?user_id=eq.${u.id}`,{
+            method:"PATCH",
+            headers:{"apikey":key,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+            body:JSON.stringify({preferences:{...(u.preferences||{}), darkMode:isDark}})
+          }).catch(()=>{});
+        }
+      }
+    } catch(e){}
+  },[isDark]);
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
@@ -7891,7 +7914,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab"); sessionStorage.removeItem("dark_mode");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
