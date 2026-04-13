@@ -1431,7 +1431,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
                         {u.notes&&<span className="text-xs text-gray-400 italic">{u.notes}</span>}
                       </div>
                     </div>
-                    <button onClick={()=>handleRemove(u.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>
+                    {!readOnly&&<button onClick={()=>handleRemove(u.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none shrink-0">×</button>}
                   </div>
                 );
               }
@@ -2603,8 +2603,8 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
         <div><p className="text-sm font-bold text-slate-700">Products</p><p className="text-xs text-gray-400">Define products — 3D printed (price from filament) or other items sold by the piece.</p></div>
       </div>
 
-      {/* Form */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+      {/* Form — only for write access */}
+      {!readOnly&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{editId?"Edit Product":"New Product"}</p>
         {/* Type toggle */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-1">
@@ -2682,6 +2682,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
         </div>
         <div className="flex gap-2">
           {!readOnly&&<button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">{editId?"Update":"Add Product"}</button>}
+        </div>}
           {editId&&<button onClick={()=>{setForm({...EMPTY_P});setEditId(null);}} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
         </div>
       </div>
@@ -2721,7 +2722,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
   );
 }
 
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="" }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
   const logoRef=useRef();
@@ -2749,16 +2750,16 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       <section>
         <h3 className="font-bold text-gray-800 mb-4">Business Details</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} className="md:col-span-2"/>
-          <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})}/>
-          <F label="State" value={s.state} onChange={v=>setS({...s,state:v})}/>
-          <StateSelect label="State/UT Code" value={extractStateCode(s.stateCode)||s.stateCode} onChange={v=>setS({...s,stateCode:v,state:stateByCode(v)})}/>
-          <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2} className="md:col-span-2"/>
-          <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})}/>
-          <F label="Email" value={s.email} onChange={v=>setS({...s,email:v})}/>
-          <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})}/>
-          <F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})}/>
-          <F label="IFSC Code" value={s.ifsc} onChange={v=>setS({...s,ifsc:v})}/>
+          <F label="Company Name" value={s.name} onChange={v=>setS({...s,name:v})} disabled={readOnly} className="md:col-span-2"/>
+          <F label="GSTIN" value={s.gstin} onChange={v=>setS({...s,gstin:v})} disabled={readOnly}/>
+          <F label="State" value={s.state} onChange={v=>setS({...s,state:v})} disabled={readOnly}/>
+          <StateSelect label="State/UT Code" value={extractStateCode(s.stateCode)||s.stateCode} onChange={v=>setS({...s,stateCode:v,state:stateByCode(v)})} disabled={readOnly}/>
+          <F label="Address" value={s.address} onChange={v=>setS({...s,address:v})} rows={2} disabled={readOnly} className="md:col-span-2"/>
+          <F label="Phone" value={s.phone} onChange={v=>setS({...s,phone:v})} disabled={readOnly}/>
+          <F label="Email" value={s.email} onChange={v=>setS({...s,email:v})} disabled={readOnly}/>
+          <F label="Bank Name" value={s.bank} onChange={v=>setS({...s,bank:v})} disabled={readOnly}/>
+          <F label="Account Number" value={s.accountNo} onChange={v=>setS({...s,accountNo:v})} disabled={readOnly}/>
+          <F label="IFSC Code" value={s.ifsc} onChange={v=>setS({...s,ifsc:v})} disabled={readOnly}/>
         </div>
       </section>
 
@@ -4956,7 +4957,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
               </div>
               <div className="flex gap-1.5 shrink-0 flex-wrap">
                 {!readOnly&&<button onClick={()=>handleEdit(e)} className="text-xs border border-gray-200 text-gray-600 hover:bg-gray-50 px-2.5 py-1.5 rounded-lg">✏️</button>}
-                <button onClick={()=>handleDelete(e.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>
+                {!readOnly&&<button onClick={()=>handleDelete(e.id)} className="text-xs border border-red-100 text-red-400 hover:bg-red-50 px-2.5 py-1.5 rounded-lg">×</button>}
               </div>
             </div>
           );
@@ -8204,7 +8205,7 @@ function App() {
           {hasAnyAccess&&tab==="salary"&&canRead("salary")&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {hasAnyAccess&&tab==="download"&&canRead("download")&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
           {hasAnyAccess&&tab==="dashboard"&&canRead("dashboard")&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
-          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&canRead("settings")&&<Settings sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
+          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
           {hasAnyAccess&&tab==="admin"&&canRead("admin")&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} accessToken={accessToken} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
