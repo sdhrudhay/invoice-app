@@ -4592,12 +4592,17 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-slate-700">{s.username}</p>
                   <p className="text-[10px] text-gray-400">Login: {s.login_at?new Date(s.login_at).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}):""}</p>
+                  {s.last_seen&&<p className="text-[10px] text-gray-400">Last seen: {new Date(s.last_seen).toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"})}</p>}
                 </div>
                 <div className="text-right">
-                  {s.logout_at
-                    ?<span className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">Logged out {new Date(s.logout_at).toLocaleString("en-IN",{timeStyle:"short"})}</span>
-                    :<span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-bold">● Active</span>
-                  }
+                  {(()=>{
+                    if (s.logout_at) return <span className="text-[9px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">Logged out {new Date(s.logout_at).toLocaleString("en-IN",{timeStyle:"short"})}</span>;
+                    const lastSeen = s.last_seen ? new Date(s.last_seen) : null;
+                    const isActive = lastSeen && (Date.now()-lastSeen.getTime()) < 3*60*1000;
+                    const lastSeenStr = lastSeen ? new Date(lastSeen).toLocaleString("en-IN",{timeStyle:"short"}) : null;
+                    if (isActive) return <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-bold">● Active</span>;
+                    return <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">{lastSeenStr?"Last seen "+lastSeenStr:"● Active (legacy)"}</span>;
+                  })()}
                 </div>
               </div>
             ))}
@@ -7668,6 +7673,25 @@ function App() {
     if (isAdmin) return; // admin stays on whatever tab
     if (firstAccessibleTab && !canRead(tab)) setTab(firstAccessibleTab);
   },[currentUser?.id]);
+
+  // ── Heartbeat — update last_seen every 60s so admin can detect stale sessions ──
+  useEffect(()=>{
+    const beat = () => {
+      const sid = sessionStorage.getItem("app_session_id");
+      const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
+      const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
+      const token = sessionStorage.getItem("sb_token")||"";
+      if (!sid||!url||!key||!token) return;
+      fetch(`${url}/rest/v1/app_sessions?id=eq.${sid}`,{
+        method:"PATCH", keepalive:true,
+        headers:{"apikey":key,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        body:JSON.stringify({last_seen:new Date().toISOString()})
+      }).catch(()=>{});
+    };
+    beat(); // immediate on mount
+    const iv = setInterval(beat, 60000); // every 60s
+    return ()=>clearInterval(iv);
+  },[]);
 
   // ── Mark session logged out only on true tab close (not reload) ──────────
   useEffect(()=>{
