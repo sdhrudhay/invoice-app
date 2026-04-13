@@ -3080,7 +3080,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const [refSort, setRefSort] = useState("pending");
 
   const num = (v) => Number(v||0);
-  const fmt = (n) => Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:0});
+  const fmt = (n) => fmtK(Number(n||0));
   const fmtK = (n) => n>=10000000?`₹${(n/10000000).toFixed(2)}Cr`:n>=100000?`₹${(n/100000).toFixed(2)}L`:n>=1000?`₹${(n/1000).toFixed(2)}K`:`₹${Number(n).toFixed(2)}`;
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16","#0ea5e9","#ec4899","#14b8a6","#a855f7"];
@@ -6846,8 +6846,11 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     };
     const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
-    const grossRev=activeOrds.reduce((s,o)=>s+getGross(o),0);
-    const orderVal=filteredOrders.reduce((s,o)=>s+(o.status==="Cancelled"?0:getInvoiceVal(o)),0);
+    const completedOrds=filteredOrders.filter(o=>o.status==="Completed");
+    const pendingCompletedOrds=filteredOrders.filter(o=>o.status==="Completed"||o.status==="Pending");
+    const grossRev=completedOrds.reduce((s,o)=>s+getGross(o),0); // revenue = grossAmt, completed only
+    const orderValNet=pendingCompletedOrds.reduce((s,o)=>s+getGross(o),0); // net excl GST
+    const orderVal=pendingCompletedOrds.reduce((s,o)=>s+getInvoiceVal(o),0); // gross incl GST+charges
     const collected=filteredOrders.reduce((s,o)=>s+getPaid(o),0);
     const totalExp=filteredExp.reduce((s,e)=>s+num(e.amount),0);
     const cgstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.cgstAmt),0)||0),0);
@@ -6855,16 +6858,18 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const igstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)||0),0);
     const totalGST=cgstTotal+sgstTotal+igstTotal;
     const netProfit=collected-totalExp;
-    const b2bGross=activeOrds.filter(o=>o.type==="B2B").reduce((s,o)=>s+getGross(o),0);
-    const onlineGross=activeOrds.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getGross(o),0);
+    const b2bGross=completedOrds.filter(o=>o.type==="B2B").reduce((s,o)=>s+getGross(o),0);
+    const onlineGross=completedOrds.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getGross(o),0);
 
     const sheet1 = [
       {Metric:"Report Period",Value:reportLabel.replace(/_/g," ")},
       {Metric:"Generated On",Value:new Date().toLocaleDateString("en-IN")},
       {Metric:""},
       {Metric:"=== REVENUE (excl. GST) ==="},
-      {Metric:"Gross Revenue",Value:fmt2(grossRev)},
-      {Metric:"Order Value (incl. GST)",Value:fmt2(orderVal)},
+      {Metric:"Revenue (excl. GST, Completed orders)",Value:fmt2(grossRev)},
+      {Metric:"Order Value Net (excl. GST)",Value:fmt2(orderValNet)},
+      {Metric:"Order Value Gross (incl. GST+charges)",Value:fmt2(orderVal)},
+
       {Metric:"B2B Revenue",Value:fmt2(b2bGross)},
       {Metric:"B2C Revenue",Value:fmt2(grossRev-b2bGross)},
       {Metric:"Online Revenue",Value:fmt2(onlineGross)},
@@ -6873,7 +6878,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       {Metric:"=== COLLECTIONS ==="},
       {Metric:"Total Collected",Value:fmt2(collected)},
       {Metric:"Outstanding Balance",Value:fmt2(Math.max(0,orderVal-collected))},
-      {Metric:"Collection Rate %",Value:orderVal>0?fmt2(collected/orderVal*100)+"%":"0%"},
+      {Metric:"Collection Rate %",Value:grossRev>0?fmt2(collected/grossRev*100)+"%":"0%"},
       {Metric:""},
       {Metric:"=== GST / TAX ==="},
       {Metric:"Total GST Collected",Value:fmt2(totalGST)},
