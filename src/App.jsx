@@ -3081,7 +3081,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   const num = (v) => Number(v||0);
   const fmt = (n) => "₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtK = (n) => n>=10000000?`₹${(n/10000000).toFixed(2)}Cr`:n>=100000?`₹${(n/100000).toFixed(2)}L`:n>=1000?`₹${(n/1000).toFixed(2)}K`:`₹${Number(n).toFixed(2)}`;
+  const fmtK = (n) => "₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16","#0ea5e9","#ec4899","#14b8a6","#a855f7"];
   const bc = (i) => PALETTE[i%PALETTE.length];
