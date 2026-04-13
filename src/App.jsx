@@ -311,10 +311,10 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
   .box{border:1px solid #999;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
   .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px}
-  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
-  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
-  td{padding:5px 8px;border-bottom:1px solid #ccc;text-align:center}
-  .sr td{background:#eee;font-weight:600}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px;border:1px solid #000}
+  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:700;white-space:nowrap;border:1px solid #000;color:#fff}
+  td{padding:5px 8px;border:1px solid #000;text-align:center;color:#000}
+  .sr td{background:#f0f0f0;font-weight:600;border:1px solid #000}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px;border:1px solid #000}
   .foot{margin-top:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:8px}
   .sig-block{text-align:center;font-size:10px;color:#333}
   .validity{margin-top:12px;padding:10px 12px;background:#f5f5f5;border:1px solid #ccc;border-radius:5px;font-size:11px;color:#000}
@@ -389,10 +389,10 @@ function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
   .box{border:1px solid #999;border-radius:5px;padding:9px 11px;font-size:11px;line-height:1.7}
   .bt{font-size:10px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px}
-  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px}
-  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:600;white-space:nowrap}
-  td{padding:5px 8px;border-bottom:1px solid #ccc;text-align:center}
-  .sr td{background:#eee;font-weight:600}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:11px;border:1px solid #000}
+  th{background:#000;color:#fff;padding:7px 8px;text-align:center;font-weight:700;white-space:nowrap;border:1px solid #000;color:#fff}
+  td{padding:5px 8px;border:1px solid #000;text-align:center;color:#000}
+  .sr td{background:#f0f0f0;font-weight:600;border:1px solid #000}.gr td{background:#000;color:#fff;font-weight:700;font-size:13px;border:1px solid #000}
   .bank{margin-top:14px;padding:10px 12px;background:#f5f5f5;border:1px solid #ccc;border-radius:5px;font-size:11px;line-height:1.8}
   .foot{margin-top:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#555;border-top:1px solid #ccc;padding-top:8px}
   .sig-block{text-align:center;font-size:10px;color:#333}
@@ -3117,15 +3117,16 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
   const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getFullInvoicedAmt(o) - getPaid(o));
 
-  // KPIs
-  const totalRev = orders.reduce((s,o)=>s+getInvoicedAmt(o),0);
+  // KPIs — revenue only from Completed orders
+  const completedRevOrders = orders.filter(o=>o.status==="Completed");
+  const totalRev = completedRevOrders.reduce((s,o)=>s+getInvoicedAmt(o),0);
   const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
   const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
   const totalOrders = activeOrders.length;
   const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
   const pendingOrders = activeOrders.filter(o=>o.status==="Pending").length;
   const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
-  const avgOrder = totalOrders?(activeOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/totalOrders):0;
+  const avgOrder = completedOrders?(completedRevOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/completedOrders):0;
   const totalOutstanding = orders.reduce((s,o)=>s+getOutstanding(o),0);
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
@@ -3141,7 +3142,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const monthlyData = (yr) => MONTHS.map((m,i)=>{
     const ords = orders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
     const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
-    const rev = ords.reduce((s,o)=>s+getInvoicedAmt(o),0);
+    const rev = ords.filter(o=>o.status==="Completed").reduce((s,o)=>s+getInvoicedAmt(o),0);
     const exp = exps.reduce((s,e)=>s+num(e.amount),0);
     return {label:m, month:i+1, rev, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
   });
@@ -3153,7 +3154,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const allYears = years.length ? years : [String(year)];
   const yearlyDataArr = allYears.map(yr=>({
     label:String(yr),
-    rev: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").reduce((s,o)=>s+getInvoicedAmt(o),0),
+    rev: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status==="Completed").reduce((s,o)=>s+getInvoicedAmt(o),0),
     exp: expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))).reduce((s,e)=>s+num(e.amount),0),
     orders: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").length,
     paid: orders.filter(o=>o.orderDate?.startsWith(String(yr))).reduce((s,o)=>s+getPaid(o),0),
@@ -3835,10 +3836,10 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 ["Completed", completedOrders, "#10b981"],
                 ["Pending", pendingOrders, "#f59e0b"],
                 ["Cancelled", cancelledOrders, "#f43f5e"],
-                ["B2B Revenue", fmtK(activeOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#6366f1"],
-                ["B2C Revenue", fmtK(activeOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#22d3ee"],
-                ["GST Revenue", fmtK(activeOrders.filter(o=>o.needsGst||taxInvoices.some(t=>t.orderId===o.orderNo)).reduce((s,o)=>s+getInvoicedAmt(o),0)), "#10b981"],
-                ["Non-GST Revenue", fmtK(activeOrders.filter(o=>!o.needsGst&&!taxInvoices.some(t=>t.orderId===o.orderNo)).reduce((s,o)=>s+getInvoicedAmt(o),0)), "#f59e0b"],
+                ["B2B Revenue", fmtK(completedRevOrders.filter(o=>o.type==="B2B").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#6366f1"],
+                ["B2C Revenue", fmtK(completedRevOrders.filter(o=>o.type==="B2C").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#22d3ee"],
+                ["GST Revenue", fmtK(completedRevOrders.filter(o=>o.needsGst||taxInvoices.some(t=>t.orderId===o.orderNo)).reduce((s,o)=>s+getInvoicedAmt(o),0)), "#10b981"],
+                ["Non-GST Revenue", fmtK(completedRevOrders.filter(o=>!o.needsGst&&!taxInvoices.some(t=>t.orderId===o.orderNo)).reduce((s,o)=>s+getInvoicedAmt(o),0)), "#f59e0b"],
                 ["Online Revenue", fmtK(activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#0ea5e9"],
                 ["Offline Revenue", fmtK(activeOrders.filter(o=>(o.channel||"Offline")==="Offline").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#84cc16"],
                 ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
