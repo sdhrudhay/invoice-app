@@ -3040,22 +3040,24 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
       <div className="space-y-3">
         {filtered.map(c => (
           <div key={c.id} className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-slate-800">{c.name}</span>
-                  <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{c.id}</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-slate-800">{c.name}</span>
+                    <span className="text-xs font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shrink-0">{c.id}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                    {c.gstin && <div>GSTIN: <span className="font-mono">{c.gstin}</span></div>}
+                    {c.contact && <div>📞 {c.contact}</div>}
+                    {c.email && <div>✉ {c.email}</div>}
+                    {c.billingAddress && <div className="text-gray-400 break-words">{c.billingAddress}</div>}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                  {c.gstin && <div>GSTIN: <span className="font-mono">{c.gstin}</span></div>}
-                  {c.contact && <div>📞 {c.contact}</div>}
-                  {c.email && <div>✉ {c.email}</div>}
-                  {c.billingAddress && <div className="text-gray-400 truncate max-w-md">{c.billingAddress}</div>}
-                </div>
-              </div>
-              <div className="flex gap-1.5 shrink-0 flex-wrap">
-                {!readOnly&&<button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>}
-                {!readOnly&&<button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>}
+                {!readOnly&&<div className="flex gap-1.5 shrink-0">
+                  <button onClick={()=>handleEdit(c)} className="text-xs border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-medium">Edit</button>
+                  <button onClick={()=>handleDelete(c.id)} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                </div>}
               </div>
             </div>
           </div>
@@ -4378,8 +4380,7 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
           {/* User list */}
           <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{users.length} Users</p>
-<span className="text-[10px] text-gray-400">Create users in Supabase Auth → they appear here after first login</span>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{users.filter(u=>!u.is_admin).length} Users</p>
             </div>
             {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
               <div className="divide-y divide-gray-50">
@@ -8026,7 +8027,7 @@ function App() {
       </div>
 
       {/* ── Main content area ── */}
-      <div className="md:pl-36 pb-28 md:pb-0">
+      <div className="md:pl-36 pb-36 md:pb-0">
       <div className="px-3 md:px-6 py-4 md:py-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-8">
           {!hasAnyAccess&&!isAdmin&&(
