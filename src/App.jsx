@@ -7428,10 +7428,13 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
 function App() {
   const [tab,setTab]=useState(()=>sessionStorage.getItem("active_tab")||"new");
+  const [isDark,setIsDark]=useState(()=>sessionStorage.getItem("dark_mode")==="1");
   const [viewOrder,setViewOrder]=useState(null);
 
   // Persist active tab across reloads
   useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
+  // Persist dark mode
+  useEffect(()=>{ sessionStorage.setItem("dark_mode", isDark?"1":"0"); },[isDark]);
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
@@ -7888,7 +7891,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab"); sessionStorage.removeItem("dark_mode");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
@@ -7967,8 +7970,36 @@ function App() {
   if (!accessToken) return <LoginScreen onLogin={handleLogin} sbUrl={sbUrl} sbKey={sbKey}/>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans">
-      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}.scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}`}</style>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans" data-theme={isDark?"dark":undefined}>
+      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}.scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}
+[data-theme="dark"]{--bg-base:#0f172a;--bg-card:#1e293b;--bg-subtle:#334155;--text-primary:#f1f5f9;--text-secondary:#94a3b8;--text-muted:#64748b;--border-color:#334155;--border-strong:#475569}
+[data-theme="dark"] body,[data-theme="dark"] .min-h-screen{background:#0f172a!important;background-image:none!important}
+[data-theme="dark"] .bg-white{background-color:#1e293b!important}
+[data-theme="dark"] .bg-gray-50{background-color:#263346!important}
+[data-theme="dark"] .bg-gray-100{background-color:#334155!important}
+[data-theme="dark"] .bg-slate-50{background-color:#1e293b!important}
+[data-theme="dark"] .bg-indigo-50{background-color:#1e2a47!important}
+[data-theme="dark"] .border-gray-100,[data-theme="dark"] .border-gray-200,[data-theme="dark"] .border-gray-300{border-color:#334155!important}
+[data-theme="dark"] .text-gray-400,[data-theme="dark"] .text-gray-500{color:#94a3b8!important}
+[data-theme="dark"] .text-gray-600,[data-theme="dark"] .text-gray-700{color:#cbd5e1!important}
+[data-theme="dark"] .text-gray-800,[data-theme="dark"] .text-gray-900{color:#f1f5f9!important}
+[data-theme="dark"] .text-slate-700,[data-theme="dark"] .text-slate-800{color:#e2e8f0!important}
+[data-theme="dark"] .text-slate-600{color:#cbd5e1!important}
+[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background-color:#263346!important;color:#e2e8f0!important;border-color:#475569!important}
+[data-theme="dark"] input::placeholder,[data-theme="dark"] textarea::placeholder{color:#64748b!important}
+[data-theme="dark"] .shadow-sm,[data-theme="dark"] .shadow{box-shadow:0 1px 3px rgba(0,0,0,0.4)!important}
+[data-theme="dark"] .divide-gray-200>*,[data-theme="dark"] .divide-gray-300>*{border-color:#334155!important}
+[data-theme="dark"] .border-t,[data-theme="dark"] .border-b{border-color:#334155!important}
+[data-theme="dark"] .hover\:bg-gray-50:hover,[data-theme="dark"] .hover\:bg-slate-50:hover{background-color:#263346!important}
+[data-theme="dark"] .hover\:bg-indigo-50:hover{background-color:#1e2a47!important}
+[data-theme="dark"] .bg-red-50{background-color:#2d1a1a!important}
+[data-theme="dark"] .bg-amber-50{background-color:#2d2410!important}
+[data-theme="dark"] .bg-emerald-50{background-color:#0f2820!important}
+[data-theme="dark"] .bg-blue-50{background-color:#0f1e30!important}
+[data-theme="dark"] .bg-indigo-100{background-color:#1e2a47!important}
+[data-theme="dark"] .bg-slate-800{background-color:#0f172a!important}
+[data-theme="dark"] .border-r{border-color:#334155!important}
+[data-theme="dark"] .border-t{border-color:#334155!important}`}</style>
       <Toast toasts={toasts}/>
       {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
       {/* ── Sidebar nav (desktop) ── */}
@@ -8004,6 +8035,11 @@ function App() {
             <span className="text-sm leading-none shrink-0">⚙️</span>
             <span>Settings</span>
           </button>}
+          <button onClick={()=>setIsDark(d=>!d)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-all">
+            <span className="text-sm leading-none shrink-0">{isDark?"☀️":"🌙"}</span>
+            <span>{isDark?"Light Mode":"Dark Mode"}</span>
+          </button>
           <button onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
             <span className="text-sm leading-none shrink-0">🚪</span>
@@ -8032,6 +8068,11 @@ function App() {
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-all ${tab==="settings"?"text-indigo-600":"text-gray-500"}`}>
             <span>⚙️</span><span>Settings</span>
           </button>}
+          <button onClick={()=>setIsDark(d=>!d)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-gray-500">
+            <span>{isDark?"☀️":"🌙"}</span>
+            <span>{isDark?"Light":"Dark"}</span>
+          </button>
           <button onClick={handleLogout}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-red-500">
             <span>🚪</span>
