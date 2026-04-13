@@ -3080,7 +3080,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   const num = (v) => Number(v||0);
   const fmt = (n) => Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:0});
-  const fmtK = (n) => n>=10000000?`₹${(n/10000000).toFixed(1)}Cr`:n>=100000?`₹${(n/100000).toFixed(1)}L`:n>=1000?`₹${(n/1000).toFixed(1)}K`:`₹${fmt(n)}`;
+  const fmtK = (n) => n>=10000000?`₹${(n/10000000).toFixed(2)}Cr`:n>=100000?`₹${(n/100000).toFixed(2)}L`:n>=1000?`₹${(n/1000).toFixed(2)}K`:`₹${Number(n).toFixed(2)}`;
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const PALETTE = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#8b5cf6","#fb923c","#84cc16","#0ea5e9","#ec4899","#14b8a6","#a855f7"];
   const bc = (i) => PALETTE[i%PALETTE.length];
@@ -3129,28 +3129,43 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   };
   const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getFullInvoicedAmt(o) - getPaid(o));
 
-  // KPIs — order value = pending+completed, revenue = completed only
-  const completedRevOrders = orders.filter(o=>o.status==="Completed");
-  const orderValueOrders = orders.filter(o=>o.status==="Completed"||o.status==="Pending");
+  // Period filter helper
+  const inPeriod = (dateStr) => {
+    if (!dateStr) return false;
+    if (period==="year") return true; // all years shown
+    return dateStr.startsWith(String(year));
+  };
+  const inPeriodExp = (dateStr) => {
+    if (!dateStr) return false;
+    if (period==="year") return true;
+    return dateStr.startsWith(String(year));
+  };
+
+  // KPIs — filtered by selected period/year
+  const periodOrders = orders.filter(o=>inPeriod(o.orderDate));
+  const periodActiveOrders = periodOrders.filter(o=>o.status!=="Cancelled");
+  const completedRevOrders = periodOrders.filter(o=>o.status==="Completed");
+  const orderValueOrders = periodOrders.filter(o=>o.status==="Completed"||o.status==="Pending");
   const totalRev = completedRevOrders.reduce((s,o)=>s+getInvoicedAmt(o),0);
   const totalOrderValue = orderValueOrders.reduce((s,o)=>s+getInvoicedAmt(o),0); // net excl GST
   const totalOrderValueGross = orderValueOrders.reduce((s,o)=>s+getGrossOrderAmt(o),0); // gross incl GST+charges
-  const totalPaid = orders.reduce((s,o)=>s+getPaid(o),0); // all orders incl. cancelled advance + payments - refunds
-  const totalExp = expenses.filter(e=>!e.isDeleted).reduce((s,e)=>s+num(e.amount),0);
-  const totalOrders = activeOrders.length;
-  const completedOrders = activeOrders.filter(o=>o.status==="Completed").length;
-  const pendingOrders = activeOrders.filter(o=>o.status==="Pending").length;
-  const cancelledOrders = orders.filter(o=>o.status==="Cancelled").length;
+  const totalPaid = periodOrders.reduce((s,o)=>s+getPaid(o),0);
+  const periodExp = expenses.filter(e=>!e.isDeleted&&inPeriodExp(e.date));
+  const totalExp = periodExp.reduce((s,e)=>s+num(e.amount),0);
+  const totalOrders = periodActiveOrders.length;
+  const completedOrders = periodActiveOrders.filter(o=>o.status==="Completed").length;
+  const pendingOrders = periodActiveOrders.filter(o=>o.status==="Pending").length;
+  const cancelledOrders = periodOrders.filter(o=>o.status==="Cancelled").length;
   const avgOrder = completedOrders?(completedRevOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/completedOrders):0;
-  const totalOutstanding = orders.reduce((s,o)=>s+getOutstanding(o),0);
+  const totalOutstanding = periodOrders.reduce((s,o)=>s+getOutstanding(o),0);
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
 
   // Filament
-  const allUsage = orders.flatMap(o=>o.filamentUsage||[]);
+  const allUsage = periodOrders.flatMap(o=>o.filamentUsage||[]);
   const totalUsedG = allUsage.filter(u=>!u.isWaste).reduce((s,u)=>s+num(u.weightUsedG),0);
-  const totalWasteG = wastageLog.reduce((s,w)=>s+num(w.weightG),0);
+  const totalWasteG = wastageLog.filter(w=>inPeriod(w.date)).reduce((s,w)=>s+num(w.weightG),0);
   const wasteRate = (totalUsedG+totalWasteG)?((totalWasteG/(totalUsedG+totalWasteG))*100).toFixed(1):0;
 
   // Monthly data builder
@@ -3857,8 +3872,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 ["Non-GST Revenue", fmtK(completedRevOrders.filter(o=>!o.needsGst&&!taxInvoices.some(t=>t.orderId===o.orderNo)).reduce((s,o)=>s+getInvoicedAmt(o),0)), "#f59e0b"],
                 ["Online Revenue", fmtK(completedRevOrders.filter(o=>(o.channel||"Offline")!=="Offline").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#0ea5e9"],
                 ["Offline Revenue", fmtK(completedRevOrders.filter(o=>(o.channel||"Offline")==="Offline").reduce((s,o)=>s+getInvoicedAmt(o),0)), "#84cc16"],
-                ["Online Orders", activeOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
-                ["Offline Orders", activeOrders.filter(o=>(o.channel||"Offline")==="Offline").length, "#84cc16"],
+                ["Online Orders", periodActiveOrders.filter(o=>(o.channel||"Offline")!=="Offline").length, "#0ea5e9"],
+                ["Offline Orders", periodActiveOrders.filter(o=>(o.channel||"Offline")==="Offline").length, "#84cc16"],
               ].map(([l,v,c])=>(
                 <div key={l} className="bg-gray-50 rounded-xl p-3">
                   <p className="text-[10px] text-gray-400 font-medium">{l}</p>
@@ -4127,7 +4142,13 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               chRefMap[ch].amount+=num(o.referralAmount);
               if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
             });
-            const topByPending = [...persons].sort((a,b)=>(b.amount-b.paid)-(a.amount-a.paid)).slice(0,3);
+            const [refSort, setRefSort] = React.useState("pending");
+            const sortedTop3 = [...persons].sort((a,b)=>{
+              if(refSort==="pending") return (b.amount-b.paid)-(a.amount-a.paid);
+              if(refSort==="orders") return b.orders-a.orders;
+              if(refSort==="value") return b.amount-a.amount;
+              return 0;
+            }).slice(0,3);
             const MEDALS = ["🥇","🥈","🥉"];
             return (<>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -4137,10 +4158,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 <KPITile label="Pending Payout" value={fmtK(unpaidRefAmt)} sub={`${unpaidRefs.length} unpaid`} accent="#f43f5e" icon="⏰"/>
               </div>
 
-              {topByPending.length>0&&<Card>
-                <Sec icon="🏆" title="Top 3 Referrers"/>
+              {sortedTop3.length>0&&<Card>
+                <div className="flex items-center justify-between mb-2">
+                  <Sec icon="🏆" title="Top 3 Referrers"/>
+                  <select value={refSort} onChange={e=>setRefSort(e.target.value)}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                    <option value="pending">By Pending</option>
+                    <option value="orders">By Orders</option>
+                    <option value="value">By Total Value</option>
+                  </select>
+                </div>
                 <div className="space-y-2 mt-1">
-                  {topByPending.map((p,i)=>{
+                  {sortedTop3.map((p,i)=>{
                     const pending = p.amount - p.paid;
                     const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
                     return (
