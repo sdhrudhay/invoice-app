@@ -2508,10 +2508,14 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 // ─── Product Manager ──────────────────────────────────────────────────────────
 function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[], readOnly=false }) {
   const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", unitPrice:"", productType:"3d_printed", cgstRate:9, sgstRate:9, notes:"" };
-  const [form, setForm] = useState({...EMPTY_P});
+  const _pdraft = (() => { try { const d=sessionStorage.getItem("product_form_draft"); return d?JSON.parse(d):null; } catch(e){ return null; } })();
+  const [form, setForm] = useState(_pdraft && !_pdraft.id ? {...EMPTY_P,..._pdraft} : {...EMPTY_P});
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const upd = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // Auto-save new product draft (only when not editing existing)
+  useEffect(()=>{ if(!editId){ try{ sessionStorage.setItem("product_form_draft", JSON.stringify(form)); }catch(e){} } },[form,editId]);
 
   const filamentPrices = seller.filamentPrices || {};
   const priceKey = (brand, material) => `${brand||""}||${material||""}`;
@@ -2540,7 +2544,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
       sgstRate: Number(form.sgstRate)||9,
     };
     setProducts(prev => editId ? prev.map(p=>p.id===editId?entry:p) : [...prev,entry]);
-    setForm({...EMPTY_P}); setEditId(null);
+    sessionStorage.removeItem("product_form_draft"); setForm({...EMPTY_P}); setEditId(null);
     toast(editId?"Product updated":"Product added");
   };
   const handleEdit = (p) => { setForm({...p, weightG:String(p.weightG||""), unitPrice:String(p.unitPrice||""), productType:p.productType||"3d_printed"}); setEditId(p.id); };
@@ -7881,7 +7885,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
