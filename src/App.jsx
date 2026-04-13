@@ -7963,23 +7963,28 @@ function App() {
 
   const logoutTimer = useRef(null); // separate ref so it can be cleared on activity
 
-  // Re-fetch permissions from DB on every page load/reload to pick up admin changes
+  // Re-fetch permissions on mount - reads fresh from storage so reload always gets latest
   useEffect(()=>{
-    if (!accessToken || !sbUrl2 || !sbKey2 || !currentUser?.id) return;
-    fetch(`${sbUrl2}/rest/v1/user_roles?user_id=eq.${currentUser.id}&select=is_admin,permissions,is_active,preferences`,
-      {headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json"}}
+    const token = sessionStorage.getItem("sb_token")||"";
+    const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
+    const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
+    let user = null;
+    try { user = JSON.parse(sessionStorage.getItem("app_user")||"null"); } catch(e){}
+    if (!token || !url || !key || !user?.id) return;
+    fetch(`${url}/rest/v1/user_roles?user_id=eq.${user.id}&select=is_admin,permissions,is_active,preferences`,
+      {headers:{"apikey":key,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
     ).then(r=>r.ok?r.json():null).then(rows=>{
       if (!rows) return;
       const role = rows?.[0];
       if (!role) return;
       if (role.is_active===false) { handleLogout(); return; }
       const freshPerms = role.is_admin ? Object.fromEntries(ALL_TABS.map(t=>[t,"write"])) : (role.permissions||{});
-      const updated = {...currentUser, isAdmin:!!role.is_admin, permissions:freshPerms, preferences:role.preferences||{}};
+      const updated = {...user, isAdmin:!!role.is_admin, permissions:freshPerms, preferences:role.preferences||{}};
       setCurrentUser(updated);
       sessionStorage.setItem("app_user", JSON.stringify(updated));
       if (role.preferences?.darkMode !== undefined) setIsDark(!!role.preferences.darkMode);
     }).catch(()=>{});
-  },[accessToken]);
+  },[]);
 
   const startCountdown = useCallback(() => {
     if (countdownInterval.current) clearInterval(countdownInterval.current);
