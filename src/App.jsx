@@ -7427,8 +7427,11 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
 
 function App() {
-  const [tab,setTab]=useState("new");
+  const [tab,setTab]=useState(()=>sessionStorage.getItem("active_tab")||"new");
   const [viewOrder,setViewOrder]=useState(null);
+
+  // Persist active tab across reloads
+  useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
   const [accessToken,setAccessToken]=useState(()=>sessionStorage.getItem("sb_token")||"");
   const accessTokenRef = useRef(accessToken);
   const [user,setUser]=useState(null);
@@ -7885,7 +7888,7 @@ function App() {
     const sid = sessionStorage.getItem("app_session_id");
     if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
-    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft");
+    sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
     setClients([]); setRecipients([]); setExpenses([]);
   }, [accessToken]);
