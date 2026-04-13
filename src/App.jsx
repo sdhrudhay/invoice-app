@@ -3613,7 +3613,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <Sec icon="💸" title="Expense Categories"/>
               <div className="space-y-1.5">
                 {expCats.slice(0,6).map(([cat,amt],i)=>(
-                  <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} suffix="₹" pct={totalExp?Math.round(amt/totalExp*100):0}/>
+                  <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} pct={totalExp?Math.round(amt/totalExp*100):0}/>
                 ))}
                 {expCats.length>6&&<p className="text-[10px] text-gray-400">+{expCats.length-6} more</p>}
               </div>
@@ -3938,7 +3938,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               {expCats.length===0?<p className="text-xs text-gray-300 text-center py-4">No data</p>:(
                 <div className="space-y-1.5">
                   {expCats.map(([cat,amt],i)=>(
-                    <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} suffix="₹" pct={totalExp?Math.round(amt/totalExp*100):0}/>
+                    <HBar key={cat} label={cat} value={amt} total={totalExp} color={bc(i)} pct={totalExp?Math.round(amt/totalExp*100):0}/>
                   ))}
                 </div>
               )}
