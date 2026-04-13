@@ -1443,7 +1443,7 @@ function FilamentUsageTab({ filamentUsage=[], setFilamentUsage, inventory=[], ne
   );
 }
 
-function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{}, canSubTabRead=()=>true, canSubTabWrite=()=>true }) {
+function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, series, onClose, onSaveOrder, onSaveInvoice, onCreateInvoice, onDeleteOrder=()=>{}, onDeleteInvoice=()=>{}, recipients=[], allRecipients=[], toast=()=>{}, inventory=[], orders=[], wastageLog=[], setWastageLog=()=>{}, products=[], enqueue=()=>{}, onReferralPaidChange=()=>{}, canSubTabRead=()=>true, canSubTabWrite=()=>true, sbUrl="", sbKey="", userId="" }) {
   const ORDER_SUBTABS = ["details","quotation","invoices","payments","filament"];
   const firstAccessible = ORDER_SUBTABS.find(st=>canSubTabRead(st)) || "details";
   const [tab, setTab] = useState(firstAccessible);
@@ -1510,8 +1510,27 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
-  const handleSaveOrder = (updatedFilamentUsage) => {
+  const handleSaveOrder = async (updatedFilamentUsage) => {
     if (saveLocked && updatedFilamentUsage === undefined) return; // block save for read-only (permissions only)
+    // Live permission check — verify permissions haven't been revoked since page load
+    if (sbUrl && sbKey && userId) {
+      try {
+        const token = sessionStorage.getItem("sb_token") || "";
+        const r = await fetch(`${sbUrl}/rest/v1/user_roles?user_id=eq.${userId}&select=is_admin,permissions,is_active`,
+          {headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"}}
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          const role = rows?.[0];
+          if (!role || role.is_active === false) { toast("⛔ Your account has been deactivated."); return; }
+          if (!role.is_admin) {
+            const p = role.permissions?.orders;
+            const detailsWrite = typeof p === "object" ? p?.details === "write" : p === "write";
+            if (!detailsWrite) { toast("⛔ Your write access to order details was revoked. Please reload."); return; }
+          }
+        }
+      } catch(e) { /* network error — allow save to proceed */ }
+    }
     const fu = updatedFilamentUsage !== undefined ? updatedFilamentUsage : filamentUsage;
     // Each spool item now has its own filamentUsage entry — no weight mutation needed
     const updated = {...o, items: orderItems, filamentUsage: fu, charges};
@@ -2463,6 +2482,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
       {openOrder && (
         <OrderEditDrawer
+          sbUrl={sbUrl2}
+          sbKey={sbKey2}
+          userId={currentUser?.id}
           canSubTabRead={canSubTabRead}
           canSubTabWrite={canSubTabWrite}
           order={orders.find(o=>o.orderNo===openOrder.orderNo)||openOrder}
