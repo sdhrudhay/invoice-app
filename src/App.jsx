@@ -2682,10 +2682,9 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
         </div>
         <div className="flex gap-2">
           {!readOnly&&<button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">{editId?"Update":"Add Product"}</button>}
-        </div>}
           {editId&&<button onClick={()=>{setForm({...EMPTY_P});setEditId(null);}} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm">Cancel</button>}
         </div>
-      </div>
+      </div>}
 
       {/* Search + list */}
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products…"
