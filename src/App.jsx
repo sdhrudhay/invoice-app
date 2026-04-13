@@ -820,10 +820,10 @@ function ClientSearch({ clients, onSelect, value }) {
         {query && <button onClick={handleClear} className="text-gray-400 hover:text-red-500 text-lg px-1 font-bold leading-none">×</button>}
       </div>
       {open && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-300 rounded-xl shadow-xl mt-1 overflow-hidden">
           {filtered.map(c => (
             <button key={c.id} onMouseDown={()=>handleSelect(c)}
-              className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-gray-200 last:border-0 transition-colors">
+              className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-gray-300 last:border-0 transition-colors">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <span className="font-semibold text-sm text-slate-800">{c.name}</span>
@@ -837,7 +837,7 @@ function ClientSearch({ clients, onSelect, value }) {
         </div>
       )}
       {open && query.length > 0 && filtered.length === 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-xl mt-1 px-4 py-3 text-sm text-gray-400">
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-300 rounded-xl shadow-xl mt-1 px-4 py-3 text-sm text-gray-400">
           No clients found. <span className="text-indigo-500 font-medium">Add them in the Clients tab.</span>
         </div>
       )}
@@ -1956,7 +1956,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 {num(o.advance)>0&&(()=>{
                   const advRcp=o.advanceRecipient==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===o.advanceRecipient)||allRecipients.find(r=>r.id===o.advanceRecipient));
                   return (
-                    <div className="border border-gray-200 rounded-xl px-4 py-3 bg-white">
+                    <div className="border border-gray-300 rounded-xl px-4 py-3 bg-white">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold text-emerald-600">₹{fmt(o.advance)}</span>
@@ -2640,7 +2640,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
         {filtered.map(p=>{
           const up = computedPrice(p.brand, p.material, p.weightG);
           return (
-            <div key={p.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+            <div key={p.id} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold text-slate-800">{p.name}</p>
@@ -2882,7 +2882,7 @@ function RecipientMaster({ recipients, setRecipients, upsertRecipient=()=>{}, al
         {filtered.length===0&&<p className="text-gray-400 text-sm text-center py-8">No recipients yet. Add one above.</p>}
         <div className="space-y-2">
           {filtered.map(r=>(
-            <div key={r.id} className="border border-gray-200 rounded-xl px-4 py-3 bg-white flex items-center justify-between gap-3">
+            <div key={r.id} className="border border-gray-300 rounded-xl px-4 py-3 bg-white flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm text-slate-800">{r.name}</span>
               </div>
@@ -3039,7 +3039,7 @@ function ClientMaster({ clients, setClients, deleteClient=()=>{}, toast=()=>{}, 
 
       <div className="space-y-3">
         {filtered.map(c => (
-          <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all">
+          <div key={c.id} className="bg-white border border-gray-300 rounded-xl p-4 hover:shadow-md transition-all">
             <div className="flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -3277,7 +3277,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const maxExp3 = Math.max(1,...thisYearData.map(d=>d.exp));
 
   // ── Shared components ─────────────────────────────────────────────────────
-  const Card = ({children,className=""})=><div className={`bg-white border border-gray-200 rounded-2xl p-4 shadow-sm ${className}`}>{children}</div>;
+  const Card = ({children,className=""})=><div className={`bg-white border border-gray-300 rounded-2xl p-4 shadow-sm ${className}`}>{children}</div>;
   const Sec = ({icon,title,sub})=>(
     <div className="flex items-baseline gap-2 mb-3">
       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><span>{icon}</span>{title}</p>
@@ -3286,7 +3286,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   );
 
   const KPITile = ({label,value,sub,accent,icon,badge})=>(
-    <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+    <div className="bg-white border border-gray-300 rounded-xl p-3 shadow-sm">
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{label}</p>
@@ -3487,7 +3487,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
     return (
       <>
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+        <div className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><span>{icon}</span>{title}{sub&&<span className="text-[10px] text-gray-300 font-normal normal-case tracking-normal ml-1">{sub}</span>}</p>
@@ -3665,7 +3665,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                     const yoy=prevYearData[i].rev>0?((d.rev-prevYearData[i].rev)/prevYearData[i].rev*100):null;
                     const profit=d.rev-d.exp;
                     return (
-                      <tr key={d.label} className="border-b border-gray-200 hover:bg-slate-50">
+                      <tr key={d.label} className="border-b border-gray-300 hover:bg-slate-50">
                         <td className="py-1.5 font-semibold text-slate-700">{d.label}</td>
                         <td className="py-1.5 text-right font-semibold text-indigo-700">{d.rev>0?fmtK(d.rev):"—"}</td>
                         <td className="py-1.5 text-right">{yoy!==null&&d.rev>0?<span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${yoy>=0?"bg-emerald-100 text-emerald-700":"bg-red-100 text-red-600"}`}>{yoy>=0?"+":""}{yoy.toFixed(1)}%</span>:<span className="text-gray-200">—</span>}</td>
@@ -4183,7 +4183,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                     const pending = p.amount - p.paid;
                     const pct = p.amount>0?Math.round(p.paid/p.amount*100):0;
                     return (
-                      <div key={p.name} className="flex items-center gap-3 py-2 border-b border-gray-200 last:border-0">
+                      <div key={p.name} className="flex items-center gap-3 py-2 border-b border-gray-300 last:border-0">
                         <span className="text-xl shrink-0 w-7 text-center">{MEDALS[i]}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -4234,7 +4234,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 <Sec icon="⏰" title="Pending Payouts — Ordered by Amount"/>
                 <div className="space-y-1.5">
                   {unpaidRefs.sort((a,b)=>num(b.referralAmount)-num(a.referralAmount)).map(o=>(
-                    <div key={o.orderNo} className="flex items-center gap-3 py-1.5 border-b border-gray-200 last:border-0">
+                    <div key={o.orderNo} className="flex items-center gap-3 py-1.5 border-b border-gray-300 last:border-0">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-gray-400 shrink-0">{o.orderNo}</span>
@@ -4378,12 +4378,12 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
       {adminTab==="users"&&(
         <div className="space-y-4">
           {/* User list */}
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-gray-300 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{users.filter(u=>!u.is_admin).length} Users</p>
             </div>
             {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-gray-300">
                 {users.filter(u=>!u.is_admin).map(u=>(
                   <div key={u.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
                     <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">{u.username[0]?.toUpperCase()}</div>
@@ -4492,7 +4492,7 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
               className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
             <button onClick={fetchLogs} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-3 py-2 rounded-lg text-xs">⟳</button>
           </div>
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-gray-300 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-3 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{filteredLogs.length} events</p>
               <div className="flex gap-1">
@@ -4502,7 +4502,7 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
               </div>
             </div>
             {loading?<p className="text-xs text-gray-400 text-center py-6">Loading…</p>:(
-              <div className="divide-y divide-gray-200 max-h-[60vh] overflow-y-auto">
+              <div className="divide-y divide-gray-300 max-h-[60vh] overflow-y-auto">
                 {pagedLogs.map(l=>(
                   <div key={l.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-gray-50">
                     <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[9px] shrink-0 mt-0.5">{l.username?.[0]?.toUpperCase()}</div>
@@ -4526,13 +4526,13 @@ function AdminPanel({ sbUrl="", sbKey="", accessToken="", toast=()=>{}, currentU
 
       {/* ── SESSIONS ───────────────────────────────────────────────────────── */}
       {adminTab==="sessions"&&(
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-gray-300 rounded-2xl shadow-sm overflow-hidden">
           <div className="p-3 border-b border-gray-100 flex items-center gap-2">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex-1">{sessions.length} Recent Sessions</p>
             <input value={sessionFilter} onChange={e=>setSessionFilter(e.target.value)} placeholder="Filter by user…"
               className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 w-36"/>
           </div>
-          <div className="divide-y divide-gray-200 max-h-[60vh] overflow-y-auto">
+          <div className="divide-y divide-gray-300 max-h-[60vh] overflow-y-auto">
             {sessions.filter(s=>!sessionFilter||s.username?.toLowerCase().includes(sessionFilter.toLowerCase())).map(s=>(
               <div key={s.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
                 <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-[9px] shrink-0">{s.username?.[0]?.toUpperCase()}</div>
@@ -4656,7 +4656,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
           {employees.length===0&&!showEmpForm&&<p className="text-xs text-gray-400 text-center py-8">No employees added yet.</p>}
           <div className="space-y-2">
             {employees.map(emp=>(
-              <div key={emp.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <div key={emp.id} className="flex items-center justify-between bg-white border border-gray-300 rounded-xl px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">{emp.name}</p>
                   {emp.role&&<p className="text-xs text-gray-400">{emp.role}</p>}
@@ -4711,7 +4711,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
           {salaryExpenses.length===0&&!showSalForm&&<p className="text-xs text-gray-400 text-center py-8">No salary records yet.</p>}
           <div className="space-y-2">
             {salaryExpenses.slice().reverse().map(e=>(
-              <div key={e.id} className="flex items-start justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 gap-3">
+              <div key={e.id} className="flex items-start justify-between bg-white border border-gray-300 rounded-xl px-4 py-3 gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-slate-800">₹{Number(e.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</span>
@@ -4815,7 +4815,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
 
       {expTab==="expenses"&&canExpTab("expenses")&&<>
       {/* Form */}
-      {!readOnly&&<div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+      {!readOnly&&<div className="bg-gray-50 border border-gray-300 rounded-xl p-4 space-y-3">
         <h3 className="font-bold text-gray-800 text-sm">{editId?"Edit Expense":"Record Expense"}</h3>
         {msg&&<p className="text-xs text-indigo-600 font-semibold">{msg}</p>}
         <div className="flex flex-col gap-3">
@@ -4890,7 +4890,7 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         {filtered.map(e=>{
           const rcp=e.paidBy==="__company__"?{name:seller?.name||"Company"}:(recipients.find(r=>r.id===e.paidBy)||allRecipients.find(r=>r.id===e.paidBy));
           return (
-            <div key={e.id} className="border border-gray-200 rounded-xl px-4 py-3 bg-white flex items-start justify-between gap-3">
+            <div key={e.id} className="border border-gray-300 rounded-xl px-4 py-3 bg-white flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold text-red-600">₹{fmt(e.amount)}</span>
@@ -5166,7 +5166,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
           <div className="border-t pt-4 space-y-2">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Purchase Invoice</p>
             {form.invoiceUrl ? (
-              <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-3 bg-white border border-gray-300 rounded-xl px-4 py-3">
                 <span className="text-emerald-600 text-sm font-medium">Invoice uploaded</span>
                 <button onClick={()=>openInvoice(form.invoiceUrl)} className="text-xs text-indigo-600 underline hover:text-indigo-800">View</button>
                 <button onClick={()=>downloadInvoice(form.invoiceUrl, form.name)} className="text-xs text-gray-500 underline hover:text-gray-700">Download</button>
@@ -5235,7 +5235,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
       )}
       <div className="space-y-3">
         {filtered.map(a=>(
-          <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-4 py-4 hover:shadow-md transition-all border-l-4 border-l-indigo-100">
+          <div key={a.id} className="bg-white border border-gray-300 rounded-xl px-4 py-4 hover:shadow-md transition-all border-l-4 border-l-indigo-100">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -5444,7 +5444,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
       ) : (
         <div className="space-y-2">
           {filtered.map((p,i) => (
-            <div key={i} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+            <div key={i} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-slate-800 text-sm">{p.customerName}</span>
@@ -5500,7 +5500,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
           ):(
             <div className="space-y-2">
               {filteredInvoiced.map((o,i)=>(
-                <div key={i} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+                <div key={i} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-slate-800 text-sm">{o.customerName}</span>
@@ -5760,7 +5760,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filaments</p>
             {rows.map((row,idx)=>(
-              <div key={idx} className="bg-white border border-gray-200 rounded-xl p-3 relative">
+              <div key={idx} className="bg-white border border-gray-300 rounded-xl p-3 relative">
                 {rows.length>1&&<button onClick={()=>removeRow(idx)} className="absolute top-2 right-2 text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-5">
                   <div className="flex flex-col gap-1">
@@ -5927,7 +5927,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
               const c = pct>50?"text-emerald-600":pct>20?"text-amber-500":"text-red-500";
               const barC = pct>50?"bg-emerald-400":pct>20?"bg-amber-400":"bg-red-400";
               return (
-                <div key={gi} className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:shadow-sm transition-all">
+                <div key={gi} className="bg-white border border-gray-300 rounded-xl px-4 py-3 hover:shadow-sm transition-all">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -5976,7 +5976,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
       {!grouped&&(
       <div className="space-y-2">
         {filtered.map(item=>(
-          <div key={item.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
+          <div key={item.id} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:shadow-sm transition-all">
             <div className="flex items-center gap-3 min-w-0">
               <div className={`px-2.5 py-1 rounded-full text-xs font-bold shrink-0 ${matColors[item.material]||"bg-gray-100 text-gray-600"}`}>{item.material}</div>
               <div className="min-w-0">
@@ -6015,7 +6015,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
               {entries.map(([key,ppg])=>{
                 const [brand,mat] = key.split("||");
                 return (
-                  <div key={key} className="flex flex-col md:flex-row md:items-center gap-2 py-2 border-b border-gray-200 last:border-0">
+                  <div key={key} className="flex flex-col md:flex-row md:items-center gap-2 py-2 border-b border-gray-300 last:border-0">
                     <span className="font-medium text-slate-700 text-sm flex-1 min-w-0 truncate">{brand||"—"}</span>
                     <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium shrink-0">{mat}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -6427,7 +6427,7 @@ function Dashboard({ orders, expenses, recipients, allRecipients=[], seller, set
           ].sort((a,b) => b.date?.localeCompare(a.date || "") || 0);
 
           return (
-            <div key={s.id} className="border border-gray-200 rounded-xl bg-white overflow-hidden">
+            <div key={s.id} className="border border-gray-300 rounded-xl bg-white overflow-hidden">
               {/* Summary row */}
               <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-all" onClick={() => setExpanded(isOpen ? null : s.id)}>
                 <div className="flex items-center gap-3">
@@ -7069,7 +7069,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
       {subTab==="reports"&&canDlTab("reports")&&(
         <div className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm space-y-3">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Select Period</p>
             <div className="flex gap-2 flex-wrap">
               {[["month","Monthly"],["year","Yearly"],["fy","Financial Year (Apr-Mar)"]].map(([v,l])=>(
@@ -7087,7 +7087,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             const {sheet1,b2bRows,b2cRows,hsnRows}=buildReports();
             const get=(k)=>sheet1.find(r=>r.Metric===k)?.Value||"—";
             return (
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm space-y-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Preview</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {[["Gross Revenue","Gross Revenue","#6366f1"],["Collected","Total Collected","#10b981"],["GST","Total GST Collected","#f59e0b"],["Net Profit","Net Profit","#8b5cf6"]].map(([l,k,c])=>(
@@ -7112,7 +7112,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       {subTab==="gstr1"&&canDlTab("gstr1")&&(
         <div className="space-y-4">
           {/* Month selector */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm space-y-3">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">GSTR-1 Period</p>
             <div className="flex items-center gap-3">
               <input type="month" value={gstrMonth} onChange={e=>setGstrMonth(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
@@ -7301,7 +7301,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
                     ["7 B2C Others", counts.b2cO+" invoices", "#22d3ee"],
                     ["12 HSN Lines", counts.hsn+" rows", "#10b981"],
                   ].map(([l,v,c])=>(
-                    <div key={l} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+                    <div key={l} className="bg-white border border-gray-300 rounded-xl p-3 shadow-sm">
                       <p className="text-[10px] text-gray-400 font-medium">{l}</p>
                       <p className="text-sm font-black" style={{color:c}}>{v}</p>
                     </div>
@@ -7309,7 +7309,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
                 </div>
 
                 {/* Sheet previews */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
+                <div className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm space-y-3">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Sheets in Export</p>
                   {[
                     ["4A — B2B Regular Invoices", sheet4A.length, "All B2B tax invoices with GSTIN, value, CGST/SGST/IGST"],
@@ -7321,7 +7321,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
                     ["12 — HSN-wise Summary", sheet12.length, "HSN code, qty, taxable value, tax breakup"],
                     ["13 — Documents Issued", sheet13.length, "Invoice serial number summary"],
                   ].map(([name, count, desc])=>(
-                    <div key={name} className="flex items-start gap-3 py-1.5 border-b border-gray-200 last:border-0">
+                    <div key={name} className="flex items-start gap-3 py-1.5 border-b border-gray-300 last:border-0">
                       <span className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${count>0?"bg-indigo-100 text-indigo-700":"bg-gray-100 text-gray-400"}`}>{count}</span>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-slate-700">{name}</p>
@@ -7347,7 +7347,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       {subTab==="invoices"&&canDlTab("invoices")&&(
         <div className="space-y-6">
           {/* Date range */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-300 rounded-2xl p-5 shadow-sm space-y-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Date Range</p>
             <div className="flex gap-3 items-center flex-wrap">
               <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">From</label>
@@ -7357,7 +7357,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             </div>
           </div>
           {/* Filters */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-gray-300 rounded-2xl p-5 shadow-sm space-y-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Filters</p>
             <div className="space-y-3">
               <div><p className="text-xs text-gray-500 mb-1.5 font-medium">Customer Type</p>
@@ -7371,7 +7371,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             </div>
           </div>
           {/* Preview tree */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="bg-white border border-gray-300 rounded-2xl p-5 shadow-sm">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
               Will Download — <span className="text-indigo-600">{total} document{total!==1?'s':''}</span>
             </p>
@@ -7393,7 +7393,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
           </div>
           {/* Progress */}
           {downloading&&progress.total>0&&(
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2">
+            <div className="bg-white border border-gray-300 rounded-2xl p-5 shadow-sm space-y-2">
               <div className="flex justify-between text-xs text-gray-500"><span>Progress</span><span>{progress.done}/{progress.total}</span></div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 rounded-full transition-all" style={{width:`${Math.round(progress.done/progress.total*100)}%`}}/></div>
             </div>
