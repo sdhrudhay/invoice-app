@@ -702,7 +702,7 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
   const inp = "border-0 bg-transparent focus:outline-none focus:bg-indigo-50 rounded px-1 w-full";
   const hdrs = ["#","Item / Description","HSN","Unit Price","Qty","Disc%",...(needsGst?(isIgst?["IGST%"]:["CGST%","SGST%"]):[]),"Gross",...(needsGst?(isIgst?["IGST"]:["CGST","SGST"]):[]),"Net Amt",""];
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-100 scrollbar-none" style={{WebkitOverflowScrolling:"touch"}}>
+    <div className="overflow-x-auto rounded-xl border border-gray-100 item-table-scroll" style={{WebkitOverflowScrolling:"touch"}}>
       <table className="w-full text-xs border-collapse" style={{minWidth:needsGst?(isIgst?"880px":"1020px"):"680px"}}>
         <thead><tr className="bg-slate-800 text-white">{hdrs.map((h,i)=><th key={i} className="px-2 py-2.5 text-center font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
         <tbody>
@@ -7971,7 +7971,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50 font-sans" data-theme={isDark?"dark":undefined}>
-      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}.scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}
+      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}.scrollbar-none::-webkit-scrollbar{display:none}.scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}.item-table-scroll{scrollbar-width:thin;scrollbar-color:#6366f1 #e0e7ff}.item-table-scroll::-webkit-scrollbar{height:6px}.item-table-scroll::-webkit-scrollbar-track{background:#e0e7ff;border-radius:3px}.item-table-scroll::-webkit-scrollbar-thumb{background:#6366f1;border-radius:3px}.item-table-scroll::-webkit-scrollbar-thumb:hover{background:#4f46e5}
 [data-theme="dark"],[data-theme="dark"] body{background:#0f172a!important;background-image:none!important;color:#e2e8f0}
 [data-theme="dark"] .min-h-screen{background:#0f172a!important;background-image:none!important}
 [data-theme="dark"] .bg-white{background-color:#1e293b!important}
