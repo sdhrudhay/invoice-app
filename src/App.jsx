@@ -4649,7 +4649,7 @@ function SalaryManager({ employees=[], setEmployees, expenses=[], setExpenses, u
     const emp = employees.find(e=>e.id===salForm.employeeId);
     const id = "SAL-"+Date.now();
     const expense = {
-      id, date:salForm.date, paidBy:"__company__",
+      id, date:salForm.date, paidBy:salForm.employeeId,
       amount:Number(salForm.amount),
       category:"Salary",
       comment:`${emp?.name||"Employee"}${salForm.notes?" — "+salForm.notes:""}`,
@@ -7749,7 +7749,7 @@ function App() {
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
-      if (emps?.length) setEmployees(emps.filter(r=>!r.is_deleted).map(r=>({id:r.id, name:r.name, role:r.role||"", isDeleted:false})));
+      if (emps?.length) setEmployees(emps.filter(r=>!r.is_deleted).map(r=>({id:r.id, name:r.name, role:r.role||"", status:r.status||"active", isDeleted:false})));
       if (qt?.length) setQuotations(qt.map(mapInv("quotation")));
       if (pf?.length) setProformas(pf.map(mapInv("proforma")));
       if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
@@ -7959,7 +7959,7 @@ function App() {
   const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
   const deleteWastage=(id)=>enqueue({action:"delete",table:"wastage_log",col:"id",val:id});
   const syncSetWastageLog=(v)=>{ const n=typeof v==="function"?v(wastageLog):v; const removed=wastageLog.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteWastage(x.id)); n.forEach(w=>{ const prev=wastageLog.find(p=>p.id===w.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(w)) upsertWastage(w); }); setWastageLog(n); };
-  const upsertEmployee=(e)=>enqueue({action:"upsert",table:"employees",row:{id:e.id,name:e.name,role:e.role||"",is_deleted:e.isDeleted||false}});
+  const upsertEmployee=(e)=>enqueue({action:"upsert",table:"employees",row:{id:e.id,name:e.name,role:e.role||"",status:e.status||"active",is_deleted:e.isDeleted||false}});
   const deleteEmployee=(e)=>enqueue({action:"delete",table:"employees",col:"id",val:e.id});
   const deleteInventoryItem=(i)=>enqueue({action:"delete",table:"inventory",col:"id",val:i.id});
   const syncSetInventory=(v)=>{ const n=typeof v==="function"?v(inventory):v; const removed=inventory.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteInventoryItem(x)); n.forEach(item=>{ const prev=inventory.find(p=>p.id===item.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(item)) upsertInventoryItem(item); }); setInventory(n); };
