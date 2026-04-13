@@ -3077,6 +3077,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const [section, setSection] = useState(firstSection);
   const [period, setPeriod] = useState("month");
   const [year, setYear] = useState(new Date().getFullYear());
+  const [refSort, setRefSort] = useState("pending");
 
   const num = (v) => Number(v||0);
   const fmt = (n) => Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:0});
@@ -4150,7 +4151,6 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               chRefMap[ch].amount+=num(o.referralAmount);
               if(o.referralPaid)chRefMap[ch].paid+=num(o.referralAmount);
             });
-            const [refSort, setRefSort] = useState("pending");
             const sortedTop3 = [...persons].sort((a,b)=>{
               if(refSort==="pending") return (b.amount-b.paid)-(a.amount-a.paid);
               if(refSort==="orders") return b.orders-a.orders;
