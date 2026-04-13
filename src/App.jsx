@@ -7671,66 +7671,47 @@ function App() {
 
   // ── Mark session logged out only on true tab close (not reload) ──────────
   useEffect(()=>{
-    const patchLogout = () => {
+    // On mount: check if there's a pending logout from a previous tab close
+    // Key insight: on RELOAD, sessionStorage persists (same session id)
+    // On TAB CLOSE, sessionStorage is destroyed
+    // So: if _logout_pending exists in localStorage but sessionStorage has no session
+    //     → previous tab was truly closed → fire the logout
+    const pending = localStorage.getItem("_logout_pending");
+    if (pending) {
+      try {
+        const { sid, url, key, token } = JSON.parse(pending);
+        const currentSid = sessionStorage.getItem("app_session_id");
+        if (sid && sid !== currentSid) {
+          // Different or missing session → true close, fire logout for that session
+          fetch(`${url}/rest/v1/app_sessions?id=eq.${sid}`, {
+            method:"PATCH", keepalive:true,
+            headers:{"apikey":key,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+            body:JSON.stringify({logout_at:new Date().toISOString()})
+          }).catch(()=>{});
+        }
+      } catch(e){}
+      localStorage.removeItem("_logout_pending");
+    }
+
+    // On pagehide: store logout intent in localStorage (survives tab close)
+    const onPageHide = () => {
       const sid = sessionStorage.getItem("app_session_id");
       const url = localStorage.getItem("sb_url")||getEnv("VITE_SUPABASE_URL");
       const key = localStorage.getItem("sb_key")||getEnv("VITE_SUPABASE_KEY");
-      const token2 = sessionStorage.getItem("sb_token")||"";
-      if (!sid||!url||!key||!token2) return;
+      const token = sessionStorage.getItem("sb_token")||"";
+      if (!sid||!url||!key||!token) return;
+      // Save intent — on next mount we decide if it was a reload or close
+      localStorage.setItem("_logout_pending", JSON.stringify({sid,url,key,token}));
+      // Also try immediate keepalive fetch (works on desktop close)
       fetch(`${url}/rest/v1/app_sessions?id=eq.${sid}`, {
         method:"PATCH", keepalive:true,
-        headers:{"apikey":key,"Authorization":`Bearer ${token2}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+        headers:{"apikey":key,"Authorization":`Bearer ${token}`,"Content-Type":"application/json","Prefer":"return=minimal"},
         body:JSON.stringify({logout_at:new Date().toISOString()})
       }).catch(()=>{});
     };
 
-    // Track whether this is a reload or a true close
-    // On reload: beforeunload fires but the page is immediately reloaded
-    // so sessionStorage still has the session — we clear a flag on reload
-    // and only mark logout if the flag was not set (true close)
-    let isReload = false;
-    const onBeforeUnload = () => { isReload = true; };
-
-    // pagehide fires on both mobile and desktop when tab is hidden/closed
-    // persisted=false means the page is being discarded (true close)
-    // persisted=true means it went into bfcache (back/forward, still alive)
-    const onPageHide = (e) => {
-      if (!e.persisted && !isReload) {
-        patchLogout();
-      }
-    };
-
-    // visibilitychange as additional fallback for mobile
-    // Only log out if document is hidden AND it wasn't a reload
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden" && !isReload) {
-        // Use a small delay — if it's a reload the page will come back
-        // We store a timestamp; on remount we check and clear it
-        localStorage.setItem("_tab_hidden_at", Date.now().toString());
-      }
-    };
-
-    window.addEventListener("beforeunload", onBeforeUnload);
     window.addEventListener("pagehide", onPageHide);
-    document.addEventListener("visibilitychange", onVisibility);
-
-    // On mount — if we find a recent _tab_hidden_at (within 10s) it was a reload not a close
-    // If it's older than 10s, the previous session was truly closed — mark it as logged out
-    const hiddenAt = localStorage.getItem("_tab_hidden_at");
-    if (hiddenAt) {
-      const elapsed = Date.now() - Number(hiddenAt);
-      if (elapsed > 10000) {
-        // Was hidden more than 10s ago — true close, mark previous session
-        patchLogout();
-      }
-      localStorage.removeItem("_tab_hidden_at");
-    }
-
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      window.removeEventListener("pagehide", onPageHide);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+    return () => window.removeEventListener("pagehide", onPageHide);
   },[]);
 
   // ── Load all data on mount ───────────────────────────────────────────────
