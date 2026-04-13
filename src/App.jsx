@@ -2769,13 +2769,13 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <div className="flex items-center gap-4">
           {s.logo
             ? <div className="relative group"><img src={s.logo} alt="logo" className="h-16 max-w-[160px] object-contain border rounded-xl p-2 bg-white shadow-sm"/>
-                <button onClick={()=>setS({...s,logo:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button></div>
-            : <div onClick={()=>logoRef.current.click()} className="h-16 w-36 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
+                {!readOnly&&<button onClick={()=>setS({...s,logo:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button>}</div>
+            : !readOnly&&<div onClick={()=>logoRef.current.click()} className="h-16 w-36 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
                 <span className="text-lg">🖼</span><span className="text-xs text-gray-400">Upload logo</span>
               </div>
           }
-          <button onClick={()=>logoRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.logo?"Change":"Upload"} logo</button>
-          <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>
+          {!readOnly&&<button onClick={()=>logoRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.logo?"Change":"Upload"} logo</button>}
+          {!readOnly&&<input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>}
         </div>
       </section>
 
@@ -2786,18 +2786,18 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <div className="flex items-center gap-4">
           {s.signatory
             ? <div className="relative group"><img src={s.signatory} alt="signatory" className="h-20 max-w-[200px] object-contain border rounded-xl p-2 bg-white shadow-sm"/>
-                <button onClick={()=>setS({...s,signatory:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button></div>
-            : <div onClick={()=>sigRef.current.click()} className="h-20 w-44 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
+                {!readOnly&&<button onClick={()=>setS({...s,signatory:""})} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center hover:bg-red-600">×</button>}</div>
+            : !readOnly&&<div onClick={()=>sigRef.current.click()} className="h-20 w-44 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all gap-1">
                 <span className="text-2xl">🖋</span><span className="text-xs text-gray-400">Upload stamp / signature</span>
               </div>
           }
-          <button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>
-          <input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>
+          {!readOnly&&<button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>}
+          {!readOnly&&<input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>}
         </div>
       </section>
 
-      {/* Number Series */}
-      <section className="border-t pt-6">
+      {/* Number Series — read only: show previews only */}
+      {!readOnly&&<section className="border-t pt-6">
         <h3 className="font-bold text-gray-800 mb-1">Number Series</h3>
         <p className="text-xs text-gray-400 mb-4">Customize order and invoice number formats. B2B orders auto-get <code className="bg-gray-100 px-1 rounded text-xs">-B</code> suffix.</p>
 
@@ -2845,18 +2845,17 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
             <p className="text-xs text-gray-500">Preview: <span className="font-mono font-bold text-slate-700">{tiPrev}</span></p>
           </div>
         </div>
-      </section>
+      </section>}
 
-      {/* Terms & Conditions */}
-      <section className="border-t pt-6">
-        <h3 className="font-bold text-gray-800 mb-1">Terms & Conditions</h3>
+      {!readOnly&&<section className="border-t pt-6">
+        <h3 className="font-bold text-gray-800 mb-1">Terms &amp; Conditions</h3>
         <p className="text-xs text-gray-400 mb-4">Printed at the bottom of each invoice. Leave blank to omit.</p>
         <div className="space-y-4">
           <F label="Quotation — Terms & Conditions" value={s.qtTerms||""} onChange={v=>setS({...s,qtTerms:v})} rows={4} placeholder="Enter terms for quotations…"/>
           <F label="Proforma Invoice — Terms & Conditions" value={s.pfTerms} onChange={v=>setS({...s,pfTerms:v})} rows={4} placeholder="Enter terms for proforma invoices…"/>
           <F label="Tax Invoice — Terms & Conditions" value={s.tiTerms} onChange={v=>setS({...s,tiTerms:v})} rows={4} placeholder="Enter terms for tax invoices…"/>
         </div>
-      </section>
+      </section>}
 
 
       <section className="border-t pt-6 space-y-0">
@@ -2880,13 +2879,13 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       <section className="border-t pt-6 space-y-3">
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
-        <RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>
+        {!readOnly&&<RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>}
       </section>
 
-      <div className="flex gap-3 pt-2 border-t">
+      {!readOnly&&<div className="flex gap-3 pt-2 border-t">
         <button onClick={save} className="px-6 py-2.5 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all">Save All Settings</button>
         <button onClick={cancel} className="border border-gray-200 text-gray-500 hover:bg-gray-50 px-5 py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
-      </div>
+      </div>}
     </div>
   );
 }
