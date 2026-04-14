@@ -1857,16 +1857,16 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 ? <>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-start justify-between gap-2">
-                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(o.grossTotal||0)}</span></p></div>
+                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(orderItems.reduce((s,i)=>s+num(i.grossAmt),0))}</span></p></div>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">👁 View</button>
-                        <button onClick={()=>downloadHtml(buildQuotationHtml(o,qt,seller),qt.invNo)} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">⬇ Download</button>
+                        <button onClick={()=>printOrOpen(buildQuotationHtml({...o,items:orderItems},qt,seller))} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">👁 View</button>
+                        <button onClick={()=>downloadHtml(buildQuotationHtml({...o,items:orderItems},qt,seller),qt.invNo)} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">⬇ Download</button>
                       </div>
                     </div>
                     <div className="border-t pt-4">
                       <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
-                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={(o.items||[]).map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst} isIgst={isIgst}/></div>
+                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={orderItems.map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst} isIgst={isIgst}/></div>
                     </div>
                   </>
                 : <p className="text-gray-400 text-sm text-center py-8">No quotation found for this order.</p>
@@ -1911,7 +1911,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Tax Invoices</p>
                   <div className="space-y-2">
                     {tis.map(t=>{
-                      const tN=(o.netTotal||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+                      const tN=orderItems.reduce((s,i)=>s+num(i.netAmt),0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
                       return (
                         <div key={t.invNo} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3">
                           <div className="flex items-start justify-between gap-2">
