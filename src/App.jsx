@@ -227,8 +227,7 @@ create table if not exists tax_invoices (
 -- Normalized Items (covers all document types)
 create table if not exists items (
   id text primary key,
-  document_type text not null, -- "order"|"quotation"|"proforma"|"tax_invoice"
-  document_id text not null,   -- order_no or inv_no
+  order_no text not null,      -- references orders.order_no
   sl integer, item text, hsn text, unit text,
   unit_price numeric default 0, qty numeric default 0, discount numeric default 0,
   gross_amt numeric default 0, cgst_rate numeric default 0, cgst_amt numeric default 0,
@@ -239,7 +238,7 @@ create table if not exists items (
 -- Migration: alter table items add column if not exists brand text default '';
 -- Migration: alter table items add column if not exists material text default '';
 -- Migration: alter table items add column if not exists product_id text default '';
-create index if not exists items_doc_idx on items(document_type, document_id);
+create index if not exists items_order_idx on items(order_no);
 -- Clients
 create table if not exists clients (
   id text primary key, name text, gstin text, contact text, email text,
@@ -286,9 +285,10 @@ create table if not exists settings (
 
 // ─── Quotation HTML Builder ──────────────────────────────────────────────────
 function buildQuotationHtml(orderArg, inv, sellerArg) {
-  const seller = inv.sellerSnapshot || sellerArg;
-  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
-  const items = inv.items || [];
+  const seller = sellerArg;
+  const order = orderArg;
+  const items = order.items||[];
+  const items = order.items||[];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
@@ -354,11 +354,12 @@ ${seller.qtTerms?`<div style="margin-top:12px;padding:10px 12px;background:#f9f9
 
 // ─── Invoice HTML Builder ─────────────────────────────────────────────────────
 function buildInvoiceHtml(orderArg, inv, type, sellerArg) {
-  const seller = inv.sellerSnapshot || sellerArg;
-  const order = inv.orderSnapshot ? {...orderArg, ...inv.orderSnapshot} : orderArg;
+  const seller = sellerArg;
+  const order = orderArg;
   const isProforma = type === "proforma";
   const title = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
-  const items = inv.items || [];
+  // Proforma uses its own items snapshot; tax invoice always uses order items
+  const items = isProforma ? (inv.items||[]) : (order.items||[]);
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
@@ -903,8 +904,8 @@ function OrderForm({ orders, setOrders, quotations, setQuotations, proformas, se
     // Generate quotation number
     const qtPeriod = series.qtFormat==="YYYYMM"?yyyymm():series.qtFormat==="YYYY"?yyyy():series.qtFormat==="YYYYMMDD"?yyyymmdd():"";
     const {invNo:qtNo, invNoBase:qtBase} = genInvNo(series.qtPrefix||"QT", qtPeriod, quotations, Number(series.qtDigits)||6);
-    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), channel:channel||"Offline", orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[], isReferred:isReferred?1:0, referralPerson:referralPerson||"", referralAmount:Number(referralAmount)||0, referralPaid:0, referralPaidDate:"", referralPaidRef:"" };
-    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, items:[...items.map(i=>({...i}))], notes:comments, orderId:orderNo, amount:items.reduce((s,i)=>s+num(i.netAmt),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName,billingName,billingAddress,billingStateCode,gstin:gstin||"",phone:phone||"",shippingName,shippingAddress,shippingContact,shippingGstin,shippingStateCode,type,needsGst,placeOfSupply,isPickup:!!(type==="B2C"&&needsGst&&isPickup)} };
+    const order = { orderNo, orderNoBase, type, customerName, phone, email, contact: phone, gstin, billingName, billingAddress, billingStateCode, shippingName, shippingAddress, shippingContact, shippingGstin, shippingStateCode, placeOfSupply, isPickup: !!(type==="B2C" && needsGst && isPickup), channel:channel||"Offline", orderDate, dueDate: dueDate||addDays(orderDate,30), paymentMode, advance, advanceRecipient, advanceTxnRef, status, comments, needsGst, items, grossTotal:items.reduce((s,i)=>s+Number(i.grossAmt||0),0), netTotal:items.reduce((s,i)=>s+Number(i.netAmt||0),0), quotationNo: qtNo, proformaIds:[], taxInvoiceIds:[], charges:[], isReferred:isReferred?1:0, referralPerson:referralPerson||"", referralAmount:Number(referralAmount)||0, referralPaid:0, referralPaidDate:"", referralPaidRef:"" };
+    const qt = { invNo:qtNo, invNoBase:qtBase, invDate:orderDate, notes:comments, orderId:orderNo };
     setOrders(p=>[...p,order]);
     setQuotations(p=>[...p,qt]);
     setLastOrder(order);
@@ -1541,7 +1542,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       setStatusPrompt(updated);
       return;
     }
-    onSaveOrder(updated);
+    const savedWithTotals = {...updated,
+      grossTotal: (updated.items||[]).reduce((s,i)=>s+Number(i.grossAmt||0),0),
+      netTotal: (updated.items||[]).reduce((s,i)=>s+Number(i.netAmt||0),0)
+    };
+    onSaveOrder(savedWithTotals);
     toast("Order changes saved");
   };
   const handleSaveInv = (updatedInv, type) => {
@@ -1549,7 +1554,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const origInv = type==="proforma"
       ? proformas.find(p=>p.invNo===updatedInv.invNo)
       : taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)+(updatedInv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot: updatedInv.sellerSnapshot || origInv?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || origInv?.orderSnapshot};
+    const saved = {...updatedInv, amount:updatedInv.items.reduce((s,i)=>s+num(i.netAmt),0)+(updatedInv.charges||[]).reduce((s,c)=>s+num(c.amount),0)};
     onSaveInvoice(saved, type);
   };
   const handleCreate = (type) => setCreating(type);
@@ -1576,7 +1581,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
     // Use live local state `o` (not prop `order`) so unsaved address/pickup edits are captured
     const snapOrder = o || order;
-    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0), sellerSnapshot:{...seller}, orderSnapshot:{customerName:snapOrder.customerName,billingName:snapOrder.billingName,billingAddress:snapOrder.billingAddress,billingStateCode:snapOrder.billingStateCode,gstin:snapOrder.gstin||"",phone:snapOrder.phone||snapOrder.contact||"",shippingName:snapOrder.shippingName,shippingAddress:snapOrder.shippingAddress,shippingContact:snapOrder.shippingContact,shippingGstin:snapOrder.shippingGstin,shippingStateCode:snapOrder.shippingStateCode,type:snapOrder.type,needsGst:type==="tax"?true:snapOrder.needsGst,placeOfSupply:snapOrder.placeOfSupply,isPickup:!!snapOrder.isPickup}};
+    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0)};
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
@@ -1841,7 +1846,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 ? <>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-start justify-between gap-2">
-                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(qt.amount)}</span></p></div>
+                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(o.grossTotal||0)}</span></p></div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={()=>printOrOpen(buildQuotationHtml(o,qt,seller))} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">👁 View</button>
@@ -1850,7 +1855,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     </div>
                     <div className="border-t pt-4">
                       <p className="text-xs text-gray-400 mb-2">Items in this quotation:</p>
-                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={qt.items.map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst} isIgst={isIgst}/></div>
+                      <div className="opacity-70 select-none" onMouseDown={e=>e.preventDefault()}><ItemTable items={(o.items||[]).map(i=>({...i}))} setItems={()=>{}} needsGst={order.needsGst} isIgst={isIgst}/></div>
                     </div>
                   </>
                 : <p className="text-gray-400 text-sm text-center py-8">No quotation found for this order.</p>
@@ -1895,7 +1900,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Tax Invoices</p>
                   <div className="space-y-2">
                     {tis.map(t=>{
-                      const tN=t.items.reduce((s,i)=>s+num(i.netAmt),0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+                      const tN=num(t.amount||0);
                       return (
                         <div key={t.invNo} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3">
                           <div className="flex items-start justify-between gap-2">
@@ -1919,6 +1924,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
 <div className="space-y-4">
               <InvoiceEditor
               inv={{ invNo:"(auto)", invDate:today(), items: order.items && order.items.length > 0 ? order.items.map(i=>calcItem({...i}, creating==="tax" ? true : order.needsGst)) : [{...EMPTY_ITEM}], notes:"", charges: creating==="tax" ? (order.charges||[]).map(c=>({...c})) : [] }}
+              taxReadOnly={creating==="tax"}
               type={creating}
               needsGst={creating==="tax" ? true : order.needsGst}
               isNew={true}
@@ -1952,10 +1958,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           )}
 
           {tab==="payments" && canSubTabRead("payments") && (() => {
-            const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
-            const qt2=quotations.find(q=>q.orderId===order.orderNo);
-            const qtTotal=qt2?num(qt2.amount):(order.items||[]).reduce((s,i)=>s+num(i.netAmt),0);
-            const orderTotal=tiTotal>0?tiTotal:qtTotal;
+            const tiTotal=tis.reduce((s,t)=>s+num(t.amount||0),0);
+            const chargesTotal2=(order.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+            const orderTotal=tiTotal>0?tiTotal:(order.netTotal||0)+chargesTotal2;
             const balance=orderTotal-totalPaid;
             return (
               <div className="space-y-5">
@@ -2089,7 +2094,7 @@ function ExpandableItemTable({ items, setItems, needsGst, label, sublabel, isIgs
   );
 }
 
-function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList, isIgst=false, products=[], seller={} }) {
+function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, existingList, isIgst=false, products=[], seller={}, taxReadOnly=false }) {
   const prefix = isNew ? (type==="proforma"?(series?.pfPrefix||"PF"):(series?.tiPrefix||"TAX")) : null;
   const period = isNew ? (type==="proforma"?(series?.pfFormat==="YYYYMM"?yyyymm():series?.pfFormat==="YYYY"?yyyy():series?.pfFormat==="YYYYMMDD"?yyyymmdd():""):(series?.tiFormat==="YYYYMM"?yyyymm():series?.tiFormat==="YYYY"?yyyy():series?.tiFormat==="YYYYMMDD"?yyyymmdd():"")) : null;
   const { invNo:autoNo, invNoBase:autoBase } = isNew ? genInvNo(prefix, period, existingList||[], Number(series?.invDigits)||6) : { invNo: inv.invNo, invNoBase: inv.invNoBase };
@@ -2107,7 +2112,14 @@ function InvoiceEditor({ inv, type, needsGst, onSave, onCancel, isNew, series, e
       <F label="Invoice Date" type="date" value={d.invDate} onChange={v=>upd("invDate",v)} className="w-48"/>
       {isNew && type==="proforma"
         ? <ExpandableItemTable items={d.items} setItems={items=>setD(p=>({...p,items}))} needsGst={needsGst} isIgst={isIgst} products={products} seller={seller} label="Invoice Items"/>
-        : (
+        : taxReadOnly ? (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">(mirrors order items — edit items in the Order tab)</span></p>
+            <div className="opacity-60 pointer-events-none select-none rounded-xl border border-gray-200 overflow-hidden">
+              <ItemTable items={d.items} setItems={()=>{}} needsGst={needsGst} isIgst={isIgst}/>
+            </div>
+          </div>
+        ) : (
           <div className="space-y-2">
             <p className="text-sm font-semibold text-gray-700">Invoice Items <span className="text-xs font-normal text-gray-400 ml-1">{type==="tax" ? "(locked — tax invoice items cannot be changed)" : "(locked — delete and recreate to change items)"}</span></p>
             <div className="opacity-60 pointer-events-none select-none rounded-xl border border-gray-100 overflow-hidden">
@@ -2186,10 +2198,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   useEffect(()=>{ if(initialOrder){ setOpenOrder(initialOrder); onClearInitialOrder(); } },[initialOrder]);
 
   const getTotal = (o) => {
-    const tiTotal=taxInvoices.filter(t=>t.orderId===o.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
-    const qt=quotations.find(q=>q.orderId===o.orderNo);
-    const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    return tiTotal>0?tiTotal:qtTotal;
+    const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
+    const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
   };
   const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
@@ -2218,7 +2229,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     enqueue({action:"delete",table:"quotations",col:"order_id",val:orderNo});
     enqueue({action:"delete",table:"proformas",col:"order_id",val:orderNo});
     enqueue({action:"delete",table:"tax_invoices",col:"order_id",val:orderNo});
-    enqueue({action:"deleteMany",table:"items",col:"document_id",val:orderNo});
+    enqueue({action:"deleteMany",table:"items",col:"order_no",val:orderNo});
     enqueue({action:"deleteMany",table:"payments",col:"order_id",val:orderNo});
     setOpenOrder(null);
   };
@@ -2226,7 +2237,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const handleSaveOrder = (updated) => {
     const orderNo = updated.orderNo;
     const newItems = updated.items;
-    setOrders(orders.map(o=>o.orderNo===orderNo?updated:o));
+    // Recalculate totals on save
+    const updatedWithTotals = {...updated,
+      grossTotal: (newItems||[]).reduce((s,i)=>s+Number(i.grossAmt||0),0),
+      netTotal: (newItems||[]).reduce((s,i)=>s+Number(i.netAmt||0),0)
+    };
+    setOrders(orders.map(o=>o.orderNo===orderNo?updatedWithTotals:o));
     // Sync all payments to Supabase — upsert current, delete removed
     const prevOrder = orders.find(o=>o.orderNo===orderNo);
     const prevPayIds = new Set((prevOrder?.payments||[]).map(p=>String(p.id)));
@@ -2235,31 +2251,11 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     if (updated.payments?.length) {
       updated.payments.forEach(p=>upsertPayment({...p, orderId:orderNo, id:String(p.id||Date.now())}));
     }
-    // Sync items to quotation AND tax invoices
-    if (newItems) {
-      const updatedQt = quotations.find(q=>q.orderId===orderNo);
-      if (updatedQt) {
-        const newQt = {...updatedQt, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
-        setQuotations(prev => prev.map(q => q.orderId===orderNo ? newQt : q));
-      }
-      // Proforma mirrors order items (like quotation)
-      setProformas(prev => prev.map(p => {
-        if (p.orderId !== orderNo) return p;
-        return {...p, items:newItems, amount:newItems.reduce((s,i)=>s+num(i.netAmt),0)};
-      }));
-      // Tax invoices are independent documents — never auto-merge order items into them
-    }
-    setOpenOrder(updated);
+    // Items saved via upsertOrder — gross_total/net_total updated automatically
+    setOpenOrder(updatedWithTotals);
   };
 
-  const pushItemsToTaxInvoices = (orderNo, mergedItems) => {
-    if (!mergedItems) return;
-    setTaxInvoices(prev => prev.map(t => {
-      if (t.orderId !== orderNo) return t;
-      const merged = mergeItemsIntoOrder(t.items, mergedItems);
-      return {...t, items: merged, amount: merged.reduce((s,i)=>s+num(i.netAmt),0)};
-    }));
-  };
+
 
   const [invStatusPrompt, setInvStatusPrompt] = useState(null); // {updatedInv, type, orderNo}
 
@@ -2278,12 +2274,10 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     toast(type==="proforma"?"Proforma saved":"Tax invoice saved");
     const orderNo2 = orderNo;
     if(type==="proforma"){
-      const orig = proformas.find(p=>p.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
+      const saved = {...updatedInv};
       setProformas(proformas.map(p=>p.invNo===saved.invNo?saved:p));
     } else {
-      const orig = taxInvoices.find(t=>t.invNo===updatedInv.invNo);
-      const saved = {...updatedInv, sellerSnapshot: updatedInv.sellerSnapshot || orig?.sellerSnapshot, orderSnapshot: updatedInv.orderSnapshot || orig?.orderSnapshot};
+      const saved = {...updatedInv};
       setTaxInvoices(taxInvoices.map(t=>t.invNo===saved.invNo?saved:t));
     }
   };
@@ -2300,7 +2294,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         return updated;
       });
       enqueue({action:"delete", table:"proformas", col:"inv_no", val:invNo});
-      enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
     } else {
       setTaxInvoices(prev => prev.filter(t => t.invNo !== invNo));
       setOrders(prev => {
@@ -2310,7 +2303,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         return updated;
       });
       enqueue({action:"delete", table:"tax_invoices", col:"inv_no", val:invNo});
-      enqueue({action:"deleteMany", table:"items", col:"document_id", val:invNo});
     }
     toast(`${type==="proforma"?"Proforma":"Tax Invoice"} ${invNo} deleted`);
   };
@@ -2347,13 +2339,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const renderCard = (o) => {
     const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
-    const qt=quotations.find(q=>q.orderId===o.orderNo);
-    // Total: use tax invoice total if exists, else quotation/order items total
-    const tiTotal=tis.reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
-    // Order card: always items + charges
     const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    const qtTotal=(qt?num(qt.amount):(o.items||[]).reduce((s,i)=>s+num(i.netAmt),0))+chargesTotal;
-    const tN=tiTotal>0?tiTotal:qtTotal;
+    const tiTotal=tis.reduce((s,t)=>s+num(t.amount||0),0);
+    const tN=tiTotal>0?tiTotal:(o.netTotal||0)+chargesTotal;
     const bal=o.status==="Cancelled"?0:tN-getTotalPaid(o);
     const due=o.dueDate||"";
     const isOverdue=o.status==="Pending"&&due&&due<todayStr;
@@ -3181,43 +3169,29 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const activeOrders = orders.filter(o=>o.status!=="Cancelled");
   const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
   // Revenue (excl GST) — grossAmt only
-  const getVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+  const getVal = (o) => (o.grossTotal||0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
   // Full invoice value incl GST — used for outstanding
   const getFullVal = (o) => (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
   const getEffVal = (o) => o.status==="Cancelled" ? Math.max(0,getPaid(o)) : getVal(o);
   const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
-  // Revenue amount excl GST (for analytics revenue figures)
-  // Revenue = grossAmt only (excludes GST + other charges)
+  // Revenue = grossTotal (excl GST, excl charges) — always from order
   const getInvoicedAmt = (o) => {
-    const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
-    const qt = quotations.find(q=>q.orderId===o.orderNo);
-    const raw = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.grossAmt),0)||0),0)
-      : (qt
-        ? (qt.items?.reduce((a,i)=>a+num(i.grossAmt),0) || num(qt.amount))
-        : (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0));
-    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : raw;
+    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : (o.grossTotal||0);
   };
-  // Gross order value = netAmt (includes GST) + other charges
+  // Order value gross = ti.amount (incl GST+charges) if TI exists, else netTotal + charges
   const getGrossOrderAmt = (o) => {
+    if (o.status==="Cancelled") return Math.max(0,getPaid(o));
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
-    const qt = quotations.find(q=>q.orderId===o.orderNo);
-    const raw = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0),0)
-      : (qt
-        ? (qt.items?.reduce((a,i)=>a+num(i.netAmt),0) || num(qt.amount))
-        : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
-    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : raw;
+    const chargesTotal = (o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
   };
-  // Full invoice amount incl GST — used for outstanding (what customer actually owes)
+  // Full invoice amount — used for outstanding
   const getFullInvoicedAmt = (o) => {
+    if (o.status==="Cancelled") return Math.max(0,getPaid(o));
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
-    const qt = quotations.find(q=>q.orderId===o.orderNo);
-    const raw = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
-      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
-    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : raw;
+    const chargesTotal = (o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
   };
   const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getFullInvoicedAmt(o) - getPaid(o));
 
@@ -5467,11 +5441,11 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   // Build invoiced orders list (orders that have a tax invoice)
   const invoicedOrders = orders.map(o => {
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
-    const qt = quotations.find(q=>q.orderId===o.orderNo);
-    // Income: items only, no charges
+    // Income: ti.amount if TI exists, else netTotal + charges
+    const chargesAmt=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const rawInvoicedAmt = tis.length
-      ? tis.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0),0)
-      : (qt ? num(qt.amount) : (o.items||[]).reduce((s,i)=>s+num(i.netAmt),0));
+      ? tis.reduce((s,t)=>s+num(t.amount||0),0)
+      : (o.netTotal||0)+chargesAmt;
     // For cancelled orders show net collected instead of invoice amount
     const invoicedAmt = o.status==="Cancelled"
       ? Math.max(0, (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0) + num(o.advance))
@@ -6939,7 +6913,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
 
   const getOrderBalance = (order) => {
-    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(t.amount||(t.items?.reduce((a,i)=>a+num(i.netAmt),0)||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0)),0);
+    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+num(t.amount||0),0);
     const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
     const orderTotal = tiTotal>0?tiTotal:qtTotal;
     const totalPaid = (order.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0)+num(order.advance);
@@ -6979,17 +6953,13 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const activeOrds = filteredOrders.filter(o=>o.status!=="Cancelled");
 
     const getGross = (o) => {
-      const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
-      const qt=quotations.find(q=>q.orderId===o.orderNo);
       if(o.status==="Cancelled")return 0;
-      return tis.length?tis.reduce((a,t)=>a+(t.items?.reduce((b,i)=>b+num(i.grossAmt),0)||0),0)
-        :(qt?(qt.items?.reduce((b,i)=>b+num(i.grossAmt),0)||num(qt.amount))
-          :(o.items||[]).reduce((a,i)=>a+num(i.grossAmt),0));
+      return o.grossTotal||0;
     };
     const getInvoiceVal = (o) => {
       const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
-      const qt=quotations.find(q=>q.orderId===o.orderNo);
-      return tis.length?tis.reduce((a,t)=>a+(t.amount||t.items?.reduce((b,i)=>b+num(i.netAmt),0)||0),0):(qt?num(qt.amount):(o.items||[]).reduce((a,i)=>a+num(i.netAmt),0));
+      const chargesAmt=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+      return tis.length?tis.reduce((a,t)=>a+num(t.amount||0),0):(o.netTotal||0)+chargesAmt;
     };
     const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
@@ -7000,9 +6970,9 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const orderVal=pendingCompletedOrds.reduce((s,o)=>s+getInvoiceVal(o),0); // gross incl GST+charges
     const collected=filteredOrders.reduce((s,o)=>s+getPaid(o),0);
     const totalExp=filteredExp.reduce((s,e)=>s+num(e.amount),0);
-    const cgstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.cgstAmt),0)||0),0);
-    const sgstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+num(i.sgstAmt),0)||0),0);
-    const igstTotal=filteredTIs.reduce((s,t)=>s+(t.items?.reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)||0),0);
+    const cgstTotal=filteredTIs.reduce((s,t)=>s+((getOrder(t).items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)),0);
+    const sgstTotal=filteredTIs.reduce((s,t)=>s+((getOrder(t).items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)),0);
+    const igstTotal=filteredTIs.reduce((s,t)=>s+((getOrder(t).items||[]).reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)),0);
     const totalGST=cgstTotal+sgstTotal+igstTotal;
     const netProfit=collected-totalExp;
     const b2bGross=completedOrds.filter(o=>o.type==="B2B").reduce((s,o)=>s+getGross(o),0);
@@ -7050,11 +7020,12 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
     const mapTIRow = (t,type) => {
       const o=getOrder(t);
-      const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
-      const cgst=t.items?.reduce((s,i)=>s+num(i.cgstAmt),0)||0;
-      const sgst=t.items?.reduce((s,i)=>s+num(i.sgstAmt),0)||0;
-      const igst=t.items?.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0)||0;
-      return {"Invoice No":t.invNo,"Date":t.invDate,"Order No":t.orderId,"Customer":o.customerName||"","GSTIN":o.gstin||"","Taxable Value":fmt2(taxable),"CGST Rate %":cgst>0?t.items?.[0]?.cgstRate||9:"","CGST Amount":fmt2(cgst),"SGST Rate %":sgst>0?t.items?.[0]?.sgstRate||9:"","SGST Amount":fmt2(sgst),"IGST Amount":fmt2(igst),"Total":fmt2(taxable+cgst+sgst+igst)};
+      const oi=o.items||[];
+      const taxable=oi.reduce((s,i)=>s+num(i.grossAmt),0);
+      const cgst=oi.reduce((s,i)=>s+num(i.cgstAmt),0);
+      const sgst=oi.reduce((s,i)=>s+num(i.sgstAmt),0);
+      const igst=oi.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0);
+      return {"Invoice No":t.invNo,"Date":t.invDate,"Order No":t.orderId,"Customer":o.customerName||"","GSTIN":o.gstin||"","Taxable Value":fmt2(taxable),"CGST Rate %":cgst>0?oi[0]?.cgstRate||9:"","CGST Amount":fmt2(cgst),"SGST Rate %":sgst>0?oi[0]?.sgstRate||9:"","SGST Amount":fmt2(sgst),"IGST Amount":fmt2(igst),"Total":fmt2(taxable+cgst+sgst+igst)};
     };
     const b2bRows=filteredTIs.filter(t=>(getOrder(t).type||"B2B")==="B2B").map(t=>mapTIRow(t,"B2B"));
     const b2cRows=filteredTIs.filter(t=>(getOrder(t).type||"B2B")!=="B2B").map(t=>mapTIRow(t,"B2C"));
@@ -7062,7 +7033,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const hsnMap={};
     filteredTIs.forEach(t=>{
       const o=getOrder(t);
-      (t.items||[]).forEach(i=>{
+      (o.items||[]).forEach(i=>{
         const hsn=i.hsn||"—";
         if(!hsnMap[hsn])hsnMap[hsn]={hsn,desc:i.item||"",b2b_taxable:0,b2c_taxable:0,taxable:0,cgst:0,sgst:0,igst:0,total:0};
         const ig=num(i.cgstAmt)===0&&num(i.sgstAmt)===0?num(i.netAmt)-num(i.grossAmt):0;
@@ -7286,10 +7257,11 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             });
             const sheet4A = b2bTIs.map(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
-              const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
-              const cgst=t.items?.reduce((s,i)=>s+num(i.cgstAmt),0)||0;
-              const sgst=t.items?.reduce((s,i)=>s+num(i.sgstAmt),0)||0;
-              const igst=t.items?.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0)||0;
+              const oi=o.items||[];
+              const taxable=oi.reduce((s,i)=>s+num(i.grossAmt),0);
+              const cgst=oi.reduce((s,i)=>s+num(i.cgstAmt),0);
+              const sgst=oi.reduce((s,i)=>s+num(i.sgstAmt),0);
+              const igst=oi.reduce((s,i)=>num(i.cgstAmt)===0&&num(i.sgstAmt)===0?s+num(i.netAmt)-num(i.grossAmt):s,0);
               const cess=0;
               return {
                 "GSTIN/UIN of Recipient":o.gstin||"",
@@ -7301,7 +7273,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
                 "Reverse Charge":"N",
                 "Invoice Type":"Regular",
                 "E-Commerce GSTIN":"",
-                "Rate":t.items?.[0]?.cgstRate&&t.items?.[0]?.sgstRate?(num(t.items[0].cgstRate)+num(t.items[0].sgstRate)).toFixed(0):"18",
+                "Rate":oi[0]?.cgstRate&&oi[0]?.sgstRate?(num(oi[0].cgstRate)+num(oi[0].sgstRate)).toFixed(0):"18",
                 "Taxable Value":fmt2(taxable),
                 "Integrated Tax":fmt2(igst),
                 "Central Tax":fmt2(cgst),
@@ -7314,20 +7286,20 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             const b2cLargeTIs = monthTIs.filter(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId);
               if(!o||o.type==="B2B")return false;
-              const val=t.items?.reduce((s,i)=>s+num(i.netAmt),0)||0;
-              return isInterState(o)&&val>250000;
+              return isInterState(o)&&num(t.amount||0)>250000;
             });
             const sheet5 = b2cLargeTIs.map(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
-              const taxable=t.items?.reduce((s,i)=>s+num(i.grossAmt),0)||0;
-              const igst=t.items?.reduce((s,i)=>s+num(i.netAmt)-num(i.grossAmt),0)||0;
+              const oi=o.items||[];
+              const taxable=oi.reduce((s,i)=>s+num(i.grossAmt),0);
+              const igst=oi.reduce((s,i)=>s+num(i.netAmt)-num(i.grossAmt),0);
               return {
                 "Invoice Number":t.invNo,
                 "Invoice Date":t.invDate,
                 "Invoice Value":fmt2(taxable+igst),
                 "Place of Supply":o.placeOfSupply||o.shippingStateCode||o.billingStateCode||"",
                 "Applicable % of Tax Rate":"",
-                "Rate":t.items?.[0]?.cgstRate&&t.items?.[0]?.sgstRate?(num(t.items[0].cgstRate)+num(t.items[0].sgstRate)).toFixed(0):"18",
+                "Rate":oi[0]?.cgstRate&&oi[0]?.sgstRate?(num(oi[0].cgstRate)+num(oi[0].sgstRate)).toFixed(0):"18",
                 "Taxable Value":fmt2(taxable),
                 "Integrated Tax":fmt2(igst),
                 "Cess":"0.00",
@@ -7340,13 +7312,13 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             const b2cOtherTIs = monthTIs.filter(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId);
               if(!o||o.type==="B2B")return false;
-              const val=t.items?.reduce((s,i)=>s+num(i.netAmt),0)||0;
+              const val=num(t.amount||0);
               return !isInterState(o)||(isInterState(o)&&val<=250000);
             });
             const b2cOtherMap={};
             b2cOtherTIs.forEach(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
-              (t.items||[]).forEach(i=>{
+              (o.items||[]).forEach(i=>{
                 const rate=(num(i.cgstRate)+num(i.sgstRate)).toFixed(0);
                 const pos=o.placeOfSupply||o.shippingStateCode||o.billingStateCode||"";
                 const key=`${pos}||${rate}`;
@@ -7372,7 +7344,8 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             // ── 12: HSN-wise Summary ──────────────────────────────────────────
             const hsnMap12={};
             monthTIs.forEach(t=>{
-              (t.items||[]).forEach(i=>{
+              const o12=orders.find(ord=>ord.orderNo===t.orderId)||{};
+              (o12.items||[]).forEach(i=>{
                 const hsn=i.hsn||"";
                 const rate=(num(i.cgstRate)+num(i.sgstRate)).toFixed(0);
                 const key=`${hsn}||${rate}`;
@@ -7825,8 +7798,8 @@ function App() {
     ]).then(([ord, allItems, pay, sets, rc]) => {
       const parseJson = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       const mapItem = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
-      const getItems = (type, id) => (allItems||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItem);
-      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", isReferred:r.is_referred||0, referralPerson:r.referral_person||"", referralAmount:r.referral_amount||0, referralPaid:r.referral_paid||0, referralPaidDate:r.referral_paid_date||"", referralPaidRef:r.referral_paid_ref||"", items:getItems("order",r.order_no), payments:[] });
+      const getItems = (orderNo) => (allItems||[]).filter(i=>i.order_no===orderNo).sort((a,b)=>a.sl-b.sl).map(mapItem);
+      const mapOrder = (r) => ({ orderNo:r.order_no, orderNoBase:r.order_no_base, type:r.type, customerName:r.customer_name, phone:r.phone, email:r.email, gstin:r.gstin, billingName:r.billing_name, billingAddress:r.billing_address, billingStateCode:r.billing_state_code, shippingName:r.shipping_name, shippingAddress:r.shipping_address, shippingContact:r.shipping_contact, shippingGstin:r.shipping_gstin, shippingStateCode:r.shipping_state_code, placeOfSupply:r.place_of_supply, orderDate:r.order_date, dueDate:r.due_date, paymentMode:r.payment_mode, advance:r.advance, advanceRecipient:r.advance_recipient, advanceTxnRef:r.advance_txn_ref, status:r.status, comments:r.comments, needsGst:r.needs_gst, quotationNo:r.quotation_no, proformaIds:parseJson(r.proforma_ids)||[], taxInvoiceIds:parseJson(r.tax_invoice_ids)||[], filamentUsage:(v=>Array.isArray(v)?v:[])(parseJson(r.filament_usage)), charges:(v=>Array.isArray(v)?v:[])(parseJson(r.charges)), isPickup:!!r.is_pickup, cancelReason:r.cancel_reason||"", channel:r.channel||"Offline", isReferred:r.is_referred||0, referralPerson:r.referral_person||"", referralAmount:r.referral_amount||0, referralPaid:r.referral_paid||0, referralPaidDate:r.referral_paid_date||"", referralPaidRef:r.referral_paid_ref||"", items:getItems(r.order_no), grossTotal:r.gross_total||0, netTotal:r.net_total||0, payments:[] });
       const mapPayment = (r) => ({ id:r.id, orderId:r.order_id, date:r.date, amount:r.amount, mode:r.mode||"", receivedBy:r.received_by||"", txnRef:r.txn_ref||"", comments:r.comments||"", isRefund:!!r.is_refund, refundTo:r.refund_to||"" });
       const payMapped = pay?.length ? pay.map(mapPayment) : [];
       if (ord?.length) setOrders(ord.map(mapOrder).map(o=>({...o,payments:payMapped.filter(p=>p.orderId===o.orderNo)})));
@@ -7850,15 +7823,17 @@ function App() {
       ]).then(([qt,pf,ti,cl,ex,ass,stl,inv,wlog,prods,emps])=>{ const allItemsP2 = allItems||[];
       const parseJsonP2 = (v) => { if (typeof v==="string" && (v.startsWith("{")||v.startsWith("["))) { try{return JSON.parse(v)}catch(e){return v} } return v; };
       const mapItemP2 = (r) => ({ sl:r.sl, item:r.item||"", hsn:r.hsn||"", unit:r.unit||"Nos", unitPrice:r.unit_price, qty:r.qty, discount:r.discount, grossAmt:r.gross_amt, cgstRate:r.cgst_rate, cgstAmt:r.cgst_amt, sgstRate:r.sgst_rate, sgstAmt:r.sgst_amt, netAmt:r.net_amt, _brand:r.brand||"", _material:r.material||"", _productId:r.product_id||"" });
-      const getItemsP2 = (type, id) => (allItemsP2||[]).filter(i=>i.document_type===type&&i.document_id===id).sort((a,b)=>a.sl-b.sl).map(mapItemP2);
-      const mapInv = (type) => (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount, notes:r.notes||"", items:getItemsP2(type,r.inv_no), sellerSnapshot: r.seller_snapshot ? (()=>{try{return JSON.parse(r.seller_snapshot)}catch(e){return null}})() : null, charges: type==="tax_invoice" && r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})() : [], orderSnapshot: r.order_snapshot ? (()=>{try{return JSON.parse(r.order_snapshot)}catch(e){return null}})() : null });
+      const getItemsP2 = (orderNo) => (allItemsP2||[]).filter(i=>i.order_no===orderNo).sort((a,b)=>a.sl-b.sl).map(mapItemP2);
+      const mapQuotation = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, notes:r.notes||"" });
+      const mapProforma = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount||0, notes:r.notes||"", items: r.items ? (()=>{try{return JSON.parse(r.items)}catch(e){return []}})()||[] : [], charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})()||[] : [] });
+      const mapTaxInvoice = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount||0, notes:r.notes||"", charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})()||[] : [], cloudinaryUrl:r.cloudinary_url||"" });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
       if (emps?.length) setEmployees(emps.filter(r=>!r.is_deleted).map(r=>({id:r.id, name:r.name, role:r.role||"", status:r.status||"active", isDeleted:false})));
-      if (qt?.length) setQuotations(qt.map(mapInv("quotation")));
-      if (pf?.length) setProformas(pf.map(mapInv("proforma")));
-      if (ti?.length) setTaxInvoices(ti.map(mapInv("tax_invoice")));
+      if (qt?.length) setQuotations(qt.map(mapQuotation));
+      if (pf?.length) setProformas(pf.map(mapProforma));
+      if (ti?.length) setTaxInvoices(ti.map(mapTaxInvoice));
       if (cl?.length) setClients(cl.map(mapClient).filter(c=>!c.isDeleted));
       if (ass?.length) setAssets(ass.map(mapAsset).filter(a=>!a.isDeleted));
       if (ex?.length) setExpenses(ex.map(mapExpense).filter(e=>!e.isDeleted));
@@ -7944,21 +7919,18 @@ function App() {
     setTimeout(flushQueue, 600);
   },[flushQueue, isAdmin, canWrite, toast]);
 
-  // ── Items sync helper: delete old + insert new ──────────────────────────
-  const syncItems = (docType, docId, items) => {
+  // ── Items sync helper: only for order items ──────────────────────────────
+  const syncItems = (orderNo, items) => {
     const itemRows = (items||[]).map((it,i)=>({
-      id: `${docType}_${docId}_${i+1}`,
-      document_type: docType, document_id: docId,
+      id: `order_${orderNo}_${i+1}`,
+      order_no: orderNo,
       sl: it.sl||i+1, item: it.item||"", hsn: it.hsn||"", unit: it.unit||"Nos",
       unit_price: it.unitPrice||0, qty: it.qty||0, discount: it.discount||0,
       gross_amt: it.grossAmt||0, cgst_rate: it.cgstRate||0, cgst_amt: it.cgstAmt||0,
       sgst_rate: it.sgstRate||0, sgst_amt: it.sgstAmt||0, net_amt: it.netAmt||0,
       brand: it._brand||"", material: it._material||"", product_id: it._productId||""
     }));
-    // upsert all item rows (merge-duplicates handles updates)
     if (itemRows.length) enqueue({action:"upsert",table:"items",row:itemRows});
-    // delete removed items (items beyond current count)
-    // we use a naming convention id = docType_docId_N so stale ones get overwritten on upsert
   };
 
   // ── Upsert helpers ───────────────────────────────────────────────────────
@@ -7985,37 +7957,33 @@ function App() {
       referral_amount:o.referralAmount||0,
       referral_paid:o.referralPaid?1:0,
       referral_paid_date:o.referralPaidDate||"",
-      referral_paid_ref:o.referralPaidRef||""
+      referral_paid_ref:o.referralPaidRef||"",
+      gross_total: (o.items||[]).reduce((s,i)=>s+Number(i.grossAmt||0),0),
+      net_total: (o.items||[]).reduce((s,i)=>s+Number(i.netAmt||0),0)
     }});
-    syncItems("order", o.orderNo, o.items);
+    syncItems(o.orderNo, o.items);
   };
   const upsertQuotation = (q) => {
     enqueue({action:"upsert",table:"quotations",row:{
       inv_no:q.invNo, inv_no_base:q.invNoBase, inv_date:q.invDate,
-      order_id:q.orderId, amount:q.amount||0, notes:q.notes||"",
-      seller_snapshot: q.sellerSnapshot ? JSON.stringify(q.sellerSnapshot) : null,
-      order_snapshot: q.orderSnapshot ? JSON.stringify(q.orderSnapshot) : null
+      order_id:q.orderId, notes:q.notes||""
     }});
-    syncItems("quotation", q.invNo, q.items);
   };
   const upsertProforma = (p) => {
     enqueue({action:"upsert",table:"proformas",row:{
       inv_no:p.invNo, inv_no_base:p.invNoBase, inv_date:p.invDate,
       order_id:p.orderId, amount:p.amount||0, notes:p.notes||"",
-      seller_snapshot: p.sellerSnapshot ? JSON.stringify(p.sellerSnapshot) : null,
-      order_snapshot: p.orderSnapshot ? JSON.stringify(p.orderSnapshot) : null
+      items: JSON.stringify(p.items||[]),
+      charges: p.charges?.length ? JSON.stringify(p.charges) : null
     }});
-    syncItems("proforma", p.invNo, p.items);
   };
   const upsertTaxInvoice = (t) => {
     enqueue({action:"upsert",table:"tax_invoices",row:{
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
       order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
-      seller_snapshot: t.sellerSnapshot ? JSON.stringify(t.sellerSnapshot) : null,
-      order_snapshot: t.orderSnapshot ? JSON.stringify(t.orderSnapshot) : null,
-      charges: t.charges?.length ? JSON.stringify(t.charges) : null
+      charges: t.charges?.length ? JSON.stringify(t.charges) : null,
+      cloudinary_url: t.cloudinaryUrl||""
     }});
-    syncItems("tax_invoice", t.invNo, t.items);
   };
   const upsertClient = (c) => enqueue({action:"upsert",table:"clients",row:{ is_deleted:c.isDeleted||false, client_type:c.clientType||"B2B",
     id:c.id, name:c.name, gstin:c.gstin||"", contact:c.contact||"", email:c.email||"",
