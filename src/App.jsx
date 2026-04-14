@@ -1911,11 +1911,8 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                             {canDeleteInv&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
                           </div>
                           <div className="flex gap-2">
-                            {t.cloudinaryUrl
-                              ? <a href={t.cloudinaryUrl} target="_blank" rel="noreferrer" className="flex-1 text-xs border border-emerald-200 text-emerald-700 hover:bg-emerald-50 py-2 rounded-lg font-medium text-center">☁ View Invoice</a>
-                              : <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
-                            }
-                            <button onClick={()=>{ if(t.cloudinaryUrl){ const a=document.createElement("a"); a.href=t.cloudinaryUrl; a.download=t.invNo+".html"; a.target="_blank"; a.click(); } else { downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo); } }} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ Download</button>
+                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
+                            <button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ PDF</button>
                           </div>
                         </div>
                       );
@@ -2352,31 +2349,35 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(isB2C?{needsGst:true}:{})};
       }));
       setOpenOrder(prev=>prev?{...prev, taxInvoiceIds:[...(prev.taxInvoiceIds||[]),inv.invNo]}:prev);
-      // Upload tax invoice HTML to Cloudinary and store URL
-      (async () => {
+      // Upload tax invoice HTML to Cloudinary in background
+      // Capture values now to avoid stale closure issues
+      const _tiInvNo = inv.invNo, _tiOrderId = inv.orderId;
+      const _tiHtml = buildInvoiceHtml(orderObj, inv, "tax", seller);
+      setTimeout(async () => {
         try {
-          const html = buildInvoiceHtml(orderObj, inv, "tax", seller);
-          const blob = new Blob([html], {type:"text/html"});
-          const fd = new FormData();
-          fd.append("file", blob, `${inv.invNo}.html`);
-          fd.append("upload_preset", "tax_invoices");
-          fd.append("public_id", inv.invNo);
-          fd.append("resource_type", "raw");
           const cloudName = getEnv("VITE_CLOUDINARY_CLOUD")||"";
           const uploadPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
           if (!cloudName||!uploadPreset) return;
-          fd.set("upload_preset", uploadPreset);
+          const blob = new Blob([_tiHtml], {type:"text/html"});
+          const fd = new FormData();
+          fd.append("file", blob, `${_tiInvNo}.html`);
+          fd.append("upload_preset", uploadPreset);
+          fd.append("public_id", _tiInvNo);
+          fd.append("resource_type", "raw");
           const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {method:"POST", body:fd});
           if (res.ok) {
             const data = await res.json();
             const url = data.secure_url||"";
             if (url) {
-              setTaxInvoices(prev=>prev.map(t=>t.invNo===inv.invNo?{...t,cloudinaryUrl:url}:t));
-              enqueue({action:"upsert",table:"tax_invoices",row:{inv_no:inv.invNo,cloudinary_url:url}});
+              enqueue({action:"upsert",table:"tax_invoices",row:{inv_no:_tiInvNo,cloudinary_url:url,order_id:_tiOrderId}});
+              setTaxInvoices(prev=>{
+                if (!prev.find(t=>t.invNo===_tiInvNo)) return prev;
+                return prev.map(t=>t.invNo===_tiInvNo?{...t,cloudinaryUrl:url}:t);
+              });
             }
           }
         } catch(e){ console.warn("Cloudinary upload failed:", e); }
-      })();
+      }, 800);
     }
   };
 
