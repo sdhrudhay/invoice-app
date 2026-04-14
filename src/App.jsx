@@ -288,7 +288,6 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   const seller = sellerArg;
   const order = orderArg;
   const items = order.items||[];
-  const items = order.items||[];
   const tG = items.reduce((s,i)=>s+num(i.grossAmt),0);
   const tC = items.reduce((s,i)=>s+num(i.cgstAmt),0);
   const tS = items.reduce((s,i)=>s+num(i.sgstAmt),0);
@@ -1900,7 +1899,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Tax Invoices</p>
                   <div className="space-y-2">
                     {tis.map(t=>{
-                      const tN=num(t.amount||0);
+                      const tN=(o.netTotal||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
                       return (
                         <div key={t.invNo} className="flex flex-col gap-2 border border-slate-200 bg-slate-50 rounded-xl px-4 py-3">
                           <div className="flex items-start justify-between gap-2">
@@ -1958,9 +1957,9 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           )}
 
           {tab==="payments" && canSubTabRead("payments") && (() => {
-            const tiTotal=tis.reduce((s,t)=>s+num(t.amount||0),0);
-            const chargesTotal2=(order.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-            const orderTotal=tiTotal>0?tiTotal:(order.netTotal||0)+chargesTotal2;
+            const orderTotal=tis.length>0
+              ? tis.reduce((s,t)=>s+(order.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0)
+              : (order.netTotal||0)+(order.charges||[]).reduce((s,c)=>s+num(c.amount),0);
             const balance=orderTotal-totalPaid;
             return (
               <div className="space-y-5">
@@ -2200,7 +2199,8 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const getTotal = (o) => {
     const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
     const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
+    if (tis.length) return tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0);
+    return (o.netTotal||0)+chargesTotal;
   };
   const getTotalPaid = (o) => num(o.advance) + (o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
@@ -2340,7 +2340,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const renderCard = (o) => {
     const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
     const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    const tiTotal=tis.reduce((s,t)=>s+num(t.amount||0),0);
+    const tiTotal=tis.length ? tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0) : 0;
     const tN=tiTotal>0?tiTotal:(o.netTotal||0)+chargesTotal;
     const bal=o.status==="Cancelled"?0:tN-getTotalPaid(o);
     const due=o.dueDate||"";
@@ -3184,14 +3184,16 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     if (o.status==="Cancelled") return Math.max(0,getPaid(o));
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const chargesTotal = (o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
+    if (tis.length) return tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0);
+    return (o.netTotal||0)+chargesTotal;
   };
   // Full invoice amount — used for outstanding
   const getFullInvoicedAmt = (o) => {
     if (o.status==="Cancelled") return Math.max(0,getPaid(o));
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
     const chargesTotal = (o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-    return tis.length ? tis.reduce((s,t)=>s+num(t.amount||0),0) : (o.netTotal||0)+chargesTotal;
+    if (tis.length) return tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0);
+    return (o.netTotal||0)+chargesTotal;
   };
   const getOutstanding = (o) => o.status==="Cancelled" ? 0 : Math.max(0, getFullInvoicedAmt(o) - getPaid(o));
 
@@ -5444,7 +5446,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
     // Income: ti.amount if TI exists, else netTotal + charges
     const chargesAmt=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const rawInvoicedAmt = tis.length
-      ? tis.reduce((s,t)=>s+num(t.amount||0),0)
+      ? tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0)
       : (o.netTotal||0)+chargesAmt;
     // For cancelled orders show net collected instead of invoice amount
     const invoicedAmt = o.status==="Cancelled"
@@ -6913,7 +6915,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
   const getOrder = (inv) => orders.find(o=>o.orderNo===inv.orderId)||{};
 
   const getOrderBalance = (order) => {
-    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+num(t.amount||0),0);
+    const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(order.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0);
     const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
     const orderTotal = tiTotal>0?tiTotal:qtTotal;
     const totalPaid = (order.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0)+num(order.advance);
@@ -6959,7 +6961,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
     const getInvoiceVal = (o) => {
       const tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
       const chargesAmt=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
-      return tis.length?tis.reduce((a,t)=>a+num(t.amount||0),0):(o.netTotal||0)+chargesAmt;
+      return tis.length?tis.reduce((a,t)=>a+(o.netTotal||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0),0):(o.netTotal||0)+chargesAmt;
     };
     const getPaid = (o) => num(o.advance)+(o.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0);
 
@@ -7286,7 +7288,8 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             const b2cLargeTIs = monthTIs.filter(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId);
               if(!o||o.type==="B2B")return false;
-              return isInterState(o)&&num(t.amount||0)>250000;
+              const tAmt=(o.netTotal||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
+              return isInterState(o)&&tAmt>250000;
             });
             const sheet5 = b2cLargeTIs.map(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId)||{};
@@ -7312,7 +7315,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
             const b2cOtherTIs = monthTIs.filter(t=>{
               const o=orders.find(ord=>ord.orderNo===t.orderId);
               if(!o||o.type==="B2B")return false;
-              const val=num(t.amount||0);
+              const val=(o.netTotal||0)+(t.charges||[]).reduce((s,c)=>s+num(c.amount),0);
               return !isInterState(o)||(isInterState(o)&&val<=250000);
             });
             const b2cOtherMap={};
@@ -7826,7 +7829,7 @@ function App() {
       const getItemsP2 = (orderNo) => (allItemsP2||[]).filter(i=>i.order_no===orderNo).sort((a,b)=>a.sl-b.sl).map(mapItemP2);
       const mapQuotation = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, notes:r.notes||"" });
       const mapProforma = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount||0, notes:r.notes||"", items: r.items ? (()=>{try{return JSON.parse(r.items)}catch(e){return []}})()||[] : [], charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})()||[] : [] });
-      const mapTaxInvoice = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, amount:r.amount||0, notes:r.notes||"", charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})()||[] : [], cloudinaryUrl:r.cloudinary_url||"" });
+      const mapTaxInvoice = (r) => ({ invNo:r.inv_no, invNoBase:r.inv_no_base, invDate:r.inv_date, orderId:r.order_id, notes:r.notes||"", charges: r.charges ? (()=>{try{return JSON.parse(r.charges)}catch(e){return []}})()||[] : [], cloudinaryUrl:r.cloudinary_url||"" });
       const mapClient = (r) => ({ id:r.id, name:r.name, gstin:r.gstin||"", contact:r.contact||"", email:r.email||"", billingName:r.billing_name||"", billingAddress:r.billing_address||"", billingStateCode:r.billing_state_code||"", placeOfSupply:r.place_of_supply||"", shippingName:r.shipping_name||"", shippingContact:r.shipping_contact||"", shippingGstin:r.shipping_gstin||"", shippingAddress:r.shipping_address||"", shippingStateCode:r.shipping_state_code||"", isDeleted:r.is_deleted||false, clientType:r.client_type||"B2B" });
       const mapExpense = (r) => ({ id:r.id, date:r.date, paidBy:r.paid_by, amount:r.amount, category:r.category||"", comment:r.comment||"", isDeleted:r.is_deleted||false });
       const mapAsset = (r) => ({ id:r.id, name:r.name||"", category:r.category||"", purchaseDate:r.purchase_date||"", amount:r.amount||0, paidBy:r.paid_by||"", vendor:r.vendor||"", description:r.description||"", invoiceUrl:r.invoice_url||"", invoicePublicId:r.invoice_public_id||"", linkedExpenseId:r.linked_expense_id||"", isDeleted:r.is_deleted||false });
@@ -7980,7 +7983,7 @@ function App() {
   const upsertTaxInvoice = (t) => {
     enqueue({action:"upsert",table:"tax_invoices",row:{
       inv_no:t.invNo, inv_no_base:t.invNoBase, inv_date:t.invDate,
-      order_id:t.orderId, amount:t.amount||0, notes:t.notes||"",
+      order_id:t.orderId, notes:t.notes||"",
       charges: t.charges?.length ? JSON.stringify(t.charges) : null,
       cloudinary_url: t.cloudinaryUrl||""
     }});
