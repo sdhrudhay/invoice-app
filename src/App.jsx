@@ -1578,12 +1578,16 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   };
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
-    // Use live local state `o` (not prop `order`) so unsaved address/pickup edits are captured
     const snapOrder = o || order;
-    const newInv = {...inv, orderId:snapOrder.orderNo, amount:inv.items.reduce((s,i)=>s+num(i.netAmt),0)+(inv.charges||[]).reduce((s,c)=>s+num(c.amount),0)};
+    // For tax invoice: no items stored (uses order items), no amount stored
+    // For proforma: items are in inv.items JSON snapshot
+    const newInv = type==="tax"
+      ? { invNo:inv.invNo, invNoBase:inv.invNoBase, invDate:inv.invDate, orderId:snapOrder.orderNo, notes:inv.notes||"", charges:inv.charges||[], cloudinaryUrl:"" }
+      : { ...inv, orderId:snapOrder.orderNo };
     onCreateInvoice(newInv, type, null, needsGstNow);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
+    setTab("invoices"); // ensure we stay on invoices tab to see the new invoice
   };
 
   return (
