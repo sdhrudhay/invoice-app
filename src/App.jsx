@@ -338,7 +338,7 @@ function buildQuotationHtml(orderArg, inv, sellerArg) {
   ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left">${it.item}</td><td>${it.hsn||"-"}</td>
+${items.map((it,i)=>`<tr style="vertical-align:middle"><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left;vertical-align:middle">${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
@@ -418,7 +418,7 @@ ${_pickup
   ${ng?(isIgst?`<th>IGST%</th><th>IGST</th>`:`<th>CGST%</th><th>CGST</th><th>SGST%</th><th>SGST</th>`):""}
   <th>Net Amount</th>
 </tr></thead><tbody>
-${items.map((it,i)=>`<tr><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left">${it.item}</td><td>${it.hsn||"-"}</td>
+${items.map((it,i)=>`<tr style="vertical-align:middle"><td>${i+1}</td><td style="max-width:220px;word-break:break-word;white-space:normal;text-align:left;vertical-align:middle">${it.item}</td><td>${it.hsn||"-"}</td>
   <td>₹${fmt(it.unitPrice)}</td><td>${it.qty}</td><td>${it.discount||0}%</td><td>₹${fmt(it.grossAmt)}</td>
   ${ng?(isIgst?`<td>${it.cgstRate+it.sgstRate}%</td><td>₹${fmt(it.cgstAmt+it.sgstAmt)}</td>`:`<td>${it.cgstRate}%</td><td>₹${fmt(it.cgstAmt)}</td><td>${it.sgstRate}%</td><td>₹${fmt(it.sgstAmt)}</td>`):""}
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
@@ -1865,7 +1865,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
           {tab==="invoices" && canSubTabRead("invoices") && !creating && (
             <div className="space-y-4">
               <div className="flex gap-2 justify-end items-center flex-wrap">
-                {order.type==="B2B"&&!invLocked&&pfs.length===0&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
+                {order.type==="B2B"&&!invLocked&&<button onClick={()=>handleCreate("proforma")} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold">+ Proforma Invoice</button>}
                 {!invLocked&&((order.type==="B2B"||order.needsGst)
                   ? <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice</button>
                   : <button onClick={()=>handleCreate("tax")} className="text-xs bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold">+ Tax Invoice (will enable GST)</button>
@@ -2323,12 +2323,36 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
       setOrders(orders.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
     } else {
       setTaxInvoices(p=>[...p, inv]);
-      // For B2C: always flip needsGst to true when tax invoice is created
       const isB2C = orderObj.type==="B2C";
       setOrders(orders.map(o=>{
         if (o.orderNo!==orderNo) return o;
         return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(isB2C?{needsGst:true}:{})};
       }));
+      // Upload tax invoice HTML to Cloudinary and store URL
+      (async () => {
+        try {
+          const html = buildInvoiceHtml(orderObj, inv, "tax", seller);
+          const blob = new Blob([html], {type:"text/html"});
+          const fd = new FormData();
+          fd.append("file", blob, `${inv.invNo}.html`);
+          fd.append("upload_preset", "tax_invoices");
+          fd.append("public_id", inv.invNo);
+          fd.append("resource_type", "raw");
+          const cloudName = getEnv("VITE_CLOUDINARY_CLOUD")||"";
+          const uploadPreset = getEnv("VITE_CLOUDINARY_PRESET")||"";
+          if (!cloudName||!uploadPreset) return;
+          fd.set("upload_preset", uploadPreset);
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {method:"POST", body:fd});
+          if (res.ok) {
+            const data = await res.json();
+            const url = data.secure_url||"";
+            if (url) {
+              setTaxInvoices(prev=>prev.map(t=>t.invNo===inv.invNo?{...t,cloudinaryUrl:url}:t));
+              enqueue({action:"upsert",table:"tax_invoices",row:{inv_no:inv.invNo,cloudinary_url:url}});
+            }
+          }
+        } catch(e){ console.warn("Cloudinary upload failed:", e); }
+      })();
     }
   };
 
