@@ -2336,6 +2336,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const renderCard = (o) => {
     const pfs=proformas.filter(p=>p.orderId===o.orderNo), tis=taxInvoices.filter(t=>t.orderId===o.orderNo);
+    const qt=quotations.find(q=>q.orderId===o.orderNo);
     const chargesTotal=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const tiTotal=tis.length ? tis.reduce((s,t)=>s+(o.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0) : 0;
     const tN=tiTotal>0?tiTotal:(o.netTotal||0)+chargesTotal;
@@ -5440,6 +5441,7 @@ function IncomeView({ orders, quotations=[], taxInvoices=[], recipients, allReci
   // Build invoiced orders list (orders that have a tax invoice)
   const invoicedOrders = orders.map(o => {
     const tis = taxInvoices.filter(t=>t.orderId===o.orderNo);
+    const qt = quotations.find(q=>q.orderId===o.orderNo);
     // Income: ti.amount if TI exists, else netTotal + charges
     const chargesAmt=(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
     const rawInvoicedAmt = tis.length
