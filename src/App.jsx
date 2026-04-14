@@ -3212,7 +3212,7 @@ const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscella
 
 
 
-function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[], subTabPerms=null }) {
+function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[], seller={}, subTabPerms=null }) {
   const canSection = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
   const firstSection = ["overview","trends","orders","finance","filament","customers","referrals"].find(s=>canSection(s)) || "overview";
   const [section, setSection] = useState(firstSection);
@@ -8493,7 +8493,7 @@ function App() {
               <p className="text-sm text-gray-400 max-w-xs">You don't have permission to access any section. Please contact your admin to grant you access.</p>
             </div>
           )}
-          {hasAnyAccess&&tab==="analytics"&&canRead("analytics")&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
+          {hasAnyAccess&&tab==="analytics"&&canRead("analytics")&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} seller={seller} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
           {hasAnyAccess&&tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {hasAnyAccess&&tab==="orders"&&canRead("orders")&&<OrdersList sbUrl={sbUrl2} sbKey={sbKey2} userId={currentUser?.id} readOnly={!canWrite("orders")} subTabPerms={isAdmin?null:(typeof perms["orders"]==="object"&&perms["orders"]!==null?perms["orders"]:null)} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} rawSetTaxInvoices={setTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {hasAnyAccess&&tab==="clients"&&canRead("clients")&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
