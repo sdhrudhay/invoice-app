@@ -2222,10 +2222,10 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   };
 
   const handleDeleteOrder = (orderNo) => {
-    setOrders(orders.filter(o=>o.orderNo!==orderNo));
-    setQuotations(quotations.filter(q=>q.orderId!==orderNo));
-    setProformas(proformas.filter(p=>p.orderId!==orderNo));
-    setTaxInvoices(taxInvoices.filter(t=>t.orderId!==orderNo));
+    setOrders(prev=>prev.filter(o=>o.orderNo!==orderNo));
+    setQuotations(prev=>prev.filter(q=>q.orderId!==orderNo));
+    setProformas(prev=>prev.filter(p=>p.orderId!==orderNo));
+    setTaxInvoices(prev=>prev.filter(t=>t.orderId!==orderNo));
     enqueue({action:"delete",table:"orders",col:"order_no",val:orderNo});
     enqueue({action:"delete",table:"quotations",col:"order_id",val:orderNo});
     enqueue({action:"delete",table:"proformas",col:"order_id",val:orderNo});
@@ -2243,7 +2243,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
       grossTotal: (newItems||[]).reduce((s,i)=>s+Number(i.grossAmt||0),0),
       netTotal: (newItems||[]).reduce((s,i)=>s+Number(i.netAmt||0),0)
     };
-    setOrders(orders.map(o=>o.orderNo===orderNo?updatedWithTotals:o));
+    setOrders(prev=>prev.map(o=>o.orderNo===orderNo?updatedWithTotals:o));
     // Sync all payments to Supabase — upsert current, delete removed
     const prevOrder = orders.find(o=>o.orderNo===orderNo);
     const prevPayIds = new Set((prevOrder?.payments||[]).map(p=>String(p.id)));
@@ -2276,10 +2276,10 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderNo2 = orderNo;
     if(type==="proforma"){
       const saved = {...updatedInv};
-      setProformas(proformas.map(p=>p.invNo===saved.invNo?saved:p));
+      setProformas(prev=>prev.map(p=>p.invNo===saved.invNo?saved:p));
     } else {
       const saved = {...updatedInv};
-      setTaxInvoices(taxInvoices.map(t=>t.invNo===saved.invNo?saved:t));
+      setTaxInvoices(prev=>prev.map(t=>t.invNo===saved.invNo?saved:t));
     }
   };
 
@@ -2326,12 +2326,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const doSaveInvoiceWithStatus = (updatedInv, type, orderNo, newStatus) => {
     if (type==="proforma") {
-      setProformas(proformas.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
+      setProformas(prev=>prev.map(p=>p.invNo===updatedInv.invNo?updatedInv:p));
     } else {
-      setTaxInvoices(taxInvoices.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
+      setTaxInvoices(prev=>prev.map(t=>t.invNo===updatedInv.invNo?updatedInv:t));
     }
     if (newStatus) {
-      setOrders(orders.map(o=>o.orderNo===orderNo?{...o,status:newStatus}:o));
+      setOrders(prev=>prev.map(o=>o.orderNo===orderNo?{...o,status:newStatus}:o));
     }
   };
 
