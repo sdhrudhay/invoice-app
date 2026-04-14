@@ -1494,19 +1494,25 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
     );
   };
   const [orderItems, setOrderItems] = useState(initItems(order.items));
-  // Sync orderItems when order.items prop changes (e.g. after initial load from Supabase)
   const prevOrderNo = useRef(order.orderNo);
+  const itemsEditedRef = useRef(false);
+  // Wrap setOrderItems to track user edits
+  const setOrderItemsEdited = (v) => { itemsEditedRef.current = true; setOrderItems(v); }; // track if user has unsaved item edits
+  // Sync orderItems from order.items prop whenever it changes
+  // Skip if user has unsaved edits (itemsEditedRef) to avoid overwriting live edits
   useEffect(() => {
     if (prevOrderNo.current !== order.orderNo) {
-      // Different order opened — re-init everything from prop
+      // Different order — full re-init
       setOrderItems(initItems(order.items));
       setFilamentUsage((order.filamentUsage||[]).map(u=>({...u})));
       setCharges((order.charges||[]).map(c=>({...c})));
       prevOrderNo.current = order.orderNo;
+      itemsEditedRef.current = false;
+    } else if (!itemsEditedRef.current) {
+      // Same order, no unsaved edits — sync from prop (e.g. after save completes)
+      setOrderItems(initItems(order.items));
     }
-    // Do NOT sync filamentUsage here on prop updates — it would overwrite
-    // live local edits before onSave completes
-  }, [order.orderNo]);
+  }, [order.orderNo, order.items]);
   const pfs = proformas.filter(p=>p.orderId===order.orderNo);
   const tis = taxInvoices.filter(t=>t.orderId===order.orderNo);
 
@@ -1545,6 +1551,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
       grossTotal: (updated.items||[]).reduce((s,i)=>s+Number(i.grossAmt||0),0),
       netTotal: (updated.items||[]).reduce((s,i)=>s+Number(i.netAmt||0),0)
     };
+    itemsEditedRef.current = false; // clear edit flag after save
     onSaveOrder(savedWithTotals);
     toast("Order changes saved");
   };
@@ -1579,15 +1586,16 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
   const handleSaveNew = (inv, type) => {
     const needsGstNow = type==="tax" && order.type==="B2C" && !order.needsGst ? true : undefined;
     const snapOrder = o || order;
-    // For tax invoice: no items stored (uses order items), no amount stored
-    // For proforma: items are in inv.items JSON snapshot
+    const freshOrder = {...snapOrder, items:orderItems}; // use live orderItems for HTML generation
     const newInv = type==="tax"
       ? { invNo:inv.invNo, invNoBase:inv.invNoBase, invDate:inv.invDate, orderId:snapOrder.orderNo, notes:inv.notes||"", charges:inv.charges||[], cloudinaryUrl:"" }
       : { ...inv, orderId:snapOrder.orderNo };
-    onCreateInvoice(newInv, type, null, needsGstNow);
+    // Pre-build HTML with fresh items so Cloudinary gets the right content
+    const tiHtml = type==="tax" ? buildInvoiceHtml(freshOrder, newInv, "tax", seller) : null;
+    onCreateInvoice(newInv, type, null, needsGstNow, tiHtml);
     if (needsGstNow) setO(p=>({...p, needsGst:true}));
     setCreating(null);
-    setTab("invoices"); // ensure we stay on invoices tab to see the new invoice
+    setTab("invoices");
   };
 
   return (
@@ -1765,7 +1773,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
               </div>
 
               <div className="border-t pt-4">
-                <ExpandableItemTable items={orderItems} setItems={setOrderItems} needsGst={effectiveNeedsGst} isIgst={isIgst} readOnly={detailsLocked} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
+                <ExpandableItemTable items={orderItems} setItems={setOrderItemsEdited} needsGst={effectiveNeedsGst} isIgst={isIgst} readOnly={detailsLocked} products={products} seller={seller} inventory={inventory} orders={orders} wastageLog={wastageLog} currentOrderNo={order.orderNo} label="Order Items" sublabel={hasTaxInv&&!o.needsGst?"GST applied via Tax Invoice":"Edit items here to update quotation"}
                   onSpoolAdded={(entry)=>{ if(filamentLocked)return; const updated=[...filamentUsage,entry]; setFilamentUsage(updated); handleSaveOrder(updated); toast("Spool added"); }}
                   onSpoolQtyChanged={(spoolId, newQty, weightGPerSpool, batchKey, spoolIds)=>{ if(filamentLocked)return;
                     const perSpool = Number(weightGPerSpool||0) || Number(inventory.find(s=>s.id===spoolId)?.weightG||0);
@@ -1911,8 +1919,14 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                             {canDeleteInv&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
                           </div>
                           <div className="flex gap-2">
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
-                            <button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ PDF</button>
+                            {t.cloudinaryUrl
+                              ? <a href={t.cloudinaryUrl} target="_blank" rel="noreferrer" className="flex-1 text-xs border border-emerald-200 text-emerald-700 hover:bg-emerald-50 py-2 rounded-lg font-medium text-center flex items-center justify-center">👁 View</a>
+                              : <button onClick={()=>printOrOpen(buildInvoiceHtml({...o,items:orderItems},t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
+                            }
+                            {t.cloudinaryUrl
+                              ? <button onClick={async()=>{try{const r=await fetch(t.cloudinaryUrl);const html=await r.text();downloadHtml(html,t.invNo);}catch(e){downloadHtml(buildInvoiceHtml({...o,items:orderItems},t,"tax",seller),t.invNo);}}} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ PDF</button>
+                              : <button onClick={()=>downloadHtml(buildInvoiceHtml({...o,items:orderItems},t,"tax",seller),t.invNo)} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ PDF</button>
+                            }
                           </div>
                         </div>
                       );
@@ -2335,7 +2349,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     }
   };
 
-  const handleCreateInvoice = (inv, type, mergedItems, needsGstFlip) => {
+  const handleCreateInvoice = (inv, type, mergedItems, needsGstFlip, prebuiltHtml) => {
     const orderNo = openOrder.orderNo;
     const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
     if(type==="proforma"){
@@ -2352,7 +2366,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
       // Upload tax invoice HTML to Cloudinary in background
       // Capture values now to avoid stale closure issues
       const _tiInvNo = inv.invNo, _tiOrderId = inv.orderId;
-      const _tiHtml = buildInvoiceHtml(orderObj, inv, "tax", seller);
+      const _tiHtml = prebuiltHtml || buildInvoiceHtml(orderObj, inv, "tax", seller);
       setTimeout(async () => {
         try {
           const cloudName = getEnv("VITE_CLOUDINARY_CLOUD")||"";
