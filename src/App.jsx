@@ -3229,7 +3229,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   const curYear = new Date().getFullYear();
   const activeOrders = orders.filter(o=>o.status!=="Cancelled");
-  const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort().reverse();
+  const years = [...new Set(orders.map(o=>o.orderDate?.slice(0,4)).filter(Boolean))].sort(); // ascending — oldest first
   // Revenue (excl GST) — grossAmt only
   const getVal = (o) => (o.grossTotal||0)+(o.charges||[]).reduce((s,c)=>s+num(c.amount),0);
   // Full invoice value incl GST — used for outstanding
@@ -4163,10 +4163,10 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                               </div>
                               <p className="text-[8px] font-semibold text-slate-500">{period==="year"?d.label:d.label.slice(0,3)}</p>
                               {d.total>0&&<div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] rounded px-1.5 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 shadow">
-                                <p>Total: ₹{fmt(d.total)}</p>
-                                {d.cgst>0&&<p>CGST: ₹{fmt(d.cgst)}</p>}
-                                {d.sgst>0&&<p>SGST: ₹{fmt(d.sgst)}</p>}
-                                {d.igst>0&&<p>IGST: ₹{fmt(d.igst)}</p>}
+                                <p>Total: {fmtK(d.total)}</p>
+                                {d.cgst>0&&<p>CGST: {fmtK(d.cgst)}</p>}
+                                {d.sgst>0&&<p>SGST: {fmtK(d.sgst)}</p>}
+                                {d.igst>0&&<p>IGST: {fmtK(d.igst)}</p>}
                               </div>}
                             </div>
                           ))}
@@ -5238,17 +5238,38 @@ async function convertToImage(file) {
     const pdfjs = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-    const page = await pdf.getPage(1);
-    const scale = 2; // 2x for good resolution
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    return new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
+    const numPages = pdf.numPages;
+    const scale = 2;
+    // Render all pages and stack vertically
+    const pageCanvases = [];
+    let totalHeight = 0, maxWidth = 0;
+    for (let p = 1; p <= numPages; p++) {
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      pageCanvases.push(canvas);
+      totalHeight += viewport.height;
+      maxWidth = Math.max(maxWidth, viewport.width);
+    }
+    // Merge into single canvas
+    const merged = document.createElement("canvas");
+    merged.width = maxWidth;
+    merged.height = totalHeight;
+    const mCtx = merged.getContext("2d");
+    mCtx.fillStyle = "#ffffff";
+    mCtx.fillRect(0, 0, maxWidth, totalHeight);
+    let y = 0;
+    for (const pc of pageCanvases) {
+      mCtx.drawImage(pc, 0, y);
+      y += pc.height;
+    }
+    return new Promise(res => merged.toBlob(res, "image/jpeg", 0.92));
   }
 
   if (isImage) {
