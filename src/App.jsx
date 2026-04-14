@@ -4093,18 +4093,16 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                 </div>
               )}
             </Card>
-            <Card>
-              <Sec icon="📅" title={period==="year"?"Yearly Expense Trend":"Monthly Expense Trend"} sub={chartLabel}/>
+            <ChartCard icon="📅" title={period==="year"?"Yearly Expense Trend":"Monthly Expense Trend"} sub={chartLabel}>
               <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={160}/>
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p><p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p></div>
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Avg/Month</p><p className="text-base font-black text-slate-700">{fmtK(totalExp/12)}</p></div>
               </div>
-            </Card>
+            </ChartCard>
           </div>
 
-          <Card>
-            <Sec icon="🔁" title="Expense vs Revenue Line" sub={String(year)}/>
+          <ChartCard icon="🔁" title="Expense vs Revenue Line" sub={String(year)}>
             <LineChart
               series={[
                 {data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},
@@ -4116,10 +4114,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block"/>Expenses</span>
             </div>
-          </Card>
+          </ChartCard>
 
-          <Card>
-            <Sec icon="🧾" title="GST Breakdown" sub={period==="year"?String(year):chartLabel}/>
+          <ChartCard icon="🧾" title="GST Breakdown" sub={period==="year"?String(year):chartLabel}>
             {periodTotalGST===0
               ? <p className="text-xs text-gray-300 text-center py-4">No tax invoices in this period</p>
               : <>
@@ -4181,7 +4178,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                   })()}
                 </>
             }
-          </Card>
+          </ChartCard>
 
 
         </div>
@@ -5045,7 +5042,14 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
         e.category.toLowerCase().includes(search.toLowerCase())||
         (e.comment&&e.comment.toLowerCase().includes(search.toLowerCase()));
     })
-    .slice().sort((a,b)=>b.date.localeCompare(a.date)||String(b.id).localeCompare(String(a.id)));
+    .slice().sort((a,b)=>{
+      const dateDiff = b.date.localeCompare(a.date);
+      if (dateDiff!==0) return dateDiff;
+      // Extract timestamp from id (EXP-1234567890) for time ordering
+      const tsA = Number((a.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
+      const tsB = Number((b.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
+      return tsB - tsA;
+    });
 
   const total = filtered.reduce((s,e)=>s+num(e.amount),0);
   const grandTotal = expenses.reduce((s,e)=>s+num(e.amount),0);
