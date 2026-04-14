@@ -3290,9 +3290,18 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const totalOutstanding = periodOrders.reduce((s,o)=>s+getOutstanding(o),0);
   // GST calculations from tax invoices for period orders
   const periodTIs = taxInvoices.filter(t=>inPeriod(t.invDate));
-  const periodCGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
-  const periodSGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
-  const periodIGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)); },0);
+  // Helper: determine if an order is IGST (inter-state)
+  const isOrderIgst = (o) => {
+    if (!o||!seller?.stateCode) return false;
+    const selSC = extractStateCode(seller.stateCode);
+    const custSC = o.type==="B2B"
+      ? extractStateCode(o.billingStateCode)
+      : extractStateCode(o.shippingStateCode||o.billingStateCode);
+    return !!(selSC && custSC && selSC!==custSC && !o.isPickup && (o.needsGst||o.type==="B2B"));
+  };
+  const periodCGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
+  const periodSGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
+  const periodIGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(!isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt)+num(i.sgstAmt),0)); },0);
   const periodTotalGST = periodCGST + periodSGST + periodIGST;
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
@@ -4120,21 +4129,30 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                     ))}
                   </div>
                   {(()=>{
-                    const monthlyGST = MONTHS.map((m,i)=>{
-                      const mTIs = taxInvoices.filter(t=>{
-                        const d=t.invDate||""; return d.startsWith(String(year)) && parseInt(d.slice(5,7))===i+1;
-                      });
-                      const cgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
-                      const sgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
-                      const igst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)); },0);
-                      return {label:m,cgst,sgst,igst,total:cgst+sgst+igst};
-                    });
-                    const maxGST=Math.max(...monthlyGST.map(d=>d.total),1);
+                    const gstChartData = period==="year"
+                      ? allYears.map(yr=>{
+                          const yTIs=taxInvoices.filter(t=>(t.invDate||"").startsWith(String(yr)));
+                          const cgst=yTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
+                          const sgst=yTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
+                          const igst=yTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(!isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt)+num(i.sgstAmt),0)); },0);
+                          return {label:String(yr),cgst,sgst,igst,total:cgst+sgst+igst};
+                        })
+                      : MONTHS.map((m,i)=>{
+                          const mTIs = taxInvoices.filter(t=>{
+                            const d=t.invDate||""; return d.startsWith(String(year)) && parseInt(d.slice(5,7))===i+1;
+                          });
+                      const cgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
+                      const sgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
+                      const igst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(!isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt)+num(i.sgstAmt),0)); },0);
+                          return {label:m,cgst,sgst,igst,total:cgst+sgst+igst};
+                        });
+                    const gstChartData2 = gstChartData; // alias
+                    const maxGST=Math.max(...gstChartData.map(d=>d.total),1);
                     return (
                       <div>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Monthly GST — {year}</p>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">{period==="year"?"Yearly":"Monthly"} GST {period!=="year"?`— ${year}`:""}</p>
                         <div className="flex items-end gap-1 h-28">
-                          {monthlyGST.map((d,i)=>(
+                          {gstChartData.map((d,i)=>(
                             <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
                               <div className="w-full flex flex-col justify-end" style={{height:"80px"}}>
                                 {d.igst>0&&<div style={{height:`${Math.round(d.igst/maxGST*80)}px`,background:"#f59e0b",borderRadius:"2px 2px 0 0"}}/>}
