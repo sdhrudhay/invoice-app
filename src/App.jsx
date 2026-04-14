@@ -3320,18 +3320,20 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
     const ords = orders.filter(o=>{const d=o.orderDate||"";return d.startsWith(String(yr))&&Number(d.slice(5,7))===i+1;});
     const exps = expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))&&Number((e.date||"").slice(5,7))===i+1);
     const rev = ords.filter(o=>o.status==="Completed").reduce((s,o)=>s+getInvoicedAmt(o),0);
+    const orderVal = ords.filter(o=>o.status!=="Cancelled").reduce((s,o)=>s+getInvoicedAmt(o),0);
     const exp = exps.reduce((s,e)=>s+num(e.amount),0);
-    return {label:m, month:i+1, rev, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
+    return {label:m, month:i+1, rev, orderVal, exp, profit:rev-exp, orders:ords.length, paid:ords.reduce((s,o)=>s+getPaid(o),0)};
   });
 
   const thisYearData = monthlyData(year);
   const prevYearData = monthlyData(year-1);
 
   // Yearly data for period=year mode
-  const allYears = years.length ? years : [String(year)];
+  const allYears = [...new Set([...years, String(year)])].sort(); // always include current year
   const yearlyDataArr = allYears.map(yr=>({
     label:String(yr),
     rev: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status==="Completed").reduce((s,o)=>s+getInvoicedAmt(o),0),
+    orderVal: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").reduce((s,o)=>s+getInvoicedAmt(o),0),
     exp: expenses.filter(e=>!e.isDeleted&&(e.date||"").startsWith(String(yr))).reduce((s,e)=>s+num(e.amount),0),
     orders: orders.filter(o=>o.orderDate?.startsWith(String(yr))&&o.status!=="Cancelled").length,
     paid: orders.filter(o=>o.orderDate?.startsWith(String(yr))).reduce((s,o)=>s+getPaid(o),0),
@@ -4104,16 +4106,16 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </ChartCard>
           </div>
 
-          <ChartCard icon="🔁" title="Expense vs Revenue Line" sub={period==="year"?"All Years":String(year)}>
+          <ChartCard icon="🔁" title="Order Value vs Expenses" sub={period==="year"?"All Years":String(year)}>
             <LineChart
               series={[
-                {data:chartData.map(d=>d.rev),color:"#6366f1",labels:chartData.map(d=>d.label)},
+                {data:chartData.map(d=>d.orderVal||d.rev),color:"#6366f1",labels:chartData.map(d=>d.label)},
                 {data:chartData.map(d=>d.exp),color:"#f59e0b"},
               ]}
               height={160}
             />
             <div className="flex gap-4 mt-1">
-              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
+              <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Order Value (excl. cancelled)</span>
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block"/>Expenses</span>
             </div>
           </ChartCard>
@@ -5047,10 +5049,15 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
     .slice().sort((a,b)=>{
       const dateDiff = b.date.localeCompare(a.date);
       if (dateDiff!==0) return dateDiff;
-      // Extract timestamp from id (EXP-1234567890) for time ordering
-      const tsA = Number(String(a.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
-      const tsB = Number(String(b.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
-      return tsB - tsA;
+      // For same date: extract numeric timestamp from id for ordering
+      // Handles formats: EXP-123456789, SAL-123456789, EXP-INV-123456-abc etc
+      const getTs = (id) => {
+        const nums = String(id||"").match(/\d+/g)||[];
+        // Find the longest numeric sequence (likely the timestamp)
+        const longest = nums.reduce((a,b)=>b.length>a.length?b:a,"0");
+        return Number(longest)||0;
+      };
+      return getTs(b.id) - getTs(a.id);
     });
 
   const total = filtered.reduce((s,e)=>s+num(e.amount),0);
