@@ -3239,7 +3239,9 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
 
   // Revenue = grossTotal (excl GST, excl charges) — always from order
   const getInvoicedAmt = (o) => {
-    return o.status==="Cancelled" ? Math.max(0,getPaid(o)) : (o.grossTotal||0);
+    if (o.status==="Cancelled") return Math.max(0,getPaid(o));
+    // fallback to computing from items if grossTotal not populated
+    return o.grossTotal || (o.items||[]).reduce((s,i)=>s+num(i.grossAmt),0);
   };
   // Order value gross = ti.amount (incl GST+charges) if TI exists, else netTotal + charges
   const getGrossOrderAmt = (o) => {
@@ -5046,8 +5048,8 @@ function ExpenseTracker({ expenses, setExpenses, recipients, allRecipients=[], s
       const dateDiff = b.date.localeCompare(a.date);
       if (dateDiff!==0) return dateDiff;
       // Extract timestamp from id (EXP-1234567890) for time ordering
-      const tsA = Number((a.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
-      const tsB = Number((b.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
+      const tsA = Number(String(a.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
+      const tsB = Number(String(b.id||"").replace(/[^0-9]/g,"").slice(-13))||0;
       return tsB - tsA;
     });
 
