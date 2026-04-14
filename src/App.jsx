@@ -1857,7 +1857,7 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                 ? <>
                     <div className="flex flex-col gap-2">
                       <div className="flex items-start justify-between gap-2">
-                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(orderItems.reduce((s,i)=>s+num(i.grossAmt),0))}</span></p></div>
+                        <div><p className="font-mono font-bold text-sky-700 break-all">{qt.invNo}</p><p className="text-xs text-gray-400 mt-0.5">{qt.invDate} · <span className="font-semibold text-sky-700">₹{fmt(orderItems.reduce((s,i)=>s+num(i.netAmt),0))}</span></p></div>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={()=>printOrOpen(buildQuotationHtml({...o,items:orderItems},qt,seller))} className="flex-1 text-xs border border-sky-200 text-sky-700 hover:bg-sky-50 py-2 rounded-lg font-medium text-center">👁 View</button>
@@ -7220,7 +7220,17 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
       };
       for (const q of qtFiltered) await addPdf(q,'quotation',buildQuotationHtml(getOrder(q),q,seller));
       for (const p of pfFiltered) await addPdf(p,'proforma',buildInvoiceHtml(getOrder(p),p,'proforma',seller));
-      for (const t of tiFiltered) await addPdf(t,'tax',buildInvoiceHtml(getOrder(t),t,'tax',seller));
+      for (const t of tiFiltered) {
+        let tiHtml;
+        if (t.cloudinaryUrl) {
+          try {
+            const r = await fetch(t.cloudinaryUrl);
+            tiHtml = r.ok ? await r.text() : null;
+          } catch(e) { tiHtml = null; }
+        }
+        if (!tiHtml) tiHtml = buildInvoiceHtml(getOrder(t),t,'tax',seller);
+        await addPdf(t,'tax',tiHtml);
+      }
       setStatus('Compressing…');
       const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}},(meta)=>setStatus(`Compressing ${Math.round(meta.percent)}%…`));
       const url=URL.createObjectURL(blob);
