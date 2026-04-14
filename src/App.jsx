@@ -3288,6 +3288,12 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const cancelledOrders = periodOrders.filter(o=>o.status==="Cancelled").length;
   const avgOrder = completedOrders?(completedRevOrders.reduce((s,o)=>s+getInvoicedAmt(o),0)/completedOrders):0;
   const totalOutstanding = periodOrders.reduce((s,o)=>s+getOutstanding(o),0);
+  // GST calculations from tax invoices for period orders
+  const periodTIs = taxInvoices.filter(t=>inPeriod(t.invDate));
+  const periodCGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
+  const periodSGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
+  const periodIGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)); },0);
+  const periodTotalGST = periodCGST + periodSGST + periodIGST;
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
@@ -4060,6 +4066,12 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Outstanding" value={fmtK(totalOutstanding)} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
           </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <KPITile label="Total GST" value={fmtK(periodTotalGST)} sub={`${periodTIs.length} tax invoices`} accent="#8b5cf6" icon="🧾"/>
+            <KPITile label="CGST" value={fmtK(periodCGST)} sub="central tax" accent="#0ea5e9" icon="🏛"/>
+            <KPITile label="SGST" value={fmtK(periodSGST)} sub="state tax" accent="#10b981" icon="🏢"/>
+            <KPITile label="IGST" value={fmtK(periodIGST)} sub="integrated tax" accent="#f59e0b" icon="🌐"/>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Card>
@@ -4095,6 +4107,55 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-indigo-500 inline-block"/>Revenue</span>
               <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block"/>Expenses</span>
             </div>
+          </Card>
+
+          <Card>
+            <Sec icon="🧾" title="GST Breakdown" sub={period==="year"?String(year):chartLabel}/>
+            {periodTotalGST===0
+              ? <p className="text-xs text-gray-300 text-center py-4">No tax invoices in this period</p>
+              : <>
+                  <div className="space-y-2 mb-4">
+                    {[["CGST",periodCGST,"#0ea5e9"],["SGST",periodSGST,"#10b981"],["IGST",periodIGST,"#f59e0b"]].map(([label,val,color])=>(
+                      periodTotalGST>0&&<HBar key={label} label={label} value={val} total={periodTotalGST} color={color} pct={periodTotalGST?Math.round(val/periodTotalGST*100):0}/>
+                    ))}
+                  </div>
+                  {(()=>{
+                    const monthlyGST = MONTHS.map((m,i)=>{
+                      const mTIs = taxInvoices.filter(t=>{
+                        const d=t.invDate||""; return d.startsWith(String(year)) && parseInt(d.slice(5,7))===i+1;
+                      });
+                      const cgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt),0)); },0);
+                      const sgst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
+                      const igst=mTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); return s+((o?.items||[]).reduce((a,i)=>a+(num(i.cgstAmt)===0&&num(i.sgstAmt)===0&&num(i.netAmt)>num(i.grossAmt)?num(i.netAmt)-num(i.grossAmt):0),0)); },0);
+                      return {label:m,cgst,sgst,igst,total:cgst+sgst+igst};
+                    });
+                    const maxGST=Math.max(...monthlyGST.map(d=>d.total),1);
+                    return (
+                      <div>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Monthly GST — {year}</p>
+                        <div className="flex items-end gap-1 h-28">
+                          {monthlyGST.map((d,i)=>(
+                            <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                              <div className="w-full flex flex-col justify-end" style={{height:"80px"}}>
+                                {d.igst>0&&<div style={{height:`${Math.round(d.igst/maxGST*80)}px`,background:"#f59e0b",borderRadius:"2px 2px 0 0"}}/>}
+                                {d.sgst>0&&<div style={{height:`${Math.round(d.sgst/maxGST*80)}px`,background:"#10b981"}}/>}
+                                {d.cgst>0&&<div style={{height:`${Math.round(d.cgst/maxGST*80)}px`,background:"#0ea5e9",borderRadius:d.sgst===0&&d.igst===0?"2px 2px 0 0":"0"}}/>}
+                                {d.total===0&&<div style={{height:"2px",background:"#e5e7eb",borderRadius:"2px"}}/>}
+                              </div>
+                              <p className="text-[8px] text-gray-400">{d.label.slice(0,3)}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-4 mt-2">
+                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#0ea5e9"}}/>CGST</span>
+                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#10b981"}}/>SGST</span>
+                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#f59e0b"}}/>IGST</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+            }
           </Card>
 
 
