@@ -2731,12 +2731,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
   const uploadToStorage = async (file, path) => {
     const token = sessionStorage.getItem("sb_token")||"";
     if (!sbUrl||!sbKey||!token) return null;
-    // Create bucket if not exists (ignore error if already exists)
-    await fetch(`${sbUrl}/storage/v1/bucket`, {
-      method:"POST", headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
-      body:JSON.stringify({id:"company-assets",name:"company-assets",public:true})
-    }).catch(()=>{});
-    // Upload file
+    // Upload file (bucket must exist — create "company-assets" as public in Supabase Dashboard)
     const res = await fetch(`${sbUrl}/storage/v1/object/company-assets/${path}`, {
       method:"POST", headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":file.type,"x-upsert":"true"},
       body:file
