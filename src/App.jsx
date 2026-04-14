@@ -2362,7 +2362,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
           const fd = new FormData();
           fd.append("file", blob, `${_tiInvNo}.html`);
           fd.append("upload_preset", uploadPreset);
-          fd.append("public_id", _tiInvNo);
+          fd.append("public_id", `${_tiInvNo}_${Date.now()}`);
           fd.append("resource_type", "raw");
           const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {method:"POST", body:fd});
           if (res.ok) {
