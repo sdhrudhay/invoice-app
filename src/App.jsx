@@ -2724,11 +2724,52 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
 function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
+  const [uploading,setUploading]=useState(false);
   const logoRef=useRef();
   const sigRef=useRef();
 
-  const handleLogo = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); };
-  const handleSig = e => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setS(p=>({...p,signatory:ev.target.result})); r.readAsDataURL(f); };
+  const uploadToStorage = async (file, path) => {
+    const token = sessionStorage.getItem("sb_token")||"";
+    if (!sbUrl||!sbKey||!token) return null;
+    // Create bucket if not exists (ignore error if already exists)
+    await fetch(`${sbUrl}/storage/v1/bucket`, {
+      method:"POST", headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
+      body:JSON.stringify({id:"company-assets",name:"company-assets",public:true})
+    }).catch(()=>{});
+    // Upload file
+    const res = await fetch(`${sbUrl}/storage/v1/object/company-assets/${path}`, {
+      method:"POST", headers:{"apikey":sbKey,"Authorization":`Bearer ${token}`,"Content-Type":file.type,"x-upsert":"true"},
+      body:file
+    });
+    if (!res.ok) return null;
+    return `${sbUrl}/storage/v1/object/public/company-assets/${path}`;
+  };
+
+  const handleLogo = async e => {
+    const f=e.target.files[0]; if(!f) return;
+    if (!sbUrl||!sbKey) {
+      // fallback to base64 if no supabase configured
+      const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); return;
+    }
+    setUploading(true);
+    const url = await uploadToStorage(f, `logo_${Date.now()}.${f.name.split(".").pop()}`);
+    setUploading(false);
+    if (url) { setS(p=>({...p,logo:url})); toast("Logo uploaded"); }
+    else { toast("Upload failed — saving as base64","error"); const r=new FileReader(); r.onload=ev=>setS(p=>({...p,logo:ev.target.result})); r.readAsDataURL(f); }
+  };
+
+  const handleSig = async e => {
+    const f=e.target.files[0]; if(!f) return;
+    if (!sbUrl||!sbKey) {
+      const r=new FileReader(); r.onload=ev=>setS(p=>({...p,signatory:ev.target.result})); r.readAsDataURL(f); return;
+    }
+    setUploading(true);
+    const url = await uploadToStorage(f, `signature_${Date.now()}.${f.name.split(".").pop()}`);
+    setUploading(false);
+    if (url) { setS(p=>({...p,signatory:url})); toast("Signature uploaded"); }
+    else { toast("Upload failed — saving as base64","error"); const r=new FileReader(); r.onload=ev=>setS(p=>({...p,signatory:ev.target.result})); r.readAsDataURL(f); }
+  };
+
   const save = () => { setSeller(s); setSeries(sr); toast("Settings saved"); };
   const cancel = () => { setS({...seller}); setSr({...series}); };
 
@@ -2774,7 +2815,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
                 <span className="text-lg">🖼</span><span className="text-xs text-gray-400">Upload logo</span>
               </div>
           }
-          {!readOnly&&<button onClick={()=>logoRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.logo?"Change":"Upload"} logo</button>}
+          {!readOnly&&<button onClick={()=>!uploading&&logoRef.current.click()} className={`text-xs ${uploading?"text-gray-400 cursor-wait":"text-indigo-600 hover:underline"}`}>{uploading?"Uploading…":s.logo?"Change":"Upload"} {uploading?"":"logo"}</button>}
           {!readOnly&&<input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogo}/>}
         </div>
       </section>
@@ -2791,7 +2832,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
                 <span className="text-2xl">🖋</span><span className="text-xs text-gray-400">Upload stamp / signature</span>
               </div>
           }
-          {!readOnly&&<button onClick={()=>sigRef.current.click()} className="text-xs text-indigo-600 hover:underline">{s.signatory?"Change":"Upload"} stamp</button>}
+          {!readOnly&&<button onClick={()=>!uploading&&sigRef.current.click()} className={`text-xs ${uploading?"text-gray-400 cursor-wait":"text-indigo-600 hover:underline"}`}>{uploading?"Uploading…":s.signatory?"Change":"Upload"} {uploading?"":"stamp"}</button>}
           {!readOnly&&<input ref={sigRef} type="file" accept="image/*" className="hidden" onChange={handleSig}/>}
         </div>
       </section>
