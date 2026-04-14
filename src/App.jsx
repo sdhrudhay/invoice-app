@@ -1911,8 +1911,11 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                             {canDeleteInv&&<button onClick={()=>onDeleteInvoice(t.invNo,"tax")} className="text-xs border border-red-200 text-red-500 hover:bg-red-50 px-2.5 py-1 rounded-lg font-medium shrink-0">Delete</button>}
                           </div>
                           <div className="flex gap-2">
-                            <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
-                            <button onClick={()=>downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo)} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ Download</button>
+                            {t.cloudinaryUrl
+                              ? <a href={t.cloudinaryUrl} target="_blank" rel="noreferrer" className="flex-1 text-xs border border-emerald-200 text-emerald-700 hover:bg-emerald-50 py-2 rounded-lg font-medium text-center">☁ View Invoice</a>
+                              : <button onClick={()=>printOrOpen(buildInvoiceHtml(o,t,"tax",seller))} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">👁 View</button>
+                            }
+                            <button onClick={()=>{ if(t.cloudinaryUrl){ const a=document.createElement("a"); a.href=t.cloudinaryUrl; a.download=t.invNo+".html"; a.target="_blank"; a.click(); } else { downloadHtml(buildInvoiceHtml(o,t,"tax",seller),t.invNo); } }} className="flex-1 text-xs border border-slate-200 text-slate-600 hover:bg-slate-100 py-2 rounded-lg font-medium text-center">⬇ Download</button>
                           </div>
                         </div>
                       );
@@ -2296,6 +2299,9 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
       });
       enqueue({action:"delete", table:"proformas", col:"inv_no", val:invNo});
     } else {
+      // Get cloudinary URL before removing from state
+      const tiToDelete = taxInvoices.find(t=>t.invNo===invNo);
+      const cloudUrl = tiToDelete?.cloudinaryUrl||"";
       setTaxInvoices(prev => prev.filter(t => t.invNo !== invNo));
       setOrders(prev => {
         const updated = prev.map(o => o.orderNo===orderNo ? {...o, taxInvoiceIds:(o.taxInvoiceIds||[]).filter(id=>id!==invNo)} : o);
@@ -2304,6 +2310,19 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
         return updated;
       });
       enqueue({action:"delete", table:"tax_invoices", col:"inv_no", val:invNo});
+      // Delete from Cloudinary if URL exists
+      if (cloudUrl) {
+        (async () => {
+          try {
+            const cloudName = getEnv("VITE_CLOUDINARY_CLOUD")||"";
+            const preset = getEnv("VITE_CLOUDINARY_PRESET")||"";
+            if (!cloudName) return;
+            // Cloudinary deletion requires signed API — use destroy via upload API with invalidate
+            // For unsigned presets we can't delete directly — just log it
+            console.log("Cloudinary file to cleanup:", cloudUrl, "- manual deletion may be needed if unsigned preset");
+          } catch(e){}
+        })();
+      }
     }
     toast(`${type==="proforma"?"Proforma":"Tax Invoice"} ${invNo} deleted`);
   };
@@ -2324,14 +2343,15 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     const orderObj = orders.find(o=>o.orderNo===orderNo)||openOrder;
     if(type==="proforma"){
       setProformas(p=>[...p, inv]);
-      setOrders(orders.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
+      setOrders(prev=>prev.map(o=>o.orderNo===orderNo?{...o,proformaIds:[...(o.proformaIds||[]),inv.invNo]}:o));
     } else {
       setTaxInvoices(p=>[...p, inv]);
       const isB2C = orderObj.type==="B2C";
-      setOrders(orders.map(o=>{
+      setOrders(prev=>prev.map(o=>{
         if (o.orderNo!==orderNo) return o;
         return {...o, taxInvoiceIds:[...(o.taxInvoiceIds||[]),inv.invNo], ...(isB2C?{needsGst:true}:{})};
       }));
+      setOpenOrder(prev=>prev?{...prev, taxInvoiceIds:[...(prev.taxInvoiceIds||[]),inv.invNo]}:prev);
       // Upload tax invoice HTML to Cloudinary and store URL
       (async () => {
         try {
