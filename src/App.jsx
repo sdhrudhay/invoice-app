@@ -8073,10 +8073,46 @@ function App() {
   const saveSettings = (patch) => enqueue({action:"saveSettings",data:patch});
 
   // ── Sync-aware setters ──────────────────────────────────────────────────
-  const syncSetOrders=(v)=>{ const n=typeof v==="function"?v(orders):v; setOrders(n); n.forEach(o=>{ const prev=orders.find(p=>p.orderNo===o.orderNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(o)) upsertOrder(o); }); };
-  const syncSetQuotations=(v)=>{ const n=typeof v==="function"?v(quotations):v; setQuotations(n); n.forEach(q=>{ const prev=quotations.find(p=>p.invNo===q.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(q)) upsertQuotation(q); }); };
-  const syncSetProformas=(v)=>{ const n=typeof v==="function"?v(proformas):v; setProformas(n); n.forEach(pf=>{ const prev=proformas.find(p=>p.invNo===pf.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(pf)) upsertProforma(pf); }); };
-  const syncSetTaxInvoices=(v)=>{ const n=typeof v==="function"?v(taxInvoices):v; setTaxInvoices(n); n.forEach(ti=>{ const prev=taxInvoices.find(p=>p.invNo===ti.invNo); if(!prev||JSON.stringify(prev)!==JSON.stringify(ti)) upsertTaxInvoice(ti); }); };
+  const ordersRef = useRef(orders);
+  useEffect(()=>{ ordersRef.current = orders; },[orders]);
+  const syncSetOrders=(v)=>{
+    setOrders(prev=>{
+      const n=typeof v==="function"?v(prev):v;
+      ordersRef.current=n;
+      n.forEach(o=>{ const old=prev.find(p=>p.orderNo===o.orderNo); if(!old||JSON.stringify(old)!==JSON.stringify(o)) upsertOrder(o); });
+      return n;
+    });
+  };
+  const quotationsRef = useRef(quotations);
+  useEffect(()=>{ quotationsRef.current = quotations; },[quotations]);
+  const syncSetQuotations=(v)=>{
+    setQuotations(prev=>{
+      const n=typeof v==="function"?v(prev):v;
+      quotationsRef.current=n;
+      n.forEach(q=>{ const old=prev.find(p=>p.invNo===q.invNo); if(!old||JSON.stringify(old)!==JSON.stringify(q)) upsertQuotation(q); });
+      return n;
+    });
+  };
+  const proformasRef = useRef(proformas);
+  useEffect(()=>{ proformasRef.current = proformas; },[proformas]);
+  const syncSetProformas=(v)=>{
+    setProformas(prev=>{
+      const n=typeof v==="function"?v(prev):v;
+      proformasRef.current=n;
+      n.forEach(pf=>{ const old=prev.find(p=>p.invNo===pf.invNo); if(!old||JSON.stringify(old)!==JSON.stringify(pf)) upsertProforma(pf); });
+      return n;
+    });
+  };
+  const taxInvoicesRef = useRef(taxInvoices);
+  useEffect(()=>{ taxInvoicesRef.current = taxInvoices; },[taxInvoices]);
+  const syncSetTaxInvoices=(v)=>{
+    setTaxInvoices(prev=>{
+      const n=typeof v==="function"?v(prev):v;
+      taxInvoicesRef.current=n;
+      n.forEach(ti=>{ const old=prev.find(p=>p.invNo===ti.invNo); if(!old||JSON.stringify(old)!==JSON.stringify(ti)) upsertTaxInvoice(ti); });
+      return n;
+    });
+  };
   const syncSetClients=(v)=>{ const n=typeof v==="function"?v(clients):v; setClients(n); n.forEach(c=>{ const prev=clients.find(p=>p.id===c.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(c)) upsertClient(c); }); };
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
