@@ -4151,23 +4151,30 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
                     return (
                       <div>
                         <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">{period==="year"?"Yearly":"Monthly"} GST {period!=="year"?`— ${year}`:""}</p>
-                        <div className="flex items-end gap-1 h-28">
+                        <div className="flex items-end gap-1" style={{height:"110px"}}>
                           {gstChartData.map((d,i)=>(
-                            <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                            <div key={i} className="flex-1 flex flex-col items-center gap-0.5 group relative">
+                              {d.total>0&&<p className="text-[7px] font-bold text-slate-600 mb-0.5">{fmtK(d.total)}</p>}
                               <div className="w-full flex flex-col justify-end" style={{height:"80px"}}>
                                 {d.igst>0&&<div style={{height:`${Math.round(d.igst/maxGST*80)}px`,background:"#f59e0b",borderRadius:"2px 2px 0 0"}}/>}
                                 {d.sgst>0&&<div style={{height:`${Math.round(d.sgst/maxGST*80)}px`,background:"#10b981"}}/>}
                                 {d.cgst>0&&<div style={{height:`${Math.round(d.cgst/maxGST*80)}px`,background:"#0ea5e9",borderRadius:d.sgst===0&&d.igst===0?"2px 2px 0 0":"0"}}/>}
                                 {d.total===0&&<div style={{height:"2px",background:"#e5e7eb",borderRadius:"2px"}}/>}
                               </div>
-                              <p className="text-[8px] text-gray-400">{d.label.slice(0,3)}</p>
+                              <p className="text-[8px] font-semibold text-slate-500">{period==="year"?d.label:d.label.slice(0,3)}</p>
+                              {d.total>0&&<div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] rounded px-1.5 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 shadow">
+                                <p>Total: ₹{fmt(d.total)}</p>
+                                {d.cgst>0&&<p>CGST: ₹{fmt(d.cgst)}</p>}
+                                {d.sgst>0&&<p>SGST: ₹{fmt(d.sgst)}</p>}
+                                {d.igst>0&&<p>IGST: ₹{fmt(d.igst)}</p>}
+                              </div>}
                             </div>
                           ))}
                         </div>
                         <div className="flex gap-4 mt-2">
-                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#0ea5e9"}}/>CGST</span>
-                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#10b981"}}/>SGST</span>
-                          <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#f59e0b"}}/>IGST</span>
+                          <span className="flex items-center gap-1 text-xs text-gray-500 font-medium"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#0ea5e9"}}/>CGST: {fmtK(periodCGST)}</span>
+                          <span className="flex items-center gap-1 text-xs text-gray-500 font-medium"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#10b981"}}/>SGST: {fmtK(periodSGST)}</span>
+                          <span className="flex items-center gap-1 text-xs text-gray-500 font-medium"><span className="w-2 h-2 rounded-sm inline-block" style={{background:"#f59e0b"}}/>IGST: {fmtK(periodIGST)}</span>
                         </div>
                       </div>
                     );
@@ -5327,6 +5334,7 @@ function AssetManager({ assets=[], setAssets, deleteAsset=()=>{}, expenses=[], s
   const handleSave = () => {
     if (!form.name) { toast("Asset name is required","error"); return; }
     if (!form.purchaseDate) { toast("Purchase date is required","error"); return; }
+    if (!form.invoiceUrl) { toast("Invoice/bill file upload is required","error"); return; }
     setSaving(true);
     const id = editId || ("AST-" + String(assets.length + 1).padStart(4,"0"));
     let linkedExpenseId = form.linkedExpenseId;
