@@ -2215,9 +2215,6 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const syncItemsAndQuotation = (orderNo, mergedItems) => {
     if (!mergedItems) return;
     setOrders(prev => prev.map(o => o.orderNo===orderNo ? {...o, items:mergedItems} : o));
-    setQuotations(prev => prev.map(q => q.orderId===orderNo
-      ? {...q, items:mergedItems, amount:mergedItems.reduce((s,i)=>s+num(i.netAmt),0)}
-      : q));
   };
 
   const handleDeleteOrder = (orderNo) => {
@@ -6916,7 +6913,7 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 
   const getOrderBalance = (order) => {
     const tiTotal = taxInvoices.filter(t=>t.orderId===order.orderNo).reduce((s,t)=>s+(order.netTotal||0)+(t.charges||[]).reduce((a,c)=>a+num(c.amount),0),0);
-    const qtTotal = quotations.filter(q=>q.orderId===order.orderNo).reduce((s,q)=>s+(q.amount||0),0);
+    const qtTotal = 0; // quotations no longer store amount — use order.netTotal
     const orderTotal = tiTotal>0?tiTotal:qtTotal;
     const totalPaid = (order.payments||[]).reduce((s,p)=>s+(p.isRefund?-num(p.amount):num(p.amount)),0)+num(order.advance);
     if (order.status==="Cancelled") return 0;
@@ -7662,17 +7659,20 @@ function App() {
       },
       upsert: async (rowOrRows) => {
         const r = await fetch(`${rest}/${table}`, { method:"POST", headers:{...headers,"Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify(rowOrRows) });
-        return r.ok;
+        if (!r.ok) { const err = await r.json().catch(()=>({message:r.statusText})); return {error:err}; }
+        return {error:null};
       },
       delete: async (col, val) => {
         const r = await fetch(`${rest}/${table}?${col}=eq.${encodeURIComponent(val)}`, { method:"DELETE", headers });
-        return r.ok;
+        if (!r.ok) { const err = await r.json().catch(()=>({message:r.statusText})); return {error:err}; }
+        return {error:null};
       },
       deleteMany: async (col, vals) => {
-        if (!vals?.length) return true;
+        if (!vals?.length) return {error:null};
         const list = vals.map(v=>encodeURIComponent(v)).join(",");
         const r = await fetch(`${rest}/${table}?${col}=in.(${list})`, { method:"DELETE", headers });
-        return r.ok;
+        if (!r.ok) { const err = await r.json().catch(()=>({message:r.statusText})); return {error:err}; }
+        return {error:null};
       }
     });
     return client;
