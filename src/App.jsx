@@ -4094,7 +4094,7 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
               )}
             </Card>
             <ChartCard icon="📅" title={period==="year"?"Yearly Expense Trend":"Monthly Expense Trend"} sub={chartLabel}>
-              <BarChart2 data={thisYearData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={160}/>
+              <BarChart2 data={chartData.map(d=>({label:d.label,value:d.exp}))} color="#f59e0b" height={160}/>
               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p><p className="text-base font-black text-amber-600">{fmtK(totalExp)}</p></div>
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide">Avg/Month</p><p className="text-base font-black text-slate-700">{fmtK(totalExp/12)}</p></div>
@@ -4102,11 +4102,11 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             </ChartCard>
           </div>
 
-          <ChartCard icon="🔁" title="Expense vs Revenue Line" sub={String(year)}>
+          <ChartCard icon="🔁" title="Expense vs Revenue Line" sub={period==="year"?"All Years":String(year)}>
             <LineChart
               series={[
-                {data:thisYearData.map(d=>d.rev),color:"#6366f1",labels:MONTHS},
-                {data:thisYearData.map(d=>d.exp),color:"#f59e0b"},
+                {data:chartData.map(d=>d.rev),color:"#6366f1",labels:chartData.map(d=>d.label)},
+                {data:chartData.map(d=>d.exp),color:"#f59e0b"},
               ]}
               height={160}
             />
