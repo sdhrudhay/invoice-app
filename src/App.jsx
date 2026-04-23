@@ -542,8 +542,7 @@ function ProductPicker({ products, onSelect, rowIdx }) {
                 <button key={p.id} type="button"
                   onClick={()=>{
                     if (outOfStock) {
-                      alert(`"${p.name}" is out of stock and cannot be added.`);
-                      return;
+                      if (!window.confirm(`"${p.name}" is currently out of stock. Add anyway?`)) return;
                     }
                     onSelect(p); setOpen(false); setQ("");
                   }}
@@ -625,7 +624,7 @@ function SpoolPicker({ spoolOptions, onSelect }) {
   );
 }
 
-function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null, onSpoolRemoved=null, onSpoolQtyChanged=null, readOnly=false }) {
+function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], seller={}, inventory=[], orders=[], wastageLog=[], currentOrderNo="", onSpoolAdded=null, onSpoolRemoved=null, onSpoolQtyChanged=null, onProductStockChange=null, readOnly=false }) {
   const upd = (i,f,v) => { if(readOnly)return; setItems(items.map((it,idx)=>idx===i?calcItem({...it,[f]:v},needsGst):it)); };
   const add = () => { if(readOnly)return; setItems([...items, {...EMPTY_ITEM, sl:items.length+1}]); };
   const del = (i) => {
@@ -706,8 +705,9 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
       _brand: prod.brand||"",
       _material: prod.material||"",
       _productId: prod.id,
+      _productStock: (prod.stock!==null&&prod.stock!==undefined&&prod.stock!=="")?Number(prod.stock):null,
     }, needsGst);
-    setItems(items.map((it,idx)=>idx===rowIdx?newItem:it));
+    setItems(items.map((it,idx)=>idx===rowIdx?{...newItem,_productStock:(prod.stock!==null&&prod.stock!==undefined&&prod.stock!=="")?Number(prod.stock):null}:it));
   };
   const FILAMENT_MATS = ["PLA","PETG","ABS","ASA","TPU","Nylon","PC","PLA+","PLA-CF","PETG-CF","ABS-CF","Resin",...Object.keys(filamentPrices).map(k=>k.split("||")[1]).filter(Boolean)].filter((v,i,a)=>a.indexOf(v)===i);
   const calcFromGrams = (rowIdx, brand, material, weightG) => {
@@ -781,7 +781,25 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                   </div>
                 )}
               </td>
-              <td className="px-2 py-1.5 text-center">{it._spoolGroup?(<div className="flex flex-col items-center gap-0"><input type="number" value={it.qty} onChange={e=>{const v=e.target.value;if(v===""){ upd(i,"qty",v); return; }const n=parseFloat(v);if(n<0)return;if(it._spoolCount&&n>it._spoolCount)return;upd(i,"qty",v);if(n===0&&it._spoolId&&onSpoolRemoved){onSpoolRemoved(it._spoolId,it._batchKey);}else if(n>0&&it._spoolId&&onSpoolQtyChanged){onSpoolQtyChanged(it._spoolId,n,it._weightGPerSpool,it._batchKey,it._spoolIds);}}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max={it._spoolCount||undefined} className={inp+" w-14 text-center"}/>{it._spoolCount&&<span className="text-[9px] text-gray-300 leading-none">max {it._spoolCount}</span>}</div>):(<input type="number" value={it.qty} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"qty",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-14 text-center"}/>)}</td>
+              <td className="px-2 py-1.5 text-center">{it._spoolGroup?(<div className="flex flex-col items-center gap-0"><input type="number" value={it.qty} onChange={e=>{const v=e.target.value;if(v===""){ upd(i,"qty",v); return; }const n=parseFloat(v);if(n<0)return;if(it._spoolCount&&n>it._spoolCount)return;upd(i,"qty",v);if(n===0&&it._spoolId&&onSpoolRemoved){onSpoolRemoved(it._spoolId,it._batchKey);}else if(n>0&&it._spoolId&&onSpoolQtyChanged){onSpoolQtyChanged(it._spoolId,n,it._weightGPerSpool,it._batchKey,it._spoolIds);}}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" max={it._spoolCount||undefined} className={inp+" w-14 text-center"}/>{it._spoolCount&&<span className="text-[9px] text-gray-300 leading-none">max {it._spoolCount}</span>}</div>):(<div className="flex flex-col items-center gap-0">
+                <input type="number" value={it.qty}
+                  onChange={e=>{
+                    const v=e.target.value;
+                    if(v===""){ upd(i,"qty",v); return; }
+                    const n=parseFloat(v);
+                    if(n<0) return;
+                    // Warn if qty exceeds stock but allow it
+                    if(it._productId && it._productStock!==null && it._productStock!==undefined && n>Number(it._productStock)) {
+                      alert(`Warning: Only ${it._productStock} unit${Number(it._productStock)===1?"":"s"} of "${it.item}" in stock. You can still proceed.`);
+                    }
+                    upd(i,"qty",v);
+                  }}
+                  onWheel={e=>e.target.blur()} inputMode="decimal" min="0"
+                  className={inp+" w-14 text-center"}/>
+                {it._productId&&it._productStock!==null&&it._productStock!==undefined&&(
+                  <span className={`text-[9px] leading-none ${Number(it.qty)>Number(it._productStock)?"text-red-400 font-bold":"text-gray-400"}`}>stock: {it._productStock}</span>
+                )}
+              </div>)}</td>
               <td className="px-2 py-1.5 text-center"><input type="number" value={it.discount} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"discount",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-12 text-center"}/></td>
               {needsGst&&(isIgst
                 ? <td className="px-2 py-1.5 text-center text-xs text-gray-500">{Number(it.cgstRate)+Number(it.sgstRate)}%</td>
