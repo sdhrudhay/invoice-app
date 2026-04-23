@@ -2211,6 +2211,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
   const [typeFilter,setTypeFilter]=useState("All");
   const [balFilter,setBalFilter]=useState(false);
   const [channelFilter,setChannelFilter]=useState("All");
+  const [sortBy,setSortBy]=useState("due"); // "due" | "created"
   const [openOrder,setOpenOrder]=useState(null);
   useEffect(()=>{ if(initialOrder){ setOpenOrder(initialOrder); onClearInitialOrder(); } },[initialOrder]);
 
@@ -2448,12 +2449,17 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     );
   };
 
-  const pendingOrders = filtered.filter(o=>o.status==="Pending").sort((a,b)=>{
-    const da = a.dueDate||addDays(a.orderDate,30), db = b.dueDate||addDays(b.orderDate,30);
-    return da < db ? -1 : da > db ? 1 : 0;
+  const pendingOrders = filtered.filter(o=>o.status==="Pending").slice().sort((a,b)=>{
+    if (sortBy==="created") {
+      const tsA=Number(String(a.orderNo||"").match(/\d+/g)?.[0]||0), tsB=Number(String(b.orderNo||"").match(/\d+/g)?.[0]||0);
+      return b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:tsB-tsA;
+    }
+    const da=a.dueDate||addDays(a.orderDate,30), db=b.dueDate||addDays(b.orderDate,30);
+    return da<db?-1:da>db?1:0;
   });
-  const completedOrders = filtered.filter(o=>o.status==="Completed").slice().reverse();
-  const cancelledOrders = filtered.filter(o=>o.status==="Cancelled").slice().reverse();
+  const sortByCreated = (a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0;
+  const completedOrders = filtered.filter(o=>o.status==="Completed").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
+  const cancelledOrders = filtered.filter(o=>o.status==="Cancelled").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
 
   return (
     <div className="space-y-6">
@@ -2474,6 +2480,12 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
               ))}
             </div>
             <button onClick={()=>setBalFilter(v=>!v)} className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap border transition-all ${balFilter?"bg-orange-500 border-orange-500 text-white":"border-gray-200 text-gray-500"}`}>⚖️ Balance</button>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 shrink-0">
+              <span className="text-[10px] font-bold text-gray-400 uppercase px-1">Sort</span>
+              {[["due","Due Date"],["created","Latest"]].map(([val,label])=>(
+                <button key={val} onClick={()=>setSortBy(val)} className={`px-2.5 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap transition-all ${sortBy===val?"bg-white text-indigo-700 shadow-sm":"text-gray-500"}`}>{label}</button>
+              ))}
+            </div>
           </div>
           <div className="flex gap-1 items-center overflow-x-auto scrollbar-none pb-0.5">
             <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Channel</span>
