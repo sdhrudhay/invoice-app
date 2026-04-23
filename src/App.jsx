@@ -8490,6 +8490,29 @@ function App() {
 [data-theme="dark"] .bg-slate-800{background-color:#0a0f1e!important}
 [data-theme="dark"] .border-r{border-color:#334155!important}
 [data-theme="dark"] .border-t{border-color:#334155!important}
+[data-theme="dark"] .text-gray-400{color:#94a3b8!important}
+[data-theme="dark"] .text-gray-500{color:#cbd5e1!important}
+[data-theme="dark"] .text-gray-600{color:#e2e8f0!important}
+[data-theme="dark"] .text-gray-700{color:#f1f5f9!important}
+[data-theme="dark"] .text-gray-800,[data-theme="dark"] .text-gray-900{color:#f8fafc!important}
+[data-theme="dark"] .text-slate-400{color:#94a3b8!important}
+[data-theme="dark"] .text-slate-500{color:#cbd5e1!important}
+[data-theme="dark"] .text-slate-600{color:#e2e8f0!important}
+[data-theme="dark"] .text-slate-700,[data-theme="dark"] .text-slate-800{color:#f1f5f9!important}
+[data-theme="dark"] .text-slate-900{color:#f8fafc!important}
+[data-theme="dark"] .text-black{color:#f1f5f9!important}
+[data-theme="dark"] nav a,[data-theme="dark"] button:not(.bg-indigo-600):not(.bg-indigo-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-amber-500):not(.bg-blue-600):not([class*="bg-indigo-7"]):not([class*="bg-red-6"]):not([class*="text-white"]){color:#e2e8f0}
+[data-theme="dark"] .text-indigo-700{color:#a5b4fc!important}
+[data-theme="dark"] .text-indigo-600{color:#818cf8!important}
+[data-theme="dark"] .text-indigo-500{color:#a5b4fc!important}
+[data-theme="dark"] .text-sky-700{color:#7dd3fc!important}
+[data-theme="dark"] .text-blue-700{color:#93c5fd!important}
+[data-theme="dark"] .text-emerald-700{color:#6ee7b7!important}
+[data-theme="dark"] .text-amber-600,[data-theme="dark"] .text-amber-700{color:#fcd34d!important}
+[data-theme="dark"] .text-red-500,[data-theme="dark"] .text-red-600{color:#fca5a5!important}
+[data-theme="dark"] .text-orange-600{color:#fdba74!important}
+[data-theme="dark"] .uppercase.text-gray-400,[data-theme="dark"] .uppercase.text-gray-500{color:#94a3b8!important}
+[data-theme="dark"] .font-mono{color:#c4b5fd!important}
 /* Light mode — stronger borders for visibility */
 :not([data-theme="dark"]) .border-gray-300{border-color:#6b7280!important}
 :not([data-theme="dark"]) .divide-gray-300>*{border-color:#6b7280!important}`}</style>
