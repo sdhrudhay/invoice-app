@@ -725,11 +725,11 @@ function ItemTable({ items, setItems, needsGst, isIgst=false, products=[], selle
                 <div className="relative flex items-center justify-center">
                   <input type="number" value={it.unitPrice} onChange={e=>{if(e.target.value!==""&&parseFloat(e.target.value)<0)return;upd(i,"unitPrice",e.target.value);}} onWheel={e=>e.target.blur()} inputMode="decimal" min="0" className={inp+" w-16 text-center"}/>
                   {!readOnly&&<button type="button" title="Calculate from filament weight"
-                    onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top}:it2)); }}
+                    onClick={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const popH=220,popW=240; const spaceBelow=window.innerHeight-r.bottom; const flipUp=spaceBelow<popH; setItems(items.map((it2,idx)=>idx===i?{...it2,_calcOpen:!it2._calcOpen,_calcBrand:it2._brand||"",_calcMat:it2._material||FILAMENT_MATS[0]||"PLA",_calcG:"",_calcX:r.left,_calcY:r.top,_calcFlipUp:flipUp,_calcBottom:r.top}:it2)); }}
                     className="absolute right-0 text-[10px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded px-1 py-0.5 leading-none border border-indigo-200" >g→₹</button>}
                 </div>
                 {it._calcOpen&&(
-                  <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",top:(it._calcY||0)+24,left:Math.min((it._calcX||0)-180, window.innerWidth-240)}}>
+                  <div className="fixed z-[9999] bg-white border border-indigo-200 rounded-xl shadow-xl p-3 space-y-1.5" style={{minWidth:"220px",left:Math.min(Math.max(8,(it._calcX||0)-180),window.innerWidth-248),...(it._calcFlipUp?{bottom:window.innerHeight-(it._calcBottom||0)+4,top:"auto"}:{top:(it._calcY||0)+24})}}>
                     <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">Calc from weight</p>
                     {(()=>{
                       const pricedBrands=[...new Set(Object.keys(filamentPrices).map(k=>k.split("||")[0]).filter(Boolean))];
@@ -8063,6 +8063,28 @@ function App() {
       fetch(auditUrl,{method:"POST",headers:auditHeaders,body:JSON.stringify(entry)}).catch(()=>{});
     };
     const errors = [];
+    // Helper to refresh token if expired
+    const tryRefreshToken = async () => {
+      try {
+        const refreshTok = sessionStorage.getItem("sb_refresh_token");
+        if (!refreshTok) return false;
+        const r = await fetch(`${sbUrl2}/auth/v1/token?grant_type=refresh_token`, {
+          method:"POST",
+          headers:{"Content-Type":"application/json","apikey":sbKey2},
+          body:JSON.stringify({refresh_token:refreshTok})
+        });
+        if (!r.ok) return false;
+        const data = await r.json();
+        if (data.access_token) {
+          setAccessToken(data.access_token);
+          accessTokenRef.current = data.access_token;
+          sessionStorage.setItem("sb_token", data.access_token);
+          if (data.refresh_token) sessionStorage.setItem("sb_refresh_token", data.refresh_token);
+          return true;
+        }
+      } catch(e) { console.warn("Token refresh failed:", e); }
+      return false;
+    };
     try {
       for (const job of batch) {
         try {
@@ -8089,10 +8111,30 @@ function App() {
           }
         } catch(e) {
           const msg = e?.message||e?.details||String(e);
-          const hint = msg.toLowerCase().includes("column")?" (run DB migration)"
-            : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")?" (check Supabase RLS)":"";
-          errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
-          console.error("[DB Error]",job.table,job.action,e);
+          // If JWT expired, try to refresh token and retry the job
+          if (msg.toLowerCase().includes("jwt") || msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("invalid token")) {
+            const refreshed = await tryRefreshToken();
+            if (refreshed) {
+              try {
+                // Retry the same job with fresh token
+                if (job.action==="upsert") { const res2=await sb().from(job.table).upsert(job.row); if(res2?.error) throw res2.error; }
+                else if (job.action==="delete") { const res2=await sb().from(job.table).delete(job.col,job.val); if(res2?.error) throw res2.error; }
+                else if (job.action==="deleteMany") { const res2=await sb().from(job.table).deleteMany(job.col,[job.val]); if(res2?.error) throw res2.error; }
+                continue; // success after refresh — skip error recording
+              } catch(e2) {
+                errors.push(`${job.table}/${job.action}: ${e2?.message||String(e2)}`);
+              }
+            } else {
+              // Refresh failed — token truly expired, force logout
+              handleLogout();
+              return;
+            }
+          } else {
+            const hint = msg.toLowerCase().includes("column")?" (run DB migration)"
+              : msg.toLowerCase().includes("permission")||msg.toLowerCase().includes("policy")?" (check Supabase RLS)":"";
+            errors.push(`${job.table}/${job.action}: ${msg}${hint}`);
+            console.error("[DB Error]",job.table,job.action,e);
+          }
         }
       }
       if (errors.length===0) setSyncStatus("saved");
