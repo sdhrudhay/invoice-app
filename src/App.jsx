@@ -2451,13 +2451,17 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 
   const pendingOrders = filtered.filter(o=>o.status==="Pending").slice().sort((a,b)=>{
     if (sortBy==="created") {
-      const tsA=Number(String(a.orderNo||"").match(/\d+/g)?.[0]||0), tsB=Number(String(b.orderNo||"").match(/\d+/g)?.[0]||0);
-      return b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:tsB-tsA;
+      if (b.orderDate>a.orderDate) return 1;
+      if (b.orderDate<a.orderDate) return -1;
+      // Same date — use sequence from orderNoBase
+      return seqNum(b)-seqNum(a);
     }
     const da=a.dueDate||addDays(a.orderDate,30), db=b.dueDate||addDays(b.orderDate,30);
     return da<db?-1:da>db?1:0;
   });
-  const sortByCreated = (a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0;
+  // Tiebreaker: use orderNoBase sequence (last digits) for same-date orders — higher = created later
+  const seqNum = (o)=>Number((o.orderNoBase||"").replace(/\D/g,"").slice(-8))||0;
+  const sortByCreated = (a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:seqNum(b)-seqNum(a);
   const completedOrders = filtered.filter(o=>o.status==="Completed").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
   const cancelledOrders = filtered.filter(o=>o.status==="Cancelled").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
 
