@@ -2449,14 +2449,13 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
     );
   };
 
-  // Sort by orderNoBase desc — encodes date+sequence, so higher = created later
-  const baseDesc = (a,b)=>{ const na=a.orderNoBase||"", nb=b.orderNoBase||""; return nb>na?1:nb<na?-1:0; };
+  const sortByOrderNo = (a,b)=>{ const na=a.orderNo||"", nb=b.orderNo||""; return nb>na?1:nb<na?-1:0; };
   const pendingOrders = filtered.filter(o=>o.status==="Pending").slice().sort((a,b)=>{
-    if (sortBy==="created") return baseDesc(a,b);
+    if (sortBy==="created") return sortByOrderNo(a,b);
     const da=a.dueDate||addDays(a.orderDate,30), db=b.dueDate||addDays(b.orderDate,30);
     return da<db?-1:da>db?1:0;
   });
-  const sortByCreated = (a,b)=>baseDesc(a,b);
+  const sortByCreated = (a,b)=>sortByOrderNo(a,b);
   const completedOrders = filtered.filter(o=>o.status==="Completed").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
   const cancelledOrders = filtered.filter(o=>o.status==="Cancelled").slice().sort(sortBy==="created"?sortByCreated:(a,b)=>b.orderDate>a.orderDate?1:b.orderDate<a.orderDate?-1:0);
 
