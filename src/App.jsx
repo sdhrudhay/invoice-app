@@ -535,10 +535,28 @@ function ProductPicker({ products, onSelect, rowIdx }) {
           </div>
           <div className="overflow-y-auto">
             {filtered.length===0&&<p className="text-xs text-gray-400 px-3 py-2">No products found</p>}
-            {filtered.map(p=>(
-              <button key={p.id} type="button" onClick={()=>{ onSelect(p); setOpen(false); setQ(""); }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 text-gray-700">{p.name}</button>
-            ))}
+            {filtered.map(p=>{
+              const outOfStock = p.stock !== null && p.stock !== undefined && Number(p.stock) === 0;
+              const lowStock = p.stock !== null && p.stock !== undefined && Number(p.stock) > 0 && Number(p.stock) <= 5;
+              return (
+                <button key={p.id} type="button"
+                  onClick={()=>{
+                    if (outOfStock) {
+                      alert(`"${p.name}" is out of stock and cannot be added.`);
+                      return;
+                    }
+                    onSelect(p); setOpen(false); setQ("");
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 ${outOfStock?"opacity-50 cursor-not-allowed bg-red-50":"hover:bg-indigo-50"} text-gray-700`}>
+                  <span className="truncate">{p.name}</span>
+                  {p.stock !== null && p.stock !== undefined && (
+                    <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${outOfStock?"bg-red-100 text-red-600":lowStock?"bg-amber-100 text-amber-700":"bg-emerald-100 text-emerald-700"}`}>
+                      {outOfStock ? "Out of stock" : `Qty: ${p.stock}`}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2608,7 +2626,7 @@ function OrdersList({ orders, setOrders, quotations, setQuotations, proformas, s
 // ─── Settings ─────────────────────────────────────────────────────────────────
 // ─── Product Manager ──────────────────────────────────────────────────────────
 function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>{}, inventory=[], readOnly=false }) {
-  const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", unitPrice:"", productType:"3d_printed", cgstRate:9, sgstRate:9, notes:"" };
+  const EMPTY_P = { id:"", name:"", hsn:"", brand:"", material:"PLA", weightG:"", unitPrice:"", productType:"3d_printed", cgstRate:9, sgstRate:9, notes:"", stock:"" };
   const _pdraft = (() => { try { const d=sessionStorage.getItem("product_form_draft"); return d?JSON.parse(d):null; } catch(e){ return null; } })();
   const [form, setForm] = useState(_pdraft && !_pdraft.id ? {...EMPTY_P,..._pdraft} : {...EMPTY_P});
   const [editId, setEditId] = useState(null);
@@ -2734,6 +2752,12 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
             <input type="number" value={form.sgstRate} min="0" max="100" onChange={e=>upd("sgstRate",e.target.value)} onWheel={e=>e.target.blur()}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500">Stock Quantity</label>
+            <input type="number" min="0" value={form.stock===null||form.stock===undefined||form.stock===""?"":form.stock} onChange={e=>upd("stock",e.target.value===""?null:e.target.value)} onWheel={e=>e.target.blur()} placeholder="Leave blank = no tracking"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+            <p className="text-[10px] text-gray-400">Set to 0 = out of stock. Blank = no stock tracking.</p>
+          </div>
           <div className="col-span-2 flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-500">Notes</label>
             <input value={form.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Optional notes"
@@ -2759,6 +2783,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold text-slate-800">{p.name}</p>
                   {p.productType==="other"&&<span className="text-xs bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full">Pcs</span>}
+                  {p.stock!==null&&p.stock!==undefined&&p.stock!==""&&<span className={`text-xs font-bold px-2 py-0.5 rounded-full ${Number(p.stock)===0?"bg-red-100 text-red-600":Number(p.stock)<=5?"bg-amber-100 text-amber-700":"bg-emerald-100 text-emerald-700"}`}>{Number(p.stock)===0?"Out of stock":`Stock: ${p.stock}`}</span>}
                   {p.brand&&<span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{p.brand}</span>}
                   {p.productType!=="other"&&p.material&&<span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">{p.material}</span>}
                 </div>
@@ -8049,7 +8074,7 @@ function App() {
       if (ex?.length) setExpenses(ex.map(mapExpense).filter(e=>!e.isDeleted));
       if (stl?.length) setSettlements(stl.map(r=>({ id:r.id, date:r.date, amount:r.amount, ref:r.ref||"", fromId:r.from_id, via:r.via, direction:r.direction })));
       if (inv?.length) setInventory(inv.map(r=>({ id:r.id, brand:r.brand||"", material:r.material||"PLA", color:r.color||"", weightG:r.weight_g||1000, costTotal:r.cost_total||0, purchaseDate:r.purchase_date||"", notes:r.notes||"", linkedExpenseIds:r.linked_expense_ids||[] })).filter(r=>!r.isDeleted));
-      if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, unitPrice:Number(r.unit_price)||0, productType:r.product_type||"3d_printed", cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"" })));
+      if (prods?.length) setProducts(prods.map(r=>({ id:r.id, name:r.name||"", hsn:r.hsn||"", brand:r.brand||"", material:r.material||"", weightG:Number(r.weight_g)||0, unitPrice:Number(r.unit_price)||0, productType:r.product_type||"3d_printed", cgstRate:Number(r.cgst_rate)||9, sgstRate:Number(r.sgst_rate)||9, notes:r.notes||"", stock:r.stock!==null&&r.stock!==undefined?Number(r.stock):null })));
       if (wlog?.length) setWastageLog(wlog.map(r=>({ id:r.id, date:r.date, brand:r.brand||"", material:r.material||"", color:r.color||"", weightG:r.weight_g||0, reason:r.reason||"", orderNo:r.order_no||"", notes:r.notes||"", groupKey:r.group_key||"" })));
     }).catch((e)=>{ console.error("Phase 2 load error:", e); });
     }).catch((e)=>{ console.error("Phase 1 load error:", e); setLoading(false); });
@@ -8318,7 +8343,7 @@ function App() {
   const syncSetRecipients=(v)=>{ const n=typeof v==="function"?v(recipients):v; setRecipients(n); allRecipientsRef.current=[...allRecipientsRef.current.filter(r=>!n.find(x=>x.id===r.id)),...n]; n.forEach(r=>{ const prev=recipients.find(p=>p.id===r.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(r)) upsertRecipient(r); }); };
   const syncSetExpenses=(v)=>{ const n=typeof v==="function"?v(expenses):v; setExpenses(n); n.forEach(ex=>{ const prev=expenses.find(p=>p.id===ex.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(ex)) upsertExpense(ex); }); };
   const upsertInventoryItem=(i)=>enqueue({action:"upsert",table:"inventory",row:{id:i.id,brand:i.brand,material:i.material,color:i.color,weight_g:i.weightG,cost_total:i.costTotal||0,purchase_date:i.purchaseDate,notes:i.notes||"",linked_expense_ids:i.linkedExpenseIds||[]}});
-  const upsertProduct=(p)=>enqueue({action:"upsert",table:"products",row:{id:p.id,name:p.name,hsn:p.hsn||"",brand:p.brand||"",material:p.material||"",weight_g:p.weightG||0,unit_price:p.unitPrice||0,product_type:p.productType||"3d_printed",cgst_rate:p.cgstRate||9,sgst_rate:p.sgstRate||9,notes:p.notes||""}});
+  const upsertProduct=(p)=>enqueue({action:"upsert",table:"products",row:{id:p.id,name:p.name,hsn:p.hsn||"",brand:p.brand||"",material:p.material||"",weight_g:p.weightG||0,unit_price:p.unitPrice||0,product_type:p.productType||"3d_printed",cgst_rate:p.cgstRate||9,sgst_rate:p.sgstRate||9,notes:p.notes||"",stock:p.stock!==null&&p.stock!==""?Number(p.stock):null}});
   const deleteProduct=(id)=>enqueue({action:"delete",table:"products",col:"id",val:id});
   const syncSetProducts=(v)=>{ const n=typeof v==="function"?v(products):v; const removed=products.filter(x=>!n.find(y=>y.id===x.id)); removed.forEach(x=>deleteProduct(x.id)); n.forEach(p=>{ const prev=products.find(q=>q.id===p.id); if(!prev||JSON.stringify(prev)!==JSON.stringify(p)) upsertProduct(p); }); setProducts(n); };
   const upsertWastage=(w)=>enqueue({action:"upsert",table:"wastage_log",row:{id:w.id,date:w.date,brand:w.brand||"",material:w.material||"",color:w.color||"",weight_g:w.weightG,reason:w.reason,order_no:w.orderNo||"",notes:w.notes||"",group_key:w.groupKey||""}});
