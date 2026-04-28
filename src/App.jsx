@@ -2825,7 +2825,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
 }
 
 // ─── Change Password ─────────────────────────────────────────────────────────
-function ChangePassword({ sbUrl="", sbKey="", toast=()=>{} }) {
+function ChangePassword({ sbUrl="", sbKey="", toast=()=>{}, onTokenRefresh=null }) {
   const [cur, setCur] = useState("");
   const [pwd, setPwd] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -2858,6 +2858,9 @@ function ChangePassword({ sbUrl="", sbKey="", toast=()=>{} }) {
         body:JSON.stringify({password:pwd})
       });
       if (res.ok) {
+        // Store new token — Supabase invalidates old JWT on password change
+        if (onTokenRefresh) onTokenRefresh(freshToken);
+        sessionStorage.setItem("sb_token", freshToken);
         toast("Password changed successfully");
         setCur(""); setPwd(""); setConfirm("");
       } else {
@@ -2904,7 +2907,7 @@ function ChangePassword({ sbUrl="", sbKey="", toast=()=>{} }) {
   );
 }
 
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false, onTokenRefresh=null }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -3104,7 +3107,7 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
       {/* ── Change Password ── */}
       <section className="space-y-3 pt-2 border-t">
         <div><h3 className="font-bold text-gray-700 text-base">Change Password</h3><p className="text-xs text-gray-400">Update the password for your Supabase Auth account.</p></div>
-        <ChangePassword sbUrl={sbUrl} sbKey={sbKey} toast={toast}/>
+        <ChangePassword sbUrl={sbUrl} sbKey={sbKey} toast={toast} onTokenRefresh={onTokenRefresh}/>
       </section>
 
       {!readOnly&&<div className="flex gap-3 pt-2 border-t">
@@ -8731,7 +8734,7 @@ function App() {
           {hasAnyAccess&&tab==="salary"&&canRead("salary")&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {hasAnyAccess&&tab==="download"&&canRead("download")&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
           {hasAnyAccess&&tab==="dashboard"&&canRead("dashboard")&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
-          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
+          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus} onTokenRefresh={(tok)=>{setAccessToken(tok);accessTokenRef.current=tok;}}/>}
           {hasAnyAccess&&tab==="admin"&&canRead("admin")&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} accessToken={accessToken} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
