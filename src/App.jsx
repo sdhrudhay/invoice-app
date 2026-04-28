@@ -2824,90 +2824,7 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
   );
 }
 
-// ─── Change Password ─────────────────────────────────────────────────────────
-function ChangePassword({ sbUrl="", sbKey="", toast=()=>{}, onTokenRefresh=null }) {
-  const [cur, setCur] = useState("");
-  const [pwd, setPwd] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showCur, setShowCur] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showCon, setShowCon] = useState(false);
-
-  const handleChange = async () => {
-    if (!pwd) { toast("Enter a new password", "error"); return; }
-    if (pwd.length < 8) { toast("Password must be at least 8 characters", "error"); return; }
-    if (pwd !== confirm) { toast("Passwords do not match", "error"); return; }
-    if (!cur) { toast("Enter your current password to confirm", "error"); return; }
-    setLoading(true);
-    try {
-      const email = (() => { try { const u=JSON.parse(sessionStorage.getItem("app_user")||"{}"); return u?.email||u?.user_metadata?.email||""; } catch(e){ return ""; } })();
-      // Re-authenticate with current password first
-      const signInRes = await fetch(`${sbUrl}/auth/v1/token?grant_type=password`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json","apikey":sbKey},
-        body:JSON.stringify({email, password:cur})
-      });
-      if (!signInRes.ok) { toast("Current password is incorrect", "error"); setLoading(false); return; }
-      const signInData = await signInRes.json();
-      const freshToken = signInData.access_token;
-      // Now update to new password
-      const res = await fetch(`${sbUrl}/auth/v1/user`, {
-        method:"PUT",
-        headers:{"Content-Type":"application/json","apikey":sbKey,"Authorization":`Bearer ${freshToken}`},
-        body:JSON.stringify({password:pwd})
-      });
-      if (res.ok) {
-        // Store new token — Supabase invalidates old JWT on password change
-        if (onTokenRefresh) onTokenRefresh(freshToken);
-        sessionStorage.setItem("sb_token", freshToken);
-        toast("Password changed successfully");
-        setCur(""); setPwd(""); setConfirm("");
-      } else {
-        const err = await res.json();
-        toast(err?.message||"Failed to change password", "error");
-      }
-    } catch(e) {
-      toast("Error changing password", "error");
-    }
-    setLoading(false);
-  };
-
-  const inp = "border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full";
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-lg">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-semibold text-gray-500">Current Password</label>
-        <div className="relative">
-          <input type={showCur?"text":"password"} value={cur} onChange={e=>setCur(e.target.value)} className={inp} placeholder="Current password"/>
-          <button type="button" onClick={()=>setShowCur(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showCur?"🙈":"👁"}</button>
-        </div>
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-semibold text-gray-500">New Password</label>
-        <div className="relative">
-          <input type={showNew?"text":"password"} value={pwd} onChange={e=>setPwd(e.target.value)} className={inp} placeholder="Min 8 characters"/>
-          <button type="button" onClick={()=>setShowNew(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showNew?"🙈":"👁"}</button>
-        </div>
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-semibold text-gray-500">Confirm New Password</label>
-        <div className="relative">
-          <input type={showCon?"text":"password"} value={confirm} onChange={e=>setConfirm(e.target.value)} className={inp} placeholder="Repeat new password"/>
-          <button type="button" onClick={()=>setShowCon(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showCon?"🙈":"👁"}</button>
-        </div>
-      </div>
-      <div className="md:col-span-3">
-        <button onClick={handleChange} disabled={loading} className="px-5 py-2 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all disabled:opacity-50">
-          {loading?"Changing...":"Change Password"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false, onTokenRefresh=null }) {
+function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -3102,12 +3019,6 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
         {!readOnly&&<RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>}
-      </section>
-
-      {/* ── Change Password ── */}
-      <section className="space-y-3 pt-2 border-t">
-        <div><h3 className="font-bold text-gray-700 text-base">Change Password</h3><p className="text-xs text-gray-400">Update the password for your Supabase Auth account.</p></div>
-        <ChangePassword sbUrl={sbUrl} sbKey={sbKey} toast={toast} onTokenRefresh={onTokenRefresh}/>
       </section>
 
       {!readOnly&&<div className="flex gap-3 pt-2 border-t">
@@ -7042,13 +6953,10 @@ function createSupabaseClient(url, key) {
       return data; // { access_token, refresh_token, user }
     },
     signOut: async (accessToken) => {
-      try {
-        // 403 means token already expired — safe to ignore, local cleanup will still happen
-        await fetch(`${url}/auth/v1/logout`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${accessToken}` }
-        });
-      } catch(e) { /* ignore network errors on logout */ }
+      await fetch(`${url}/auth/v1/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${accessToken}` }
+      });
     },
     getUser: async (accessToken) => {
       const r = await fetch(`${url}/auth/v1/user`, {
@@ -8484,7 +8392,7 @@ function App() {
     setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
     const sid = sessionStorage.getItem("app_session_id");
-    if (sid && sbUrl2 && sbKey2) { const tok=accessToken||sessionStorage.getItem("sb_token")||""; if(tok) fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${tok}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
+    if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
     sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
@@ -8734,7 +8642,7 @@ function App() {
           {hasAnyAccess&&tab==="salary"&&canRead("salary")&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
           {hasAnyAccess&&tab==="download"&&canRead("download")&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
           {hasAnyAccess&&tab==="dashboard"&&canRead("dashboard")&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
-          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus} onTokenRefresh={(tok)=>{setAccessToken(tok);accessTokenRef.current=tok;}}/>}
+          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
           {hasAnyAccess&&tab==="admin"&&canRead("admin")&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} accessToken={accessToken} toast={toast} currentUser={currentUser}/>}
         </div>
       </div>
