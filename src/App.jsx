@@ -2824,6 +2824,86 @@ function ProductManager({ products=[], setProducts=()=>{}, seller={}, toast=()=>
   );
 }
 
+// ─── Change Password ─────────────────────────────────────────────────────────
+function ChangePassword({ sbUrl="", sbKey="", toast=()=>{} }) {
+  const [cur, setCur] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showCur, setShowCur] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showCon, setShowCon] = useState(false);
+
+  const handleChange = async () => {
+    if (!pwd) { toast("Enter a new password", "error"); return; }
+    if (pwd.length < 8) { toast("Password must be at least 8 characters", "error"); return; }
+    if (pwd !== confirm) { toast("Passwords do not match", "error"); return; }
+    if (!cur) { toast("Enter your current password to confirm", "error"); return; }
+    setLoading(true);
+    try {
+      const email = sessionStorage.getItem("app_user")||"";
+      // Re-authenticate with current password first
+      const signInRes = await fetch(`${sbUrl}/auth/v1/token?grant_type=password`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","apikey":sbKey},
+        body:JSON.stringify({email, password:cur})
+      });
+      if (!signInRes.ok) { toast("Current password is incorrect", "error"); setLoading(false); return; }
+      const signInData = await signInRes.json();
+      const freshToken = signInData.access_token;
+      // Now update to new password
+      const res = await fetch(`${sbUrl}/auth/v1/user`, {
+        method:"PUT",
+        headers:{"Content-Type":"application/json","apikey":sbKey,"Authorization":`Bearer ${freshToken}`},
+        body:JSON.stringify({password:pwd})
+      });
+      if (res.ok) {
+        toast("Password changed successfully");
+        setCur(""); setPwd(""); setConfirm("");
+      } else {
+        const err = await res.json();
+        toast(err?.message||"Failed to change password", "error");
+      }
+    } catch(e) {
+      toast("Error changing password", "error");
+    }
+    setLoading(false);
+  };
+
+  const inp = "border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full";
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-lg">
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-500">Current Password</label>
+        <div className="relative">
+          <input type={showCur?"text":"password"} value={cur} onChange={e=>setCur(e.target.value)} className={inp} placeholder="Current password"/>
+          <button type="button" onClick={()=>setShowCur(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showCur?"🙈":"👁"}</button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-500">New Password</label>
+        <div className="relative">
+          <input type={showNew?"text":"password"} value={pwd} onChange={e=>setPwd(e.target.value)} className={inp} placeholder="Min 8 characters"/>
+          <button type="button" onClick={()=>setShowNew(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showNew?"🙈":"👁"}</button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-semibold text-gray-500">Confirm New Password</label>
+        <div className="relative">
+          <input type={showCon?"text":"password"} value={confirm} onChange={e=>setConfirm(e.target.value)} className={inp} placeholder="Repeat new password"/>
+          <button type="button" onClick={()=>setShowCon(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">{showCon?"🙈":"👁"}</button>
+        </div>
+      </div>
+      <div className="md:col-span-3">
+        <button onClick={handleChange} disabled={loading} className="px-5 py-2 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all disabled:opacity-50">
+          {loading?"Changing...":"Change Password"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller, setSeller, series, setSeries, recipients=[], setRecipients, upsertRecipient=()=>{}, allRecipients=[], toast=()=>{}, syncStatus="", readOnly=false }) {
   const [s,setS]=useState({...seller}); const [sr,setSr]=useState({...series});
   const [showSetup,setShowSetup]=useState(false);
@@ -3019,6 +3099,12 @@ function Settings({ sbUrl="", setSbUrl=()=>{}, sbKey="", setSbKey=()=>{}, seller
         <h2 className="text-base font-bold text-gray-800 border-b pb-2">Recipients</h2>
         <p className="text-xs text-gray-400">People or companies who can receive payments — available as a dropdown when recording advance or payments.</p>
         {!readOnly&&<RecipientMaster recipients={recipients} setRecipients={setRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipients}/>}
+      </section>
+
+      {/* ── Change Password ── */}
+      <section className="space-y-3 pt-2 border-t">
+        <div><h3 className="font-bold text-gray-700 text-base">Change Password</h3><p className="text-xs text-gray-400">Update the password for your Supabase Auth account.</p></div>
+        <ChangePassword sbUrl={sbUrl} sbKey={sbKey} toast={toast}/>
       </section>
 
       {!readOnly&&<div className="flex gap-3 pt-2 border-t">
