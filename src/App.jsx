@@ -7039,10 +7039,13 @@ function createSupabaseClient(url, key) {
       return data; // { access_token, refresh_token, user }
     },
     signOut: async (accessToken) => {
-      await fetch(`${url}/auth/v1/logout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${accessToken}` }
-      });
+      try {
+        // 403 means token already expired — safe to ignore, local cleanup will still happen
+        await fetch(`${url}/auth/v1/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": key, "Authorization": `Bearer ${accessToken}` }
+        });
+      } catch(e) { /* ignore network errors on logout */ }
     },
     getUser: async (accessToken) => {
       const r = await fetch(`${url}/auth/v1/user`, {
@@ -8478,7 +8481,7 @@ function App() {
     setCountdown(null);
     if (sbRef.current && accessToken) sbRef.current.auth.signOut(accessToken).catch(()=>{});
     const sid = sessionStorage.getItem("app_session_id");
-    if (sid && sbUrl2 && sbKey2 && accessToken) { fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${accessToken}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
+    if (sid && sbUrl2 && sbKey2) { const tok=accessToken||sessionStorage.getItem("sb_token")||""; if(tok) fetch(`${sbUrl2}/rest/v1/app_sessions?id=eq.${sid}`,{method:"PATCH",headers:{"apikey":sbKey2,"Authorization":`Bearer ${tok}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({logout_at:new Date().toISOString()})}).catch(()=>{}); }
     setAccessToken(""); setUser(null); setCurrentUser(null);
     sessionStorage.removeItem("sb_token"); sessionStorage.removeItem("app_user"); sessionStorage.removeItem("app_session_id"); sessionStorage.removeItem("sb_refresh_token"); sessionStorage.removeItem("new_order_draft"); sessionStorage.removeItem("product_form_draft"); sessionStorage.removeItem("active_tab");
     setOrders([]); setQuotations([]); setProformas([]); setTaxInvoices([]);
