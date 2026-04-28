@@ -2841,7 +2841,7 @@ function ChangePassword({ sbUrl="", sbKey="", toast=()=>{} }) {
     if (!cur) { toast("Enter your current password to confirm", "error"); return; }
     setLoading(true);
     try {
-      const email = sessionStorage.getItem("app_user")||"";
+      const email = (() => { try { const u=JSON.parse(sessionStorage.getItem("app_user")||"{}"); return u?.email||u?.user_metadata?.email||""; } catch(e){ return ""; } })();
       // Re-authenticate with current password first
       const signInRes = await fetch(`${sbUrl}/auth/v1/token?grant_type=password`, {
         method:"POST",
