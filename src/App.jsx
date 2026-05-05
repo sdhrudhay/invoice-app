@@ -1777,12 +1777,12 @@ function OrderEditDrawer({ order, quotations, proformas, taxInvoices, seller, se
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Referral Payout</p>
                     <div className="flex items-center gap-3 flex-wrap">
                       <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{if(detailsLocked)return; const paid=e.target.checked?1:0; upd("referralPaid",paid); onReferralPaidChange({...o,referralPaid:paid},paid);}} disabled={detailsLocked} className="rounded"/>
+                        <input type="checkbox" checked={!!(o.referralPaid)} onChange={e=>{ const paid=e.target.checked?1:0; upd("referralPaid",paid); onReferralPaidChange({...o,referralPaid:paid},paid);}} className="rounded"/>
                         <span className="text-xs text-gray-600 font-medium">Paid out</span>
                       </label>
                       {!!(o.referralPaid)&&<>
-                        <input type="date" value={o.referralPaidDate||""} onChange={e=>upd("referralPaidDate",e.target.value)} disabled={detailsLocked} className={"border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"+(detailsLocked?" bg-gray-100 text-gray-400 cursor-not-allowed":"")}/>
-                        <input type="text" value={o.referralPaidRef||""} onChange={e=>upd("referralPaidRef",e.target.value)} disabled={detailsLocked} placeholder="Txn ref (optional)" className={"border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-0"+(detailsLocked?" bg-gray-100 text-gray-400 cursor-not-allowed":"")}/>
+                        <input type="date" value={o.referralPaidDate||""} onChange={e=>upd("referralPaidDate",e.target.value)} className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+                        <input type="text" value={o.referralPaidRef||""} onChange={e=>upd("referralPaidRef",e.target.value)} placeholder="Txn ref (optional)" className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 min-w-0"/>
                       </>}
                     </div>
                     {!!(o.isReferred)&&!!( o.referralAmount)&&<p className="text-[10px] text-indigo-600 font-semibold">Due: ₹{Number(o.referralAmount||0).toLocaleString("en-IN")}</p>}
