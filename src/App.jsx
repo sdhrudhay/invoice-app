@@ -4267,8 +4267,8 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
       {section==="filament"&&canSection("filament")&&(
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <KPITile label="Total Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${fmt(totalUsedG)}g`} sub="across all orders" accent="#6366f1" icon="🧵"/>
-            <KPITile label="Total Waste" value={`${fmt(totalWasteG)}g`} sub={`${wasteRate}% waste rate`} accent="#f43f5e" icon="♻️"/>
+            <KPITile label="Total Used" value={totalUsedG>=1000?`${(totalUsedG/1000).toFixed(1)}kg`:`${Number(totalUsedG).toFixed(1)}g`} sub="across all orders" accent="#6366f1" icon="🧵"/>
+            <KPITile label="Total Waste" value={`${Number(totalWasteG).toFixed(1)}g`} sub={`${wasteRate}% waste rate`} accent="#f43f5e" icon="♻️"/>
             <KPITile label="Spools" value={inventory.length} sub={`${[...new Set(inventory.map(i=>i.material))].length} materials`} accent="#10b981" icon="📦"/>
             <KPITile label="Stock Left" value={`${(inventory.reduce((s,i)=>s+num(i.weightG),0)/1000).toFixed(1)}kg`} sub="total" accent="#f59e0b" icon="🏪"/>
           </div>
