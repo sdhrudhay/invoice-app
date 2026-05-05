@@ -7811,8 +7811,11 @@ function App() {
   const [tab,setTab]=useState(()=>sessionStorage.getItem("active_tab")||"new");
   const [isDark,setIsDark]=useState(()=>{
     try {
+      // Check sessionStorage first, then localStorage as persistent fallback
       const u=JSON.parse(sessionStorage.getItem("app_user")||"{}");
-      const dark = !!(u?.preferences?.darkMode);
+      const dark = u?.preferences?.darkMode !== undefined
+        ? !!(u.preferences.darkMode)
+        : localStorage.getItem("elace_dark_mode")==="1";
       // Apply immediately before first render to avoid flash
       if (dark) document.documentElement.setAttribute("data-theme","dark");
       else document.documentElement.removeAttribute("data-theme");
@@ -7824,8 +7827,11 @@ function App() {
   // Persist active tab across reloads
   useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
 
-  // Sync data-theme on documentElement whenever isDark changes
-  useEffect(()=>{ if(isDark) document.documentElement.setAttribute("data-theme","dark"); else document.documentElement.removeAttribute("data-theme"); },[isDark]);
+  // Sync data-theme on documentElement and localStorage whenever isDark changes
+  useEffect(()=>{
+    if(isDark) { document.documentElement.setAttribute("data-theme","dark"); localStorage.setItem("elace_dark_mode","1"); }
+    else { document.documentElement.removeAttribute("data-theme"); localStorage.setItem("elace_dark_mode","0"); }
+  },[isDark]);
 
   // Persist dark mode to user_roles preferences column
   useEffect(()=>{
@@ -8455,7 +8461,13 @@ function App() {
       const updated = {...user, isAdmin:!!role.is_admin, permissions:freshPerms, preferences:role.preferences||{}};
       setCurrentUser(updated);
       sessionStorage.setItem("app_user", JSON.stringify(updated));
-      if (role.preferences?.darkMode !== undefined) setIsDark(!!role.preferences.darkMode);
+      if (role.preferences?.darkMode !== undefined) {
+        const dark = !!role.preferences.darkMode;
+        // Apply to DOM immediately — before React re-render to avoid flash
+        if (dark) document.documentElement.setAttribute("data-theme","dark");
+        else document.documentElement.removeAttribute("data-theme");
+        setIsDark(dark);
+      }
     }).catch(()=>{});
   },[]);
 
