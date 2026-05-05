@@ -3265,7 +3265,7 @@ const EMPTY_EXPENSE = { id:"", date:"", paidBy:"", amount:"", category:"Miscella
 
 
 
-function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[], seller={}, subTabPerms=null }) {
+function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[], taxInvoices=[], quotations=[], seller={}, settlements=[], subTabPerms=null }) {
   const canSection = (id) => !subTabPerms || subTabPerms[id]==="read"||subTabPerms[id]==="write";
   const firstSection = ["overview","trends","orders","finance","filament","customers","referrals"].find(s=>canSection(s)) || "overview";
   const [section, setSection] = useState(firstSection);
@@ -3358,6 +3358,23 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
   const periodSGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.sgstAmt),0)); },0);
   const periodIGST = periodTIs.reduce((s,t)=>{ const o=orders.find(ord=>ord.orderNo===t.orderId); if(!isOrderIgst(o))return s; return s+((o?.items||[]).reduce((a,i)=>a+num(i.cgstAmt)+num(i.sgstAmt),0)); },0);
   const periodTotalGST = periodCGST + periodSGST + periodIGST;
+
+  // ── Company Bank Balance (all-time, not period-filtered) ─────────────────
+  const bankBalanceIn =
+    // Advances received by company
+    orders.reduce((s,o)=>s+(o.advanceRecipient==="__company__"?num(o.advance):0),0)
+    // Payments received by company (non-refund)
+    + orders.reduce((s,o)=>s+(o.payments||[]).reduce((sp,p)=>sp+(!p.isRefund&&p.receivedBy==="__company__"?num(p.amount):0),0),0)
+    // Settlements: recipient pays company directly
+    + settlements.filter(st=>st.direction==="recipientPaysCompany").reduce((s,st)=>s+num(st.amount),0);
+  const bankBalanceOut =
+    // Refunds paid by company
+    orders.reduce((s,o)=>s+(o.payments||[]).reduce((sp,p)=>sp+(p.isRefund&&p.receivedBy==="__company__"?num(p.amount):0),0),0)
+    // Expenses paid by company
+    + expenses.filter(e=>!e.isDeleted&&e.paidBy==="__company__").reduce((s,e)=>s+num(e.amount),0)
+    // Settlements: company pays recipient directly
+    + settlements.filter(st=>st.direction==="companyPaysRecipient").reduce((s,st)=>s+num(st.amount),0);
+  const bankBalance = bankBalanceIn - bankBalanceOut;
   const collectionRate = totalRev>0?Math.round(Math.max(0,totalRev-totalOutstanding)/totalRev*100):0;
   const netProfit = totalPaid - totalExp;
   const profitMargin = totalPaid?Math.round(netProfit/totalPaid*100):0;
@@ -4131,6 +4148,11 @@ function AnalyticsDashboard({ orders=[], expenses=[], inventory=[], wastageLog=[
             <KPITile label="Order Value (Net)" value={fmtK(totalOrderValue)} sub={`Gross: ${fmtK(totalOrderValueGross)}`} accent="#10b981" icon="📋"/>
             <KPITile label="Outstanding" value={fmtK(totalOutstanding)} sub="balance due" accent="#f43f5e" icon="⏰"/>
             <KPITile label="Net Profit" value={fmtK(netProfit)} sub={`${profitMargin}% margin`} accent={netProfit>=0?"#10b981":"#f43f5e"} icon="🏦"/>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <KPITile label="🏦 Company Bank Balance" value={fmtK(bankBalance)} sub={`In: ${fmtK(bankBalanceIn)} · Out: ${fmtK(bankBalanceOut)}`} accent={bankBalance>=0?"#10b981":"#f43f5e"} icon={bankBalance>=0?"📈":"📉"}/>
+            <KPITile label="Total Income (Company)" value={fmtK(bankBalanceIn)} sub="advances + payments + settlements" accent="#6366f1" icon="💵"/>
+            <KPITile label="Total Expenses (Company)" value={fmtK(bankBalanceOut)} sub="expenses + refunds + settlements" accent="#f43f5e" icon="💸"/>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <KPITile label="Total GST" value={fmtK(periodTotalGST)} sub={`${periodTIs.length} tax invoices`} accent="#8b5cf6" icon="🧾"/>
@@ -8633,7 +8655,7 @@ function App() {
               <p className="text-sm text-gray-400 max-w-xs">You don't have permission to access any section. Please contact your admin to grant you access.</p>
             </div>
           )}
-          {hasAnyAccess&&tab==="analytics"&&canRead("analytics")&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} seller={seller} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
+          {hasAnyAccess&&tab==="analytics"&&canRead("analytics")&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} seller={seller} settlements={settlements} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
           {hasAnyAccess&&tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
           {hasAnyAccess&&tab==="orders"&&canRead("orders")&&<OrdersList sbUrl={sbUrl2} sbKey={sbKey2} userId={currentUser?.id} readOnly={!canWrite("orders")} subTabPerms={isAdmin?null:(typeof perms["orders"]==="object"&&perms["orders"]!==null?perms["orders"]:null)} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} rawSetTaxInvoices={setTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
           {hasAnyAccess&&tab==="clients"&&canRead("clients")&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
