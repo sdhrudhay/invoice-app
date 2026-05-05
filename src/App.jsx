@@ -7810,12 +7810,22 @@ function BulkDownload({ orders=[], quotations=[], proformas=[], taxInvoices=[], 
 function App() {
   const [tab,setTab]=useState(()=>sessionStorage.getItem("active_tab")||"new");
   const [isDark,setIsDark]=useState(()=>{
-    try { const u=JSON.parse(sessionStorage.getItem("app_user")||"{}"); return !!(u?.preferences?.darkMode); } catch(e){ return false; }
+    try {
+      const u=JSON.parse(sessionStorage.getItem("app_user")||"{}");
+      const dark = !!(u?.preferences?.darkMode);
+      // Apply immediately before first render to avoid flash
+      if (dark) document.documentElement.setAttribute("data-theme","dark");
+      else document.documentElement.removeAttribute("data-theme");
+      return dark;
+    } catch(e){ return false; }
   });
   const [viewOrder,setViewOrder]=useState(null);
 
   // Persist active tab across reloads
   useEffect(()=>{ sessionStorage.setItem("active_tab", tab); },[tab]);
+
+  // Sync data-theme on documentElement whenever isDark changes
+  useEffect(()=>{ if(isDark) document.documentElement.setAttribute("data-theme","dark"); else document.documentElement.removeAttribute("data-theme"); },[isDark]);
 
   // Persist dark mode to user_roles preferences column
   useEffect(()=>{
@@ -8547,133 +8557,3 @@ function App() {
 [data-theme="dark"] .divide-gray-200>*,[data-theme="dark"] .divide-gray-300>*{border-color:#334155!important}
 [data-theme="dark"] .border-t,[data-theme="dark"] .border-b,[data-theme="dark"] .border-r,[data-theme="dark"] .border-l{border-color:#334155!important}
 [data-theme="dark"] .hover\:bg-gray-50:hover,[data-theme="dark"] .hover\:bg-slate-50:hover{background-color:#263346!important}
-[data-theme="dark"] .hover\:bg-indigo-50:hover{background-color:#1e2a47!important}
-[data-theme="dark"] .hover\:bg-red-50:hover{background-color:#2d1a1a!important}
-[data-theme="dark"] .hover\:shadow-md:hover{box-shadow:0 4px 12px rgba(0,0,0,0.5)!important}
-[data-theme="dark"] .bg-red-50{background-color:#2d1a1a!important}
-[data-theme="dark"] .bg-amber-50{background-color:#2d2410!important}
-[data-theme="dark"] .bg-emerald-50{background-color:#0f2820!important}
-[data-theme="dark"] .bg-blue-50{background-color:#0f1e30!important}
-[data-theme="dark"] .bg-indigo-100{background-color:#1e2a47!important}
-[data-theme="dark"] .bg-slate-800{background-color:#0a0f1e!important}
-[data-theme="dark"] .border-r{border-color:#334155!important}
-[data-theme="dark"] .border-t{border-color:#334155!important}
-/* Light mode — stronger borders for visibility */
-:not([data-theme="dark"]) .border-gray-300{border-color:#6b7280!important}
-:not([data-theme="dark"]) .divide-gray-300>*{border-color:#6b7280!important}`}</style>
-      <Toast toasts={toasts}/>
-      {loading&&<div className="fixed inset-0 z-50 bg-white/80 flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div><p className="text-sm font-semibold text-indigo-600">Syncing your data…</p></div></div>}
-      {/* ── Sidebar nav (desktop) ── */}
-      <div className="hidden md:flex fixed left-0 top-0 h-full w-36 bg-white border-r border-gray-100 shadow-sm flex-col z-20">
-        {/* Logo / brand */}
-        <div className="flex items-center justify-center h-14 border-b border-gray-100 shrink-0 px-3">
-          {seller.logo
-            ? <img src={seller.logo} alt="logo" className="h-9 max-w-[100px] object-contain mx-auto"/>
-            : <span className="text-xs font-black text-indigo-600 tracking-tight leading-tight text-center">{seller.name||"Elace"}</span>
-          }
-        </div>
-        {/* Tabs */}
-        <div className="flex-1 flex flex-col py-3 gap-0.5 overflow-y-auto px-2">
-          {TABS.filter(t=>t.id!=="settings"&&(t.id==="admin"?isAdmin:isAdmin||canRead(t.id))).map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)}
-              className={`relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab===t.id?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
-              {tab===t.id&&<span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-500 rounded-r"/>}
-              <span className="text-sm leading-none shrink-0">{t.icon}</span>
-              <span className="truncate">{t.label}</span>
-            </button>
-          ))}
-        </div>
-        {/* Bottom: sync status + settings + sign out */}
-        <div className="flex flex-col border-t border-gray-100 pt-2 pb-3 px-2 gap-0.5 shrink-0">
-          {(syncStatus==="saving"||syncStatus==="error")&&(
-            <div className="px-3 py-1">
-              {syncStatus==="saving"&&<span className="text-[10px] text-indigo-400 font-semibold animate-pulse">Saving…</span>}
-              {syncStatus==="error"&&<span className="text-[10px] text-red-400 font-semibold">Failed to save</span>}
-            </div>
-          )}
-          {(isAdmin||canRead("settings"))&&<button onClick={()=>setTab("settings")}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${tab==="settings"?"bg-indigo-50 text-indigo-700":"text-gray-500 hover:bg-gray-50 hover:text-gray-800"}`}>
-            <span className="text-sm leading-none shrink-0">⚙️</span>
-            <span>Settings</span>
-          </button>}
-          <button onClick={()=>setIsDark(d=>!d)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-all">
-            <span className="text-sm leading-none shrink-0">{isDark?"☀️":"🌙"}</span>
-            <span>{isDark?"Light Mode":"Dark Mode"}</span>
-          </button>
-          <button onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-all">
-            <span className="text-sm leading-none shrink-0">🚪</span>
-            <span>{countdown!==null
-              ? <span className="font-black text-amber-600 tabular-nums">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
-              : "Sign Out"}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Bottom tab bar (mobile) ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-20 flex flex-col">
-        <div className="flex overflow-x-auto scrollbar-none" style={{WebkitOverflowScrolling:"touch"}}>
-          {TABS.filter(t=>t.id!=="settings"&&(t.id==="admin"?isAdmin:isAdmin||canRead(t.id))).map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)}
-              className={`shrink-0 flex flex-col items-center justify-center py-2 px-3 gap-0.5 min-w-[56px] relative transition-all ${tab===t.id?"text-indigo-600":"text-gray-400"}`}>
-              {tab===t.id&&<span className="absolute top-0 inset-x-2 h-0.5 bg-indigo-500 rounded-full"/>}
-              <span className="text-lg leading-none">{t.icon}</span>
-              <span className="text-[9px] font-semibold leading-tight mt-0.5 whitespace-nowrap">{t.label.split(" ")[0]}</span>
-            </button>
-          ))}
-        </div>
-        {/* Settings + Sign Out row always visible */}
-        <div className="flex border-t border-gray-100">
-          {(isAdmin||canRead("settings"))&&<button onClick={()=>setTab("settings")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-all ${tab==="settings"?"text-indigo-600":"text-gray-500"}`}>
-            <span>⚙️</span><span>Settings</span>
-          </button>}
-          <button onClick={()=>setIsDark(d=>!d)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-gray-500">
-            <span>{isDark?"☀️":"🌙"}</span>
-            <span>{isDark?"Light":"Dark"}</span>
-          </button>
-          <button onClick={handleLogout}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-red-500">
-            <span>🚪</span>
-            <span>{countdown!==null
-              ?<span className="font-black text-amber-600 tabular-nums">{String(Math.floor(countdown/60)).padStart(2,"0")}:{String(countdown%60).padStart(2,"0")}</span>
-              :"Sign Out"}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main content area ── */}
-      <div className="md:pl-36 pb-36 md:pb-0" style={isDark?{background:"#0f172a",minHeight:"100vh"}:{}}>
-      <div className="px-3 md:px-6 py-4 md:py-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-8">
-          {!hasAnyAccess&&!isAdmin&&(
-            <div className="flex flex-col items-center justify-center h-[70vh] gap-4 text-center px-8">
-              <div className="text-6xl">🔒</div>
-              <h2 className="text-xl font-black text-slate-700">No Access Yet</h2>
-              <p className="text-sm text-gray-400 max-w-xs">You don't have permission to access any section. Please contact your admin to grant you access.</p>
-            </div>
-          )}
-          {hasAnyAccess&&tab==="analytics"&&canRead("analytics")&&<AnalyticsDashboard orders={orders} expenses={expenses} inventory={inventory} wastageLog={wastageLog} taxInvoices={taxInvoices} quotations={quotations} seller={seller} settlements={settlements} subTabPerms={isAdmin?null:(typeof perms["analytics"]==="object"&&perms["analytics"]!==null?perms["analytics"]:null)}/>}
-          {hasAnyAccess&&tab==="new"&&canWrite("new")&&<OrderForm orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} seller={seller} series={series} clients={clients} recipients={recipients} onViewOrder={(o)=>{setViewOrder(o);setTab("orders");}} toast={toast} products={products} inventory={inventory} wastageLog={wastageLog}/>}
-          {hasAnyAccess&&tab==="orders"&&canRead("orders")&&<OrdersList sbUrl={sbUrl2} sbKey={sbKey2} userId={currentUser?.id} readOnly={!canWrite("orders")} subTabPerms={isAdmin?null:(typeof perms["orders"]==="object"&&perms["orders"]!==null?perms["orders"]:null)} orders={orders} setOrders={syncSetOrders} quotations={quotations} setQuotations={syncSetQuotations} proformas={proformas} setProformas={syncSetProformas} taxInvoices={taxInvoices} setTaxInvoices={syncSetTaxInvoices} rawSetTaxInvoices={setTaxInvoices} seller={seller} series={series} recipients={recipients} allRecipients={allRecipientsRef.current} upsertPayment={upsertPayment} enqueue={enqueue} initialOrder={viewOrder} onClearInitialOrder={()=>setViewOrder(null)} toast={toast} inventory={inventory} wastageLog={wastageLog} setWastageLog={syncSetWastageLog} products={products} expenses={expenses} setExpenses={syncSetExpenses}/>}
-          {hasAnyAccess&&tab==="clients"&&canRead("clients")&&<ClientMaster readOnly={!canWrite("clients")} clients={clients} setClients={syncSetClients} deleteClient={deleteClient} toast={toast}/>}
-          {hasAnyAccess&&tab==="expenses"&&canRead("expenses")&&<ExpenseTracker readOnly={!canWrite("expenses")} subTabPerms={isAdmin?null:(typeof perms["expenses"]==="object"&&perms["expenses"]!==null?perms["expenses"]:null)} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} deleteExpense={deleteExpense} toast={toast}/>}
-          {hasAnyAccess&&tab==="assets"&&canRead("assets")&&<AssetManager readOnly={!canWrite("assets")} assets={assets} setAssets={syncSetAssets} deleteAsset={deleteAsset} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} cdnCloud={cdnCloud} cdnPreset={cdnPreset} toast={toast}/>}
-          {hasAnyAccess&&tab==="products"&&canRead("products")&&<ProductManager readOnly={!canWrite("products")} products={products} setProducts={syncSetProducts} seller={seller} toast={toast} inventory={inventory}/>}
-          {hasAnyAccess&&tab==="inventory"&&canRead("inventory")&&<InventoryManager readOnly={!canWrite("inventory")} inventory={inventory} setInventory={syncSetInventory} expenses={expenses} setExpenses={syncSetExpenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} setSeller={syncSetSeller} deleteInventoryItem={deleteInventoryItem} toast={toast} orders={orders} wastageLog={wastageLog} setWastageLog={syncSetWastageLog}/>}
-          {hasAnyAccess&&tab==="income"&&canRead("income")&&<IncomeView orders={orders} quotations={quotations} taxInvoices={taxInvoices} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} subTabPerms={isAdmin?null:(typeof perms["income"]==="object"&&perms["income"]!==null?perms["income"]:null)}/>}
-          {hasAnyAccess&&tab==="salary"&&canRead("salary")&&<SalaryManager readOnly={!canWrite("salary")} employees={employees} setEmployees={setEmployees} expenses={expenses} setExpenses={syncSetExpenses} upsertEmployee={upsertEmployee} deleteEmployee={deleteEmployee} deleteExpense={deleteExpense} toast={toast}/>}
-          {hasAnyAccess&&tab==="download"&&canRead("download")&&<BulkDownload orders={orders} quotations={quotations} proformas={proformas} taxInvoices={taxInvoices} seller={seller} expenses={expenses} subTabPerms={isAdmin?null:(typeof perms["download"]==="object"&&perms["download"]!==null?perms["download"]:null)}/>}
-          {hasAnyAccess&&tab==="dashboard"&&canRead("dashboard")&&<Dashboard orders={orders} expenses={expenses} recipients={recipients} allRecipients={allRecipientsRef.current} seller={seller} settlements={settlements} setSettlements={syncSetSettlements} readOnly={!canWrite("dashboard")}/>}
-          {hasAnyAccess&&tab==="settings"&&canRead("settings")&&<Settings readOnly={!canWrite("settings")} sbUrl={sbUrl} setSbUrl={handleSetSbUrl} sbKey={sbKey} setSbKey={handleSetSbKey} seller={seller} setSeller={syncSetSeller} series={series} setSeries={syncSetSeries} recipients={recipients} setRecipients={syncSetRecipients} upsertRecipient={upsertRecipient} allRecipients={allRecipientsRef.current} toast={toast} syncStatus={syncStatus}/>}
-          {hasAnyAccess&&tab==="admin"&&canRead("admin")&&isAdmin&&<AdminPanel sbUrl={sbUrl2} sbKey={sbKey2} accessToken={accessToken} toast={toast} currentUser={currentUser}/>}
-        </div>
-      </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;
