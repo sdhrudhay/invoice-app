@@ -6170,7 +6170,7 @@ function InventoryManager({ inventory=[], setInventory, expenses=[], setExpenses
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight (g)</label>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Weight per Spool (g)</label>
                     <input type="number" value={row.weightG} min="0" onChange={e=>updRow(idx,"weightG",e.target.value)} onWheel={e=>e.target.blur()}
                       className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
                   </div>
