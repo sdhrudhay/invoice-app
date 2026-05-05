@@ -841,7 +841,7 @@ function ClientSearch({ clients, onSelect, value }) {
     c.name.toLowerCase().includes(query.toLowerCase()) ||
     c.id.toLowerCase().includes(query.toLowerCase()) ||
     (c.gstin||"").toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 8);
+);
 
   const handleSelect = (c) => { setQuery(c.name + " (" + c.id + ")"); setOpen(false); onSelect(c); };
   const handleClear = () => { setQuery(""); setOpen(false); onSelect(null); };
@@ -856,7 +856,7 @@ function ClientSearch({ clients, onSelect, value }) {
         {query && <button onClick={handleClear} className="text-gray-400 hover:text-red-500 text-lg px-1 font-bold leading-none">×</button>}
       </div>
       {open && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-300 rounded-xl shadow-xl mt-1 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border border-gray-300 rounded-xl shadow-xl mt-1 overflow-y-auto" style={{maxHeight:"280px"}}>
           {filtered.map(c => (
             <button key={c.id} onMouseDown={()=>handleSelect(c)}
               className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-gray-300 last:border-0 transition-colors">
