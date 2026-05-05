@@ -424,7 +424,7 @@ ${items.map((it,i)=>`<tr style="vertical-align:middle"><td>${i+1}</td><td style=
   <td><b>₹${fmt(it.netAmt)}</b></td></tr>`).join("")}
 </tbody><tfoot>
   <tr class="sr"><td colspan="${ng?6:6}" style="text-align:right">Subtotals</td><td>₹${fmt(tG)}</td>${ng?(isIgst?`<td></td><td>₹${fmt(tC+tS)}</td>`:`<td></td><td>₹${fmt(tC)}</td><td></td><td>₹${fmt(tS)}</td>`):""}<td>₹${fmt(tN)}</td></tr>
-  ${(inv.charges||[]).filter(c=>c.label&&Number(c.amount)).map(c=>`<tr><td colspan="${cols-1}" style="text-align:right;font-style:italic;color:#555">${c.label}</td><td>₹${fmt(Number(c.amount))}</td></tr>`).join("")}
+  ${(inv.charges||[]).filter(c=>c.label&&Number(c.amount)).map(c=>`<tr><td colspan="${cols-1}" style="text-align:right;font-style:italic;color:#555">${c.label} <span style="font-size:10px;color:#888;font-style:normal">(GST excl.)</span></td><td>₹${fmt(Number(c.amount))}</td></tr>`).join("")}
   <tr class="gr"><td colspan="${cols-1}" style="text-align:right">GRAND TOTAL</td><td>₹${fmt(tN+(inv.charges||[]).reduce((s,c)=>s+Number(c.amount||0),0))}</td></tr>
 </tfoot></table>
 
